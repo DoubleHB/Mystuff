@@ -95,6 +95,12 @@ public sealed class Settings
     public bool Maximised { get; set; }
 }
 
+public sealed class RateLimitNote
+{
+    public DateTime Until { get; set; }
+    public bool Estimated { get; set; }
+}
+
 public sealed class UserData
 {
     public HashSet<string> Favourites { get; set; } = [];
@@ -103,6 +109,8 @@ public sealed class UserData
     public Dictionary<string, string> Notes { get; set; } = [];
     /// <summary>The user's own labels per API.</summary>
     public Dictionary<string, List<string>> Tags { get; set; } = [];
+    /// <summary>APIs that answered "rate limited", and until when.</summary>
+    public Dictionary<string, RateLimitNote> RateLimits { get; set; } = [];
     /// <summary>Edited "Test this API" requests (URL + header), DPAPI-encrypted because they may hold a key.</summary>
     public Dictionary<string, string> TestRequests { get; set; } = [];
 }

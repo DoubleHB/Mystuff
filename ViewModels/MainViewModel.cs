@@ -65,6 +65,9 @@ public sealed partial class MainViewModel : ObservableObject
 
         // automatic re-scan: shortly after start-up, then checked every half hour while the app stays open
         _rescanTimer.Tick += (_, _) => AutoRescanIfDue();
+        var minute = new DispatcherTimer { Interval = TimeSpan.FromMinutes(1) };
+        minute.Tick += (_, _) => { foreach (var r in _all.Where(x => x.LimitedUntil is not null)) r.RefreshLimit(); }; // "until 20:45" expires by itself
+        minute.Start();
         _rescanTimer.Start();
         Application.Current?.Dispatcher.BeginInvoke(AutoRescanIfDue, DispatcherPriority.ApplicationIdle);
     }
@@ -183,22 +186,46 @@ public sealed partial class MainViewModel : ObservableObject
         HasSelection = newValue is not null;
         ShowMyKey = false;
         if (newValue is null) return;
-        if (newValue.MyKey.Length == 0) newValue.MyKey = _store.GetMyKey(newValue.Key) ?? "";
-        if (newValue.TestUrl.Length == 0)
-        {
-            var saved = _store.GetTestRequest(newValue.Key);
-            newValue.TestUrl = saved?.Url ?? newValue.DefaultTestUrl;
-            newValue.TestHeader = saved?.Headers ?? newValue.DefaultTestHeader;
-            newValue.TestMethod = saved?.Method ?? "GET";
-            newValue.TestBody = saved?.Body ?? "";
-        }
-        if (!newValue.HistoryLoaded)
-        {
-            newValue.HistoryLoaded = true;
-            foreach (var h in _store.TestHistory.GetValueOrDefault(newValue.Key) ?? []) newValue.History.Add(h);
-            newValue.HistoryChanged();
-        }
+        EnsureRowLoaded(newValue);
+        newValue.RefreshLimit();
         newValue.PropertyChanged += SelectedRowChanged;
+    }
+
+    /// <summary>Pulls a row's saved key, test request and history out of the store the first time they are needed.</summary>
+    private void EnsureRowLoaded(ApiRow row)
+    {
+        if (row.MyKey.Length == 0) row.MyKey = _store.GetMyKey(row.Key) ?? "";
+        if (row.TestUrl.Length == 0)
+        {
+            var saved = _store.GetTestRequest(row.Key);
+            row.TestUrl = saved?.Url ?? row.DefaultTestUrl;
+            row.TestHeader = saved?.Headers ?? row.DefaultTestHeader;
+            row.TestMethod = saved?.Method ?? "GET";
+            row.TestBody = saved?.Body ?? "";
+        }
+        if (!row.HistoryLoaded)
+        {
+            row.HistoryLoaded = true;
+            foreach (var h in _store.TestHistory.GetValueOrDefault(row.Key) ?? []) row.History.Add(h);
+            row.HistoryChanged();
+        }
+    }
+
+    /// <summary>Remembers "rate limited until…" (or forgets it after a success). Also used by the Compare window.</summary>
+    public void RecordOutcome(ApiRow row, ApiTestResult result)
+    {
+        if (result.Rate is { Limited: true, ResetAt: { } until })
+        {
+            row.LimitEstimated = result.Rate.Estimated;
+            row.LimitedUntil = until;
+            _store.User.RateLimits[row.Key] = new RateLimitNote { Until = until, Estimated = result.Rate.Estimated };
+            _store.SaveUser();
+        }
+        else if (result.Ok && _store.User.RateLimits.Remove(row.Key))
+        {
+            row.LimitedUntil = null;
+            _store.SaveUser();
+        }
     }
 
     private void SelectedRowChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -220,6 +247,85 @@ public sealed partial class MainViewModel : ObservableObject
         }
     }
 
+    // ---------------------------------------------------------------- shortlist page
+
+    [ObservableProperty] private bool _showShortlist;
+    [ObservableProperty] private IReadOnlyList<ApiRow> _shortlistRows = [];
+    [ObservableProperty] private string _shortlistSummary = "";
+
+    /// <summary>Raised when the list should scroll to the selected row (coming back from the shortlist).</summary>
+    public event Action? ScrollToSelected;
+
+    partial void OnShowShortlistChanged(bool value) { if (value) RefreshShortlist(); }
+
+    private void RefreshShortlist()
+    {
+        var rows = _all.Where(r => r.IsFavourite || r.HasTags).OrderByDescending(r => r.IsFavourite).ThenBy(r => r.Name, StringComparer.OrdinalIgnoreCase).ToList();
+        foreach (var r in rows) { EnsureRowLoaded(r); r.RefreshLimit(); }
+        ShortlistRows = rows;
+        ShortlistSummary = rows.Count == 0
+            ? "Nothing here yet. Star an API (Ctrl+D) or give it a tag and it shows up on this page with its key and last test result."
+            : $"{rows.Count:N0} API{(rows.Count == 1 ? "" : "s")}: {rows.Count(r => r.IsFavourite):N0} favourite(s), {rows.Count(r => r.HasTags):N0} tagged, {rows.Count(r => r.HasMyKey):N0} with your own key saved.";
+    }
+
+    [RelayCommand]
+    private async Task TestRowAsync(ApiRow? row)
+    {
+        if (row is null) return;
+        row.LastTestLabel = "Testing…";
+        await RunTestAsync(row);
+    }
+
+    [RelayCommand]
+    private void CopyRowKey(ApiRow? row)
+    {
+        if (row is null) return;
+        EnsureRowLoaded(row);
+        if (row.HasMyKey) CopyText(row.MyKey.Trim(), "Your key");
+        else if (row.HasDemoKey) CopyText(row.DemoKey!, "Demo key");
+        else ShowToast(row.KeylessWorks ? "No key needed for this one" : "No key saved for this API yet");
+    }
+
+    [RelayCommand]
+    private void OpenRow(ApiRow? row) => OpenUrl(row?.Url);
+
+    [RelayCommand]
+    private void ToggleRowFavourite(ApiRow? row)
+    {
+        if (row is null) return;
+        row.IsFavourite = !row.IsFavourite;
+        if (row.IsFavourite) _store.User.Favourites.Add(row.Key); else _store.User.Favourites.Remove(row.Key);
+        _store.SaveUser();
+        ApplyFilter();
+        RefreshShortlist();
+    }
+
+    /// <summary>"Details": back to the list with this API selected.</summary>
+    [RelayCommand]
+    private void ShowRow(ApiRow? row)
+    {
+        if (row is null) return;
+        ShowShortlist = false;
+        if (!Rows.Contains(row)) ClearFilters();
+        Selected = row;
+        ScrollToSelected?.Invoke();
+    }
+
+    // ---------------------------------------------------------------- about / moving data
+
+    public string DataSummary =>
+        $"{_all.Count:N0} APIs from the last scan ({(_catalog is null ? "never" : _catalog.ScannedAt.ToString("d MMM yyyy HH:mm"))})  ·  {_store.User.Favourites.Count:N0} favourites  ·  " +
+        $"{_store.User.Tags.Count:N0} tagged  ·  {_store.User.Notes.Count:N0} notes  ·  {_store.User.MyKeys.Count:N0} saved keys  ·  " +
+        $"re-scan {AutoRescan.ToLowerInvariant()}{(BackgroundScan ? " (also when closed)" : "")}";
+
+    /// <summary>After an import: rebuild the rows so they pick up the merged favourites, tags, notes and keys.</summary>
+    public void ReloadUserData()
+    {
+        if (_catalog is not null) Load(_catalog);
+        if (ShowShortlist) RefreshShortlist();
+        OnPropertyChanged(nameof(DataSummary));
+    }
+
     // ---------------------------------------------------------------- tags
 
     private void SaveTags(ApiRow row)
@@ -231,6 +337,7 @@ public sealed partial class MainViewModel : ObservableObject
         _store.SaveUser();
         RefreshTagFilters();
         if (TagFilter is not (null or AnyTag)) ApplyFilter();
+        if (ShowShortlist) RefreshShortlist();
     }
 
     /// <summary>Adds one tag to every given row (the grid's multi-selection).</summary>
@@ -328,6 +435,8 @@ public sealed partial class MainViewModel : ObservableObject
             r.IsFavourite = _store.User.Favourites.Contains(r.Key);
             if (_store.User.Notes.TryGetValue(r.Key, out var note)) r.Note = note;
             if (_store.User.Tags.TryGetValue(r.Key, out var tags)) r.TagsText = string.Join(", ", tags);
+            if (_store.User.RateLimits.TryGetValue(r.Key, out var limit) && limit.Until > DateTime.Now) { r.LimitEstimated = limit.Estimated; r.LimitedUntil = limit.Until; }
+            if (_store.TestHistory.TryGetValue(r.Key, out var past) && past.Count > 0) r.SetLastTest(past[0]);
             if (_store.DocsScans.TryGetValue(r.Key, out var scan)) r.DocsScan = scan;
             if (old.TryGetValue(r.Key, out var was)) { r.Status = was.Status; r.LatencyMs = was.LatencyMs; }
         }
@@ -563,9 +672,12 @@ public sealed partial class MainViewModel : ObservableObject
 
     /// <summary>"Test this API": sends the request in the box; {key} stands for the key saved under My key.</summary>
     [RelayCommand]
-    private async Task TestApiAsync()
+    private Task TestApiAsync() => Selected is { } r ? RunTestAsync(r) : Task.CompletedTask;
+
+    private async Task RunTestAsync(ApiRow r)
     {
-        if (Selected is not { } r || r.IsTesting) return;
+        if (r.IsTesting) return;
+        EnsureRowLoaded(r);
         r.IsTesting = true;
         r.TestSummary = "Sending…";
         try
@@ -575,6 +687,7 @@ public sealed partial class MainViewModel : ObservableObject
             if ((r.TestUrl + r.TestHeader + body).Contains("{key}", StringComparison.OrdinalIgnoreCase) && r.MyKey.Trim().Length == 0)
             {
                 r.TestOk = false; r.TestResponse = "";
+                r.LastTestOk = false; r.LastTestLabel = "Needs your own key - save one under My key first";
                 r.TestSummary = "The request uses {key} but no key is saved under 'My key' below. Save one first.";
                 return;
             }
@@ -587,6 +700,7 @@ public sealed partial class MainViewModel : ObservableObject
             r.TestResponse = result.Body;
             r.TestRaw = result.Raw;
             r.TestClasses = "";
+            RecordOutcome(r, result);
 
             // history keeps the request as typed, so {key} stays a placeholder on disk too
             var entry = _store.AddHistory(r.Key, new TestHistoryEntry
@@ -597,11 +711,12 @@ public sealed partial class MainViewModel : ObservableObject
             r.History.Insert(0, entry);
             while (r.History.Count > Store.HistoryPerApi) r.History.RemoveAt(r.History.Count - 1);
             r.HistoryChanged();
+            r.SetLastTest(entry);
             _showingHistory = true;
             r.SelectedHistory = entry;
             _showingHistory = false;
         }
-        catch (Exception ex) { r.TestOk = false; r.TestSummary = "Request failed: " + ex.Message; r.TestResponse = ""; }
+        catch (Exception ex) { r.TestOk = r.LastTestOk = false; r.TestSummary = r.LastTestLabel = "Request failed: " + ex.Message; r.TestResponse = ""; }
         finally { r.IsTesting = false; }
     }
 

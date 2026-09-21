@@ -149,7 +149,8 @@ public sealed class CompareWindow : Window
                 _cells[(DocsRow, i)].Text = _docsLive[i];
                 if (!api.HasExample) return;
                 var test = await Task.Run(() => ApiTester.SendAsync(api.DefaultTestUrl, api.DefaultTestHeader, CancellationToken.None));
-                _exampleLive[i] = test.Summary.Split('\n')[0];
+                _vm.RecordOutcome(api, test);
+                _exampleLive[i] = test.Summary.Split('\n')[0] + (api.IsLimited ? $"\n{api.LimitLabel}" : "");
                 _cells[(ExampleRow, i)].Text = _exampleLive[i];
             }));
         }
@@ -172,10 +173,14 @@ public sealed class CompareWindow : Window
 public sealed class InputDialog : Window
 {
     private readonly TextBox _box = new() { MinWidth = 300, Margin = new Thickness(0, 8, 0, 14) };
-    public string Value => _box.Text.Trim();
+    private readonly PasswordBox _secret = new() { MinWidth = 300, Margin = new Thickness(0, 8, 0, 14) };
+    private readonly bool _isSecret;
+    public string Value => _isSecret ? _secret.Password : _box.Text.Trim();
 
-    public InputDialog(string title, string prompt, IEnumerable<string> suggestions)
+    /// <param name="secret">Masked input (a passphrase); an empty answer is then allowed and means "without".</param>
+    public InputDialog(string title, string prompt, IEnumerable<string> suggestions, string okText = "Add tag", bool secret = false)
     {
+        _isSecret = secret;
         Title = title;
         SizeToContent = SizeToContent.WidthAndHeight;
         ResizeMode = ResizeMode.NoResize;
@@ -186,7 +191,7 @@ public sealed class InputDialog : Window
 
         var panel = new StackPanel { Margin = new Thickness(20) };
         panel.Children.Add(new TextBlock { Text = prompt, TextWrapping = TextWrapping.Wrap, MaxWidth = 340 });
-        panel.Children.Add(_box);
+        panel.Children.Add(secret ? _secret : _box);
         var existing = suggestions.ToList();
         if (existing.Count > 0)
         {
@@ -199,14 +204,14 @@ public sealed class InputDialog : Window
             }
             panel.Children.Add(chips);
         }
-        var ok = new Button { Content = "Add tag", IsDefault = true, Padding = new Thickness(16, 6, 16, 6), Margin = new Thickness(0, 0, 8, 0) };
+        var ok = new Button { Content = okText, IsDefault = true, Padding = new Thickness(16, 6, 16, 6), Margin = new Thickness(0, 0, 8, 0) };
         ok.SetResourceReference(StyleProperty, "AccentButtonStyle");
-        ok.Click += (_, _) => DialogResult = Value.Length > 0;
+        ok.Click += (_, _) => DialogResult = secret || Value.Length > 0;
         var cancel = new Button { Content = "Cancel", IsCancel = true, Padding = new Thickness(16, 6, 16, 6) };
         var row = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
         row.Children.Add(ok); row.Children.Add(cancel);
         panel.Children.Add(row);
         Content = panel;
-        Loaded += (_, _) => _box.Focus();
+        Loaded += (_, _) => { if (secret) _secret.Focus(); else _box.Focus(); };
     }
 }

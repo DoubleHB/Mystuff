@@ -22,6 +22,7 @@ public partial class MainWindow : Window
         }
         if (s.Maximised) WindowState = WindowState.Maximized;
 
+        _vm.ScrollToSelected += () => Dispatcher.BeginInvoke(() => { if (ResultsGrid.SelectedItem is { } item) ResultsGrid.ScrollIntoView(item); }, System.Windows.Threading.DispatcherPriority.Background);
         _vm.ShowTestCard += () => Dispatcher.BeginInvoke(() => TestCard.BringIntoView(), System.Windows.Threading.DispatcherPriority.Background);
         InputBindings.Add(new KeyBinding(new ActionCommand(() => { SearchBox.Focus(); SearchBox.SelectAll(); }), Key.F, ModifierKeys.Control));
         Closing += (_, _) =>
@@ -45,6 +46,8 @@ public partial class MainWindow : Window
 
     private void Grid_Copy(object sender, ExecutedRoutedEventArgs e) =>
         _vm.CopyRows([.. ResultsGrid.SelectedItems.OfType<ApiRow>()]);
+
+    private void About_Click(object sender, RoutedEventArgs e) => new Views.AboutWindow(_vm, App.Store) { Owner = this }.ShowDialog();
 
     private void TagSelected_Click(object sender, RoutedEventArgs e)
     {

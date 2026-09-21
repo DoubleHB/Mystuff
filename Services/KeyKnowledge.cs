@@ -22,7 +22,7 @@ public static class KeyKnowledge
     public static readonly KeyHint[] Hints =
     [
         // ---- providers that publish a shared demo key ----
-        new(["api.nasa.gov", "nasa.gov"], "DEMO_KEY works straight away (30 requests/hour, 50/day per IP). Fill in the short form on api.nasa.gov for your own free key (1,000 requests/hour) - it arrives by email instantly.",
+        new(["api.nasa.gov"], "DEMO_KEY works straight away (30 requests/hour, 50/day per IP). Fill in the short form on api.nasa.gov for your own free key (1,000 requests/hour) - it arrives by email instantly.",
             "https://api.nasa.gov/#signUp", "DEMO_KEY", "Query parameter: api_key=DEMO_KEY", "https://api.nasa.gov/planetary/apod?api_key=DEMO_KEY"),
         new(["api.open.fec.gov", "api.data.gov", "regulations.gov", "collegescorecard.ed.gov"], "US government APIs behind api.data.gov share one key system. DEMO_KEY works for light testing; one free sign-up gives a key valid across all api.data.gov services.",
             "https://api.data.gov/signup/", "DEMO_KEY", "Query parameter api_key=DEMO_KEY or header X-Api-Key", "https://api.open.fec.gov/v1/candidates/?per_page=1&api_key=DEMO_KEY"),

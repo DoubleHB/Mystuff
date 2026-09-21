@@ -217,6 +217,28 @@ public sealed partial class ApiRow : ObservableObject
         ? "Pre-filled with a request that works as it is - press Test this API (Ctrl+T)."
         : "ApiScout only knows this API's docs page. Paste an endpoint URL from the docs, pick the method, then press Test this API.";
 
+    // ---- rate limit memory + last test, for the Try it card, the grid and the shortlist
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsLimited), nameof(LimitLabel), nameof(LimitShort))] private DateTime? _limitedUntil;
+    public bool LimitEstimated { get; set; }
+    public bool IsLimited => LimitedUntil is { } u && u > DateTime.Now;
+    public string LimitLabel => IsLimited ? $"⏳ Rate limited - should work again {ApiTester.When(LimitedUntil!.Value)}{(LimitEstimated ? " (estimate)" : "")}" : "";
+    public string LimitShort => IsLimited ? $"⏳ until {LimitedUntil:HH:mm}" + (LimitedUntil!.Value.Date != DateTime.Today ? $" {LimitedUntil:d MMM}" : "") : "";
+    public void RefreshLimit() { OnPropertyChanged(nameof(IsLimited)); OnPropertyChanged(nameof(LimitLabel)); OnPropertyChanged(nameof(LimitShort)); }
+
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasLastTest))] private string _lastTestLabel = "";
+    [ObservableProperty] private bool _lastTestOk;
+    public bool HasLastTest => LastTestLabel.Length > 0;
+    public void SetLastTest(TestHistoryEntry? h)
+    {
+        LastTestOk = h?.Ok == true;
+        LastTestLabel = h is null ? "" : $"{h.At:d MMM HH:mm} · {h.Method} · {h.Summary.Split('\n')[0]}";
+    }
+
+    public bool HasMyKey => MyKey.Trim().Length > 0;
+    partial void OnMyKeyChanged(string value) => OnPropertyChanged(nameof(HasMyKey));
+    public string NoteShort => Note.Length > 140 ? Note[..137] + "…" : Note;
+    partial void OnNoteChanged(string value) => OnPropertyChanged(nameof(NoteShort));
+
     public bool HasDocsScan => DocsScan is not null;
     public string DocsScanSummary => DocsScan is null ? "" :
         DocsScan.Error ?? $"Read {DocsScan.ScannedAt:d MMM HH:mm} - {DocsScan.Items.Count} finding{(DocsScan.Items.Count == 1 ? "" : "s")}";

@@ -59,6 +59,16 @@ key when the provider publishes one, or how and where to get a free key when not
   GitHub / GitHub Pages show the repo owner's avatar and "github.com/owner"; RapidAPI publishes no provider logo,
   so those keep RapidAPI's icon with the label "RapidAPI · by provider". A docs scan also picks up the docs page's
   own icon (apple-touch-icon / rel=icon) for sites the icon services do not know.
+- **My shortlist** (header button): favourites and tagged APIs as cards - brand, key badge, what is free, demo key /
+  "my key saved", tags, note, rate-limit notice and the last test result - with Test, Copy key, Docs and Details.
+- **Rate-limit memory**: a 429 (or "0 requests left") is remembered per API with the time it should work again, taken
+  from Retry-After / (X-)RateLimit-Reset, else assumed to be an hour and marked as an estimate. Shown in the Try it
+  card, as a ⏳ chip in the grid, on shortlist cards and in Compare; cleared by the next successful call. Successful
+  responses also report "Requests left: 38 of 40" when the API sends those headers.
+- **About** (header button): version, data summary, data folder, and **Export my data… / Import…** to move favourites,
+  tags and notes to another PC. Saved keys and edited test requests are tied to the Windows account (DPAPI), so they
+  only go into the file when you give a passphrase - then AES-256-GCM under a PBKDF2-SHA256 key (310,000 rounds).
+  Import merges and never overwrites what is already there; a wrong passphrase changes nothing.
 - **Tags**: your own comma-separated labels per API (My key & notes card), shown as a 🏷 chip in the grid, searchable,
   with a tag filter beside the other filters; right-click → "Tag the selected rows…" labels a multi-selection.
   Included in the text / CSV / JSON copies.
@@ -85,7 +95,8 @@ ApiScout never looks for leaked or private keys - the docs scan only reads the p
 - `Services/Scanner.cs` - parallel run, merge, de-dupe key; `Categoriser.cs` - category rules + keyword classifier
 - `Services/KeyKnowledge.cs` - demo keys, sign-up links, generic how-to per auth type
 - `Services/DocsScanner.cs`, `ApiTester.cs`, `JsonToCSharp.cs`, `LineDiff.cs`, `LogoService.cs`, `LinkChecker.cs`, `Exporter.cs`, `Store.cs`
-- `Services/ScheduledScan.cs` - the Windows scheduled task; `Views/CompareWindow.cs` - compare window + tag prompt (code only)
+- `Services/ScheduledScan.cs` - the Windows scheduled task; `Services/Backup.cs` - export / import
+- `Views/CompareWindow.cs` - compare window + input prompt, `Views/AboutWindow.cs` (both code only)
 - `ViewModels/MainViewModel.cs`, `ApiRow.cs`; `MainWindow.xaml`
 
 Data: `%LOCALAPPDATA%\ApiScout` (settings.json, catalog.json, userdata.json, docs-scans.json, test-history.dat, logos\, apiscout.log).
@@ -94,7 +105,7 @@ Data: `%LOCALAPPDATA%\ApiScout` (settings.json, catalog.json, userdata.json, doc
 ## Build / test / publish
 
 ```
-dotnet run --project C:\Claude\ApiScout.Tests -c Release            # 142 checks (add -- --offline to skip live ones)
+dotnet run --project C:\Claude\ApiScout.Tests -c Release            # 158 checks (add -- --offline to skip live ones)
 dotnet publish C:\Claude\ApiScout\ApiScout.csproj -c Release -o C:\Claude\ApiScout-App
 ```
 

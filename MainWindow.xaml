@@ -52,10 +52,13 @@
                     <Button x:Name="ScanButton" Content="⟳  Scan the internet" Command="{Binding ScanCommand}" Style="{DynamicResource AccentButtonStyle}" Padding="16,7" FontWeight="SemiBold"
                             Visibility="{Binding IsBusy, Converter={StaticResource InvBoolToVis}}" ToolTip="Fetch every ticked source, merge and categorise (F5)" />
                     <Button Content="■  Stop" Command="{Binding CancelCommand}" Padding="16,7" Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}" />
+                    <ToggleButton Content="★ My shortlist" IsChecked="{Binding ShowShortlist}" Margin="8,0,0,0" Padding="12,7" AutomationProperties.Name="My shortlist"
+                                  ToolTip="Your favourites and tagged APIs as cards, with their keys and last test result" />
                     <ToggleButton x:Name="SourcesButton" Content="Sources ▾" Margin="8,0,0,0" Padding="12,7" />
                     <Button Content="Check links" Command="{Binding CheckLinksCommand}" Margin="8,0,0,0" Padding="12,7" IsEnabled="{Binding IsIdle}"
                             ToolTip="Test whether the docs site of every listed API still answers" />
                     <Button x:Name="ThemeButton" Content="Theme" Click="ThemeButton_Click" Margin="8,0,0,0" Padding="12,7" ToolTip="Switch light / dark" />
+                    <Button Content="About" Click="About_Click" Margin="8,0,0,0" Padding="12,7" ToolTip="Version, data folder, export / import your data" />
                 </StackPanel>
             </Grid>
         </Border>
@@ -226,6 +229,8 @@
                                                         Visibility="{Binding IsNew, Converter={StaticResource BoolToVis}}" ToolTip="{Binding FirstSeenLabel}">
                                                     <TextBlock Text="NEW" FontSize="10" FontWeight="Bold" Foreground="White" />
                                                 </Border>
+                                                <TextBlock Text="{Binding LimitShort}" FontSize="11" Margin="10,0,0,0" VerticalAlignment="Center" Foreground="{DynamicResource WarnBrush}"
+                                                           Visibility="{Binding IsLimited, Converter={StaticResource BoolToVis}}" ToolTip="{Binding LimitLabel}" />
                                                 <TextBlock Text="{Binding TagsLabel}" FontSize="11" Margin="10,0,0,0" VerticalAlignment="Center" Foreground="{DynamicResource VioletBrush}"
                                                            Visibility="{Binding HasTags, Converter={StaticResource BoolToVis}}" />
                                             </DockPanel>
@@ -395,6 +400,10 @@
                                     <TextBlock Text="Try it" Style="{StaticResource CardTitle}" VerticalAlignment="Center" Margin="0" />
                                 </DockPanel>
                                 <TextBlock Text="{Binding Selected.TestHint}" Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,6,0,0" />
+                                <Border CornerRadius="8" Padding="10,6" Margin="0,8,0,0" Background="{DynamicResource CardAltBrush}" Visibility="{Binding Selected.IsLimited, Converter={StaticResource BoolToVis}}">
+                                    <TextBlock Text="{Binding Selected.LimitLabel}" Foreground="{DynamicResource WarnBrush}" FontWeight="SemiBold" FontSize="12.5" TextWrapping="Wrap"
+                                               AutomationProperties.Name="Rate limit notice" />
+                                </Border>
 
                                 <TextBlock Text="REQUEST" Style="{StaticResource Label}" />
                                 <DockPanel>
@@ -566,6 +575,86 @@
                     </StackPanel>
                 </ScrollViewer>
             </Grid>
+        </Grid>
+
+        <!-- ===== My shortlist page ===== -->
+        <Grid Grid.Row="1" Background="{DynamicResource BgBrush}" Visibility="{Binding ShowShortlist, Converter={StaticResource BoolToVis}}">
+            <DockPanel Margin="18,14,18,8">
+                <StackPanel DockPanel.Dock="Top" Margin="0,0,0,12">
+                    <TextBlock Text="My shortlist" FontSize="22" FontWeight="Bold" />
+                    <TextBlock Text="{Binding ShortlistSummary}" Style="{StaticResource Muted}" FontSize="13" TextWrapping="Wrap" AutomationProperties.Name="Shortlist summary" />
+                </StackPanel>
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <ItemsControl ItemsSource="{Binding ShortlistRows}" AutomationProperties.Name="Shortlist">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="{x:Type vm:ApiRow}">
+                                <Border Style="{StaticResource Card}" Width="400" Margin="0,0,12,12" AutomationProperties.Name="{Binding Name}">
+                                    <StackPanel>
+                                        <DockPanel>
+                                            <ContentControl DockPanel.Dock="Left" Content="{Binding}" ContentTemplate="{StaticResource BrandTile}" Margin="0,0,10,0" VerticalAlignment="Top" Focusable="False" />
+                                            <Button DockPanel.Dock="Right" Content="{Binding IsFavourite, Converter={StaticResource Star}}" FontSize="16" Padding="7,1" VerticalAlignment="Top"
+                                                    Foreground="{DynamicResource WarnBrush}" ToolTip="Favourite on / off" CommandParameter="{Binding}"
+                                                    Command="{Binding DataContext.ToggleRowFavouriteCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="Bold" TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Style="{StaticResource Muted}" TextTrimming="CharacterEllipsis"><Run Text="{Binding BrandDomain, Mode=OneWay}" /><Run Text="  ·  " /><Run Text="{Binding Category, Mode=OneWay}" /></TextBlock>
+                                            </StackPanel>
+                                        </DockPanel>
+
+                                        <WrapPanel Margin="0,10,0,0">
+                                            <Border CornerRadius="9" Padding="8,1" Margin="0,0,8,0" Background="{Binding KeyBadge, Converter={StaticResource BadgeSoftBrush}}">
+                                                <TextBlock Text="{Binding KeyBadge}" FontSize="11.5" FontWeight="SemiBold" Foreground="{Binding KeyBadge, Converter={StaticResource BadgeBrush}}" />
+                                            </Border>
+                                            <TextBlock Text="{Binding AccessLabel}" FontSize="12" VerticalAlignment="Center" Margin="0,0,10,0" Foreground="{Binding AccessLabel, Converter={StaticResource BadgeBrush}}" />
+                                            <TextBlock Text="{Binding TagsLabel}" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource VioletBrush}" />
+                                        </WrapPanel>
+
+                                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0" Visibility="{Binding HasDemoKey, Converter={StaticResource BoolToVis}}">
+                                            <TextBlock Text="Demo key  " Style="{StaticResource Muted}" VerticalAlignment="Center" />
+                                            <TextBlock Text="{Binding DemoKey}" FontFamily="Cascadia Mono, Consolas" FontWeight="Bold" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                        <TextBlock Text="My key  ●●●●●●●●  saved" Style="{StaticResource Muted}" Margin="0,6,0,0" Visibility="{Binding HasMyKey, Converter={StaticResource BoolToVis}}" />
+
+                                        <TextBlock Text="{Binding LimitLabel}" Foreground="{DynamicResource WarnBrush}" FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,8,0,0"
+                                                   Visibility="{Binding IsLimited, Converter={StaticResource BoolToVis}}" />
+
+                                        <TextBlock Text="LAST TEST" Style="{StaticResource Label}" />
+                                        <TextBlock Text="Not tested yet" Style="{StaticResource Muted}" Visibility="{Binding LastTestLabel, Converter={StaticResource EmptyTextToVis}}" />
+                                        <TextBlock Text="{Binding LastTestLabel}" FontSize="12" TextWrapping="Wrap" Visibility="{Binding HasLastTest, Converter={StaticResource BoolToVis}}">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Foreground" Value="{DynamicResource WarnBrush}" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding LastTestOk}" Value="True">
+                                                            <Setter Property="Foreground" Value="{DynamicResource UpBrush}" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+
+                                        <TextBlock Text="{Binding NoteShort}" Style="{StaticResource Muted}" FontStyle="Italic" TextWrapping="Wrap" Margin="0,8,0,0"
+                                                   Visibility="{Binding NoteShort, Converter={StaticResource TextToVis}}" />
+
+                                        <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                                            <Button Content="▶ Test" Style="{DynamicResource AccentButtonStyle}" Padding="10,3" FontSize="12" MinHeight="26" CommandParameter="{Binding}"
+                                                    Command="{Binding DataContext.TestRowCommand, RelativeSource={RelativeSource AncestorType=Window}}" ToolTip="Send this API's saved or suggested request again" />
+                                            <Button Content="Copy key" Style="{StaticResource Mini}" CommandParameter="{Binding}" Command="{Binding DataContext.CopyRowKeyCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                    ToolTip="Your own saved key, otherwise the demo key" />
+                                            <Button Content="Docs" Style="{StaticResource Mini}" CommandParameter="{Binding}" Command="{Binding DataContext.OpenRowCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                                            <Button Content="Details" Style="{StaticResource Mini}" CommandParameter="{Binding}" Command="{Binding DataContext.ShowRowCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                    ToolTip="Back to the list with this API selected" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </DockPanel>
         </Grid>
 
         <!-- ===== Status bar ===== -->

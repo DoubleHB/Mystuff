@@ -4,7 +4,10 @@ using System.Text.Json;
 
 namespace ApiScout.Services;
 
-public sealed record ApiTestResult(bool Ok, bool IsJson, string Summary, string Body, string Raw = "");
+public sealed record ApiTestResult(bool Ok, bool IsJson, string Summary, string Body, string Raw = "", RateInfo? Rate = null);
+
+/// <summary>What the response said about request limits. <see cref="Estimated"/> = the server gave no reset time, so an hour is assumed.</summary>
+public sealed record RateInfo(bool Limited, DateTime? ResetAt, bool Estimated, int? Remaining, int? Limit);
 
 /// <param name="Headers">Zero or more "Name: value" lines.</param>
 public sealed record ApiTestRequest(string Method, string Url, string Headers, string Body);
@@ -79,12 +82,44 @@ public static class ApiTester
                 summary += "\nThis endpoint does not accept " + method + " - check the docs for the right method.";
             else if ((int)resp.StatusCode == 415)
                 summary += "\nThe API did not like the body's Content-Type (" + req.Content?.Headers.ContentType + "). Add a Content-Type header to override it.";
-            else if ((int)resp.StatusCode == 429)
-                summary += "\nRate limited - shared demo keys run out quickly. Try again later or use your own key.";
-            return new(resp.IsSuccessStatusCode, isJson, summary, body, raw);
+            var rate = ReadRate((int)resp.StatusCode, name => resp.Headers.TryGetValues(name, out var v) ? v.FirstOrDefault() : null, DateTime.Now);
+            if (rate is { Limited: true, ResetAt: { } until })
+                summary += $"\nRate limited - should work again {When(until)}{(rate.Estimated ? " (an estimate - the server did not say when)" : " (the server said so)")}. Shared demo keys run out quickly; your own key has its own allowance.";
+            else if (rate is { Remaining: { } left })
+                summary += $"\nRequests left: {left:N0}{(rate.Limit is { } max ? $" of {max:N0}" : "")}{(rate.ResetAt is { } reset ? $" - resets {When(reset)}" : "")}";
+            return new(resp.IsSuccessStatusCode, isJson, summary, body, raw, rate);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested) { return new(false, false, "No answer within 30 seconds.", ""); }
         catch (HttpRequestException ex) { return new(false, false, "Request failed: " + (ex.InnerException?.Message ?? ex.Message), ""); }
+    }
+
+    public static string When(DateTime t) =>
+        t.Date == DateTime.Today ? $"around {t:HH:mm}" : t.Date == DateTime.Today.AddDays(1) ? $"tomorrow around {t:HH:mm}" : $"on {t:d MMM} around {t:HH:mm}";
+
+    /// <summary>Retry-After and the (X-)RateLimit-* family. Null when the response says nothing about limits.</summary>
+    internal static RateInfo? ReadRate(int status, Func<string, string?> header, DateTime now)
+    {
+        static int? LeadingInt(string? s) => s is not null && System.Text.RegularExpressions.Regex.Match(s.Trim(), @"^\d{1,12}") is { Success: true } m && long.Parse(m.Value) <= int.MaxValue ? int.Parse(m.Value) : null;
+        string? First(params string[] names) => names.Select(header).FirstOrDefault(v => !string.IsNullOrWhiteSpace(v));
+
+        DateTime? reset = null;
+        if (First("Retry-After") is { } retry)
+            reset = int.TryParse(retry.Trim(), out var secs) ? now.AddSeconds(secs)
+                  : DateTimeOffset.TryParse(retry, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal, out var date) ? date.LocalDateTime : null;
+        if (reset is null && First("X-RateLimit-Reset", "RateLimit-Reset", "X-Rate-Limit-Reset") is { } r && long.TryParse(r.Trim().Split('.', ';')[0], out var n) && n > 0)
+            reset = n > 100_000_000_000 ? DateTimeOffset.FromUnixTimeMilliseconds(n).LocalDateTime   // epoch ms
+                  : n > 1_000_000_000 ? DateTimeOffset.FromUnixTimeSeconds(n).LocalDateTime          // epoch s
+                  : now.AddSeconds(n);                                                                // seconds from now
+        var remaining = LeadingInt(First("X-RateLimit-Remaining", "RateLimit-Remaining", "X-Rate-Limit-Remaining"));
+        var limit = LeadingInt(First("X-RateLimit-Limit", "RateLimit-Limit", "X-Rate-Limit-Limit"));
+
+        bool limited = status == 429 || (remaining == 0 && status >= 400);
+        if (!limited) return remaining is null && limit is null ? null : new(false, reset > now ? reset : null, false, remaining, limit);
+        bool estimated = reset is null;
+        var until = reset ?? now.AddHours(1);
+        if (until <= now) until = now.AddMinutes(1);
+        if (until > now.AddDays(31)) until = now.AddDays(31);
+        return new(true, until, estimated, remaining, limit);
     }
 
     /// <summary>Pretty-prints JSON; anything else comes back as it was. Both are capped for display.</summary>
