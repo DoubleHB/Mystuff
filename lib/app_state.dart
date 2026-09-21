@@ -6,6 +6,7 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'docs_scanner.dart';
 import 'knowledge.dart';
 import 'models.dart';
 import 'sources.dart';
@@ -65,6 +66,7 @@ class AppState extends ChangeNotifier {
     knowledge = Knowledge.parse(_knowledgeJson);
     _prefs = await SharedPreferences.getInstance();
     await _loadUser();
+    await _loadDocsScans();
     try {
       keyed = await vault.names();
     } catch (ex) {
@@ -72,7 +74,7 @@ class AppState extends ChangeNotifier {
       vaultProblem = 'The phone\'s secure storage could not be opened ($ex). Keys saved now last until the app closes.';
       vault = MemoryKeyVault();
     }
-    theme =ThemeModeSetting.values[(_prefs.getInt('theme') ?? 0).clamp(0, 2)];
+    theme = ThemeModeSetting.values[(_prefs.getInt('theme') ?? 0).clamp(0, 2)];
     try {
       final file = await _catalogueFile();
       if (await file.exists()) {
@@ -124,7 +126,7 @@ class AppState extends ChangeNotifier {
 
   void _use(Catalogue cat) {
     scannedAt = cat.scannedAt;
-    all = [for (final e in cat.entries) ApiView(e, knowledge)];
+    all = [for (final e in cat.entries) ApiView(e, knowledge)..docsAccess = accessFromDocs(_docsScans[e.key])];
     _byKey = {for (final v in all) v.entry.key: v};
     _pickApiOfTheDay();
     applyFilter();
@@ -370,8 +372,12 @@ class AppState extends ChangeNotifier {
   Future<ImportSummary> importBackup(String json, String? passphrase) async {
     final file = BackupFile.read(json);
     final wantKeys = file.hasSecrets && passphrase != null && passphrase.isNotEmpty;
-    final keys = wantKeys ? await compute(openKeysIsolate, {'json': json, 'passphrase': passphrase}) : <String, String>{};
+    final secrets = wantKeys ? await compute(openSecretsIsolate, {'json': json, 'passphrase': passphrase}) : const <String, dynamic>{};
+    final keys = ((secrets['keys'] as Map?) ?? const {}).cast<String, String>();
     final summary = mergeUserData(user, file.data)..secretsSkipped = file.hasSecrets && !wantKeys;
+    summary.variables = mergeVariables(user, {
+      for (final e in ((secrets['variables'] as Map?) ?? const {}).entries) e.key as String: (e.value as Map).cast<String, String>(),
+    });
     for (final e in keys.entries) {
       final local = await vault.read(e.key) ?? '';
       if (local.isNotEmpty) {
@@ -397,7 +403,123 @@ class AppState extends ChangeNotifier {
     return compute(writeBackupIsolate, {'data': jsonDecode(jsonEncode(user.toJson())), 'keys': withKeys ? await vault.readAll() : <String, String>{}, 'passphrase': passphrase});
   }
 
-  int get userItemCount => user.favourites.length + user.tags.length + user.notes.length + user.collections.length;
+  int get userItemCount => user.favourites.length + user.tags.length + user.notes.length + user.collections.length + user.variables.length;
+
+  /// Keys and request variables only leave the phone inside the encrypted part of an export.
+  int get secretItemCount => keyed.length + user.variables.length;
+
+  // ---------------------------------------------------------------- request variables
+
+  Map<String, String> variablesOf(ApiView v) => user.variables[v.entry.key] ?? const {};
+
+  void setVariables(ApiView v, Map<String, String> map) {
+    map.isEmpty ? user.variables.remove(v.entry.key) : user.variables[v.entry.key] = map;
+    saveUser();
+  }
+
+  // ---------------------------------------------------------------- request history (sealed with a key from the keystore)
+
+  Map<String, List<TestHistoryEntry>>? _history;
+  Uint8List? _historyKey;
+
+  Future<File> _historyFile() async => File('${(await getApplicationSupportDirectory()).path}/history.bin');
+
+  /// Read on first use, not at start-up: most visits never open it.
+  Future<void> ensureHistory() async {
+    if (_history != null) return;
+    _history = {};
+    try {
+      final saved = await vault.readSecret('history-key');
+      if (saved != null) _historyKey = base64Decode(saved);
+      final file = await _historyFile();
+      if (_historyKey != null && await file.exists()) {
+        final plain = openWithKey(_historyKey!, await file.readAsBytes());
+        if (plain != null) _history = historyFromJson(jsonDecode(utf8.decode(plain)));
+      }
+    } catch (_) {
+      // an unreadable history is an empty history
+    }
+  }
+
+  List<TestHistoryEntry> historyOf(ApiView v) => _history?[v.entry.key] ?? const [];
+
+  Future<void> addHistory(ApiView v, TestHistoryEntry entry) async {
+    await ensureHistory();
+    final list = _history!.putIfAbsent(v.entry.key, () => []);
+    list.insert(0, entry);
+    if (list.length > historyPerApi) list.removeRange(historyPerApi, list.length);
+    await _saveHistory();
+  }
+
+  Future<void> clearHistory(ApiView v) async {
+    await ensureHistory();
+    if (_history!.remove(v.entry.key) != null) await _saveHistory();
+  }
+
+  Future<void> _saveHistory() => _pendingSave = _pendingSave.then((_) async {
+        try {
+          if (_historyKey == null) {
+            _historyKey = newSealKey();
+            await vault.writeSecret('history-key', base64Encode(_historyKey!));
+          }
+          final json = jsonEncode({for (final e in _history!.entries) e.key: [for (final h in e.value) h.toJson()]});
+          final file = await _historyFile();
+          final temp = File('${file.path}.tmp');
+          await temp.writeAsBytes(sealWithKey(_historyKey!, Uint8List.fromList(utf8.encode(json))), flush: true);
+          await temp.rename(file.path);
+        } catch (_) {
+          // the history is a convenience: failing to save it must not get in the way of the test itself
+        }
+      });
+
+  // ---------------------------------------------------------------- docs scans (public information: kept as plain JSON)
+
+  Map<String, DocsScanResult> _docsScans = {};
+  final scanningDocs = <String>{};
+
+  Future<File> _docsFile() async => File('${(await getApplicationSupportDirectory()).path}/docscans.json');
+
+  Future<void> _loadDocsScans() async {
+    try {
+      final file = await _docsFile();
+      if (!await file.exists()) return;
+      final j = jsonDecode(await file.readAsString());
+      if (j is Map) _docsScans = {for (final e in j.entries) if (e.value is Map) e.key as String: DocsScanResult.fromJson((e.value as Map).cast<String, dynamic>())};
+    } catch (_) {
+      _docsScans = {};
+    }
+  }
+
+  DocsScanResult? docsScanOf(ApiView v) => _docsScans[v.entry.key];
+  bool isScanningDocs(ApiView v) => scanningDocs.contains(v.entry.key);
+
+  Future<void> scanDocsFor(ApiView v) async {
+    if (!scanningDocs.add(v.entry.key)) return;
+    notifyListeners();
+    try {
+      final result = await scanDocs(v.entry);
+      _docsScans[v.entry.key] = result;
+      v.docsAccess = accessFromDocs(result);
+      // only the latest few hundred are worth keeping on a phone
+      if (_docsScans.length > 300) {
+        final oldest = _docsScans.entries.toList()..sort((a, b) => a.value.scannedAt.compareTo(b.value.scannedAt));
+        for (final e in oldest.take(_docsScans.length - 300)) {
+          _docsScans.remove(e.key);
+        }
+      }
+      _pendingSave = _pendingSave.then((_) async {
+        try {
+          final file = await _docsFile();
+          final temp = File('${file.path}.tmp');
+          await temp.writeAsString(jsonEncode({for (final e in _docsScans.entries) e.key: e.value.toJson()}), flush: true);
+          await temp.rename(file.path);
+        } catch (_) {}
+      });
+    } finally {
+      scanningDocs.remove(v.entry.key);
+      applyFilter(); // the free-access label (and so the filters and counts) may have changed
+    }
+  }
 
   void setTheme(ThemeModeSetting value) {
     theme = value;

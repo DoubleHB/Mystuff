@@ -89,7 +89,7 @@ List<String> benefits(ApiView v) {
   } else if (v.keylessWorks) {
     list.add('Works without a key; a free key only lifts the limits.');
   } else if (e.auth == AuthKind.apiKey) {
-    list.add(v.hint?.signupUrl != null ? 'Needs a free API key - the sign-up link is on the Keys card.' : 'Needs an API key - look for the sign-up page in its docs.');
+    list.add(v.hint?.signupUrl != null ? 'Needs a free API key - the sign-up link is on the Keys card.' : 'Needs an API key - \'Scan docs for key info\' looks for the sign-up page.');
   } else if (e.auth == AuthKind.oauth) {
     list.add('Uses OAuth: more set-up (an app registration), but it can act on behalf of your users.');
   }
@@ -97,7 +97,7 @@ List<String> benefits(ApiView v) {
     AccessLevel.fullFree => 'Completely free: everything it offers, not just a sample.',
     AccessLevel.freeTier => 'Free tier: free to keep using within limits; paid plans only matter if you outgrow them.',
     AccessLevel.trialOnly => 'Careful: only a demo or trial is free - real use needs a paid plan.',
-    AccessLevel.unknown => 'What is free is not stated by the directories - check the pricing page in its docs.',
+    AccessLevel.unknown => 'What is free is not stated by the directories - \'Scan docs for key info\' can usually find out.',
   });
   if (e.https == true) {
     list.add('HTTPS: requests and any key you send are encrypted in transit.');
@@ -217,14 +217,14 @@ bool isPublicWebUrl(String url) {
 
 const _userAgent = 'Mozilla/5.0 (Android) ApiScoutMobile/1.1';
 
-Future<String> _get(String url, int maxBytes) async {
+Future<String> fetchPage(String url, int maxBytes) async {
   final client = http.Client();
   try {
     final req = http.Request('GET', Uri.parse(url));
     req.headers['User-Agent'] = _userAgent;
     req.headers['Accept'] = 'text/html,text/markdown,text/plain,*/*';
     final resp = await client.send(req).timeout(const Duration(seconds: 20));
-    if (resp.statusCode >= 400) throw _Status(resp.statusCode, resp.reasonPhrase ?? '');
+    if (resp.statusCode >= 400) throw PageStatus(resp.statusCode, resp.reasonPhrase ?? '');
     final bytes = <int>[];
     await for (final chunk in resp.stream.timeout(const Duration(seconds: 20))) {
       bytes.addAll(chunk);
@@ -236,10 +236,10 @@ Future<String> _get(String url, int maxBytes) async {
   }
 }
 
-class _Status implements Exception {
+class PageStatus implements Exception {
   final int code;
   final String reason;
-  _Status(this.code, this.reason);
+  PageStatus(this.code, this.reason);
 }
 
 /// Dart patterns have no time-out, so a tangled page is read off the UI thread, and only its first part.
@@ -270,16 +270,16 @@ Future<ApiInfo> readInsight(ApiEntry api) async {
     if (gh != null && !const ['orgs', 'topics', 'features'].contains(gh.group(1))) {
       try {
         info.source = 'https://raw.githubusercontent.com/${gh.group(1)}/${gh.group(2)}/HEAD/README.md';
-        await _parse(await _get(info.source, 1500000), info, markdown: true);
+        await _parse(await fetchPage(info.source, 1500000), info, markdown: true);
         if (!info.isThin) return info;
-      } on _Status {
+      } on PageStatus {
         // no README there: read the page instead
       }
       info.source = api.url;
     }
-    await _parse(await _get(api.url, 2500000), info, markdown: false);
+    await _parse(await fetchPage(api.url, 2500000), info, markdown: false);
     if (info.isThin) info.error = 'The page says little in plain HTML - it probably builds itself with JavaScript. Open it in the browser.';
-  } on _Status catch (s) {
+  } on PageStatus catch (s) {
     info.error = 'The page answered ${s.code} ${s.reason} - it may block automated readers. Open it in the browser.';
   } on TimeoutException {
     info.error = 'The page took too long to answer.';

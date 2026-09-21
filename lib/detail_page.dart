@@ -2,11 +2,13 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'docs_scanner.dart';
 import 'insight_page.dart';
 import 'knowledge.dart';
 import 'main.dart';
 import 'tester.dart';
 import 'user_data.dart';
+import 'variables.dart';
 import 'widgets.dart';
 
 /// One API: what it is, what its key situation is, and a place to try a request.
@@ -24,6 +26,8 @@ class _DetailPageState extends State<DetailPage> {
   final _key = TextEditingController();
   late final _tags = TextEditingController(text: state.tagsOf(widget.view).join(', '));
   late final _note = TextEditingController(text: state.noteOf(widget.view));
+  late final _vars = TextEditingController(text: variablesToText(state.variablesOf(widget.view)));
+  final _tryItKey = GlobalKey();
   Timer? _noteTimer;
   String _method = 'GET';
   bool _sending = false;
@@ -39,6 +43,82 @@ class _DetailPageState extends State<DetailPage> {
     state.keyOf(v).then((k) {
       if (mounted && !_keyDirty) _key.text = k;
     });
+    state.ensureHistory().then((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  String get _requestText => '${_url.text}${_headers.text}${methodHasBody(_method) ? _body.text : ''}';
+
+  /// Placeholders in the request that have no line in the Variables box yet.
+  List<String> get _unlistedVariables {
+    final have = parseVariables(_vars.text).keys.map((k) => k.toLowerCase()).toSet();
+    return [for (final n in variableNames(_requestText)) if (!have.contains(n.toLowerCase())) n];
+  }
+
+  void _saveVariables() {
+    final map = parseVariables(_vars.text);
+    if (variablesToText(map) != variablesToText(state.variablesOf(v))) state.setVariables(v, map);
+  }
+
+  /// "Try" beside an endpoint the docs scan found: load it into Try it; a plain GET with nothing to fill in is sent straight away.
+  void _tryEndpoint(FoundItem item) {
+    setState(() {
+      _method = testMethods.contains(item.method) ? item.method : 'GET';
+      _url.text = item.value;
+      _result = null;
+    });
+    final context = _tryItKey.currentContext;
+    if (context != null) Scrollable.ensureVisible(context, duration: const Duration(milliseconds: 300), alignment: 0.05);
+    if (_method == 'GET' && !item.value.contains('{')) _send();
+  }
+
+  void _restore(TestHistoryEntry h) => setState(() {
+        _method = testMethods.contains(h.method) ? h.method : 'GET';
+        _url.text = h.url;
+        _headers.text = h.headers;
+        _body.text = h.body;
+        final (text, isJson) = formatBody(h.response);
+        _result = TestResult(h.ok, isJson, '${h.summary}\n(from ${h.when} - press Test this API to send it again)', text);
+      });
+
+  Future<void> _showHistory() async {
+    final picked = await showModalBottomSheet<Object>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (context) => SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.7),
+          child: ListView(shrinkWrap: true, children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+              child: Text('Earlier requests', style: Theme.of(context).textTheme.titleLarge),
+            ),
+            for (final h in state.historyOf(v))
+              ListTile(
+                leading: Icon(h.ok ? Icons.check_circle_outline : Icons.error_outline, color: badgeColor(context, h.ok ? 'Open' : 'Key needed')),
+                title: Text('${h.when}  ·  ${h.method}  ·  ${h.firstLine}', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13.5)),
+                subtitle: Text(h.url, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontFamily: 'monospace', fontSize: 11.5)),
+                onTap: () => Navigator.of(context).pop(h),
+              ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+              child: Row(children: [
+                Expanded(child: Text('The last $historyPerApi per API, kept encrypted on this phone. {key} is never stored.', style: Theme.of(context).textTheme.bodySmall)),
+                TextButton(onPressed: () => Navigator.of(context).pop('clear'), child: const Text('Clear')),
+              ]),
+            ),
+          ]),
+        ),
+      ),
+    );
+    if (!mounted) return;
+    if (picked is TestHistoryEntry) _restore(picked);
+    if (picked == 'clear') {
+      await state.clearHistory(v);
+      if (mounted) setState(() {});
+    }
   }
 
   void _saveNoteSoon() {
@@ -84,12 +164,13 @@ class _DetailPageState extends State<DetailPage> {
   void dispose() {
     // what was typed last must not be lost to the back button
     // (a moment later: listeners must not be told while the page is being taken apart)
-    final view = v, note = _note.text, tags = parseTags(_tags.text);
+    final view = v, note = _note.text, tags = parseTags(_tags.text), vars = parseVariables(_vars.text);
     final noteWaiting = _noteTimer?.isActive ?? false;
     _noteTimer?.cancel();
     Future.microtask(() {
       if (noteWaiting) state.setNote(view, note);
       if (tags.join('|') != state.tagsOf(view).join('|')) state.setTags(view, tags);
+      if (variablesToText(vars) != variablesToText(state.variablesOf(view))) state.setVariables(view, vars);
     });
     _url.dispose();
     _headers.dispose();
@@ -97,14 +178,26 @@ class _DetailPageState extends State<DetailPage> {
     _key.dispose();
     _tags.dispose();
     _note.dispose();
+    _vars.dispose();
     super.dispose();
   }
 
   Future<void> _send() async {
     FocusScope.of(context).unfocus();
     final body = methodHasBody(_method) ? _body.text : '';
-    var url = _url.text, headers = _headers.text, sentBody = body;
-    if (usesKeyPlaceholder('$url$headers$body')) {
+    final method = _method, typedUrl = _url.text, typedHeaders = _headers.text;
+    _saveVariables();
+    final vars = parseVariables(_vars.text);
+    final missing = missingVariables('$typedUrl$typedHeaders$body', vars);
+    if (missing.isNotEmpty) {
+      setState(() => _result = TestResult(false, false,
+          'Not sent: ${missing.map((m) => '{$m}').join(', ')} ${missing.length == 1 ? 'has' : 'have'} no value. Give ${missing.length == 1 ? 'it' : 'them'} one in the Variables box (name = value).', ''));
+      return;
+    }
+    // variables first, then the key: a variable's value is never searched for {key}
+    var url = fillVariables(typedUrl, vars, escape: true), headers = fillVariables(typedHeaders, vars), sentBody = fillVariables(body, vars);
+    final filledUrl = url, filledHeaders = headers, filledBody = sentBody;
+    if (usesKeyPlaceholder('$url$headers$sentBody')) {
       // the key as typed wins over the saved one, so a key can be tried before it is saved
       final key = _key.text.trim().isNotEmpty ? _key.text.trim() : await state.keyOf(v);
       if (key.isEmpty) {
@@ -113,16 +206,19 @@ class _DetailPageState extends State<DetailPage> {
       }
       url = fillKey(url, key, escape: true);
       headers = fillKey(headers, key);
-      sentBody = fillKey(body, key);
+      sentBody = fillKey(sentBody, key);
     }
     setState(() => _sending = true);
-    var r = await sendTest(_method, url, headers, sentBody);
-    if (url != _url.text || headers != _headers.text || sentBody != body) {
+    var r = await sendTest(method, url, headers, sentBody);
+    if (url != filledUrl || headers != filledHeaders || sentBody != filledBody) {
       // some APIs echo the request back: what is shown (and can be copied) says {key} again
       final key = _key.text.trim().isNotEmpty ? _key.text.trim() : await state.keyOf(v);
       String hide(String s) => key.length < 6 ? s : s.replaceAll(key, '{key}').replaceAll(Uri.encodeComponent(key), '{key}');
       r = TestResult(r.ok, r.isJson, hide(r.summary), hide(r.body));
     }
+    // the history keeps the request as typed, so neither the key nor a variable's value is written with it
+    // (a request that was refused before sending - a bad URL or header line - is not history)
+    if (!r.summary.startsWith('That is not') && !r.summary.startsWith('This header line')) await state.addHistory(v, TestHistoryEntry(at: DateTime.now(), method: method, url: typedUrl, headers: typedHeaders, body: body, ok: r.ok, summary: r.summary, response: r.body));
     if (mounted) {
       setState(() {
         _result = r;
@@ -249,7 +345,16 @@ class _DetailPageState extends State<DetailPage> {
               ValueRow(v.hint!.signupUrl!, onCopy: () => copyText(context, v.hint!.signupUrl!, 'Sign-up link'), onOpen: () => openUrl(context, v.hint!.signupUrl)),
             ],
             const SizedBox(height: 8),
-            OutlinedButton(onPressed: () => copyText(context, v.howTo, 'How-to'), child: const Text('Copy these instructions')),
+            Wrap(spacing: 8, runSpacing: 4, children: [
+              OutlinedButton(onPressed: () => copyText(context, v.howTo, 'How-to'), child: const Text('Copy these instructions')),
+              FilledButton.tonalIcon(
+                onPressed: state.isScanningDocs(v) ? null : () => state.scanDocsFor(v),
+                icon: state.isScanningDocs(v)
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.travel_explore, size: 18),
+                label: Text(state.isScanningDocs(v) ? 'Reading the docs…' : state.docsScanOf(v) == null ? 'Scan docs for key info' : 'Scan the docs again'),
+              ),
+            ]),
             const Divider(height: 28),
             FieldLabel(state.hasKey(v) ? 'MY KEY  (saved on this phone)' : 'MY KEY'),
             TextField(
@@ -297,8 +402,49 @@ class _DetailPageState extends State<DetailPage> {
             ),
           ]),
 
+          // ---- what a docs scan found
+          if (state.docsScanOf(v) case final scan?)
+            Section('Live look at the docs', children: [
+              Text('${scan.summary}  ·  read ${scan.scannedAt.day}/${scan.scannedAt.month}/${scan.scannedAt.year}', style: muted),
+              if (scan.error != null) Padding(padding: const EdgeInsets.only(top: 6), child: Text(scan.error!, style: TextStyle(color: badgeColor(context, 'Key needed')))),
+              for (final (i, item) in scan.items.indexed) ...[
+                if (i == 0 || scan.items[i - 1].kind != item.kind) FieldLabel(item.kind.toUpperCase()) else const SizedBox(height: 6),
+                if (item.kind == 'Free tier / limits' || item.kind == 'Pricing' || item.kind == 'Note')
+                  SelectableText('• ${item.value}', style: const TextStyle(height: 1.35))
+                else
+                  ValueRow(item.isEndpoint ? '${item.method} ${item.value}' : item.value,
+                      onCopy: () => copyText(context, item.value, item.kind), onOpen: item.isLink && !item.isEndpoint ? () => openUrl(context, item.value) : null),
+                if (item.note.isNotEmpty && !item.isEndpoint) Padding(padding: const EdgeInsets.only(top: 2), child: Text(item.note, style: muted)),
+                if (item.isEndpoint)
+                  Row(children: [
+                    Expanded(child: Text(item.note, style: muted)),
+                    TextButton.icon(onPressed: () => _tryEndpoint(item), icon: const Icon(Icons.play_arrow, size: 18), label: const Text('Try')),
+                  ]),
+                if (item.kind == 'Sample key')
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton(
+                      onPressed: () {
+                        setState(() {
+                          _key.text = item.value;
+                          _keyDirty = true;
+                        });
+                        ScaffoldMessenger.of(context)
+                          ..hideCurrentSnackBar()
+                          ..showSnackBar(const SnackBar(behavior: SnackBarBehavior.floating, content: Text('Put into My key (not saved yet) - {key} in Try it now stands for it')));
+                      },
+                      child: const Text('Use as my key'),
+                    ),
+                  ),
+              ],
+              const SizedBox(height: 8),
+              OutlinedButton.icon(onPressed: () => openUrl(context, scan.pageUrl), icon: const Icon(Icons.open_in_new, size: 18), label: const Text('Open in browser')),
+              const SizedBox(height: 4),
+              Text('Only what the provider prints on its own public pages. A sample key may be a working demo key or just an example.', style: muted),
+            ]),
+
           // ---- try it
-          Section('Try it', children: [
+          Section('Try it', key: _tryItKey, children: [
             Text(
               v.example != null
                   ? 'Pre-filled with a request that works as it is - press Test this API.'
@@ -316,6 +462,7 @@ class _DetailPageState extends State<DetailPage> {
               Expanded(
                 child: TextField(
                   controller: _url,
+                  onChanged: (_) => setState(() {}), // a new {placeholder} offers a Variables line
                   minLines: 1,
                   maxLines: 4,
                   keyboardType: TextInputType.url,
@@ -328,6 +475,7 @@ class _DetailPageState extends State<DetailPage> {
             const SizedBox(height: 10),
             TextField(
               controller: _headers,
+              onChanged: (_) => setState(() {}),
               minLines: 1,
               maxLines: 4,
               autocorrect: false,
@@ -346,13 +494,51 @@ class _DetailPageState extends State<DetailPage> {
               ),
             ],
             const SizedBox(height: 10),
+            TextField(
+              controller: _vars,
+              minLines: 1,
+              maxLines: 6,
+              autocorrect: false,
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 12.5),
+              onChanged: (_) => setState(() {}),
+              onTapOutside: (_) {
+                FocusScope.of(context).unfocus();
+                _saveVariables();
+              },
+              decoration: const InputDecoration(
+                labelText: 'Variables (optional, one name = value per line)',
+                helperText: '{name} in the URL, headers or body is replaced. Always there: {today} {yesterday} {tomorrow} {now} {timestamp}',
+                helperMaxLines: 3,
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+            ),
+            if (_unlistedVariables.isNotEmpty)
+              Wrap(spacing: 6, children: [
+                for (final name in _unlistedVariables)
+                  ActionChip(
+                    label: Text('+ $name ='),
+                    visualDensity: VisualDensity.compact,
+                    tooltip: 'Add a line for {$name}',
+                    onPressed: () => setState(() => _vars.text = '${_vars.text.trimRight()}${_vars.text.trim().isEmpty ? '' : '\n'}$name = '),
+                  ),
+              ]),
+            const SizedBox(height: 10),
             Wrap(spacing: 8, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
               FilledButton.icon(
                 onPressed: _sending ? null : _send,
                 icon: _sending ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.play_arrow),
                 label: Text(_sending ? 'Sending…' : 'Test this API'),
               ),
-              OutlinedButton(onPressed: () => copyText(context, toCurl(_method, _url.text, _headers.text, _body.text), 'cURL command'), child: const Text('Copy as cURL')),
+              OutlinedButton(
+                  onPressed: () {
+                    // variables are filled in, {key} is not: a copied command never carries the saved key
+                    final vars = parseVariables(_vars.text);
+                    copyText(context, toCurl(_method, fillVariables(_url.text, vars, escape: true), fillVariables(_headers.text, vars), fillVariables(_body.text, vars)), 'cURL command');
+                  },
+                  child: const Text('Copy as cURL')),
+              if (state.historyOf(v).isNotEmpty)
+                OutlinedButton.icon(onPressed: _showHistory, icon: const Icon(Icons.history, size: 18), label: Text('History (${state.historyOf(v).length})')),
             ]),
             if (_result != null) ...[
               const SizedBox(height: 12),

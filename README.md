@@ -4,7 +4,7 @@ The Android sister of the desktop app in `C:\Claude\ApiScout` (which is unchange
 API directories, merge and categorise a few thousand free APIs, and show whether each needs a key - with the provider's
 own published demo key where there is one, or how to get a key.
 
-## What it does (version 1.1)
+## What it does (version 1.2)
 
 - **Scan** the same five keyless directories as the desktop default (public-apis, public-api-lists, publicapis.dev,
   freepublicapis.com, n0shake). Downloads run in parallel; parsing, merging and categorising run in a background
@@ -28,8 +28,21 @@ own published demo key where there is one, or how to get a key.
   this phone only (`allowBackup="false"`, so it is not in Android's cloud backup either). Only the *names* of the APIs
   with a key are held in memory. `{key}` in a Try it URL / header / body is filled in at the moment of sending
   (URL-escaped in the URL); copied cURL keeps `{key}`, and a response that echoes the key shows `{key}` again.
+- **Request variables** (1.2): a Variables box in Try it (`name = value` per line, saved per API). `{name}` in the
+  URL (percent-encoded), headers and body is filled in when sending; `{today} {yesterday} {tomorrow} {now} {timestamp}`
+  are always there; a request with an unfilled `{…}` is not sent. New placeholders in the request offer a "+ name ="
+  chip. Copied cURL has the variables filled in but keeps `{key}`. Same rules as the desktop's `RequestVariables`.
+- **Request history** (1.2): the last 8 requests per API with their responses (History button in Try it; tap one to
+  load it back). Stored as typed - so never the key or a variable's value - in `history.bin`, sealed with AES-256-GCM
+  under a random key kept in the Android keystore (the desktop uses DPAPI for the same file).
+- **Scan docs for key info** (1.2): port of the desktop `DocsScanner` - reads the docs page and the pricing page it
+  links to (provider's own site only): sign-up links, sample keys / placeholders, example endpoints (placeholder keys
+  become `{key}`; "Try" loads one into Try it and sends plain GETs), free-tier / rate-limit sentences, pricing.
+  Results are kept in `docscans.json` and fill in "how much is free" where the directories say nothing. No OpenAPI
+  spec reading (none of the five sources gives a spec URL). One deliberate difference: a header value only keeps a
+  second word after an auth scheme ("Bearer abc"), so "X-Api-Key: abc with every call" yields "abc".
 - **Import / Export** (1.1): the phone reads and writes **the desktop app's own export file** (About → Export… /
-  Import… on the PC; `Services/Backup.cs`): favourites, tags, notes, collections in the clear, saved keys inside
+  Import… on the PC; `Services/Backup.cs`): favourites, tags, notes, collections in the clear, saved keys and request variables inside
   AES-256-GCM under PBKDF2-SHA256 (310,000 rounds) from a passphrase - or left out. Merge rules are the desktop's:
   nothing already there is overwritten. The desktop needed no change for this.
 
@@ -47,7 +60,8 @@ Keys policy is the desktop's: only demo keys the providers print in their own do
 - `lib/models.dart` - ApiEntry, KeyHint, Catalogue
 - `lib/knowledge.dart` - loads the rules; categorise, find a key hint, access level; `ApiView` (what the UI shows)
 - `lib/sources.dart` - the five sources, awesome-list table parser, JSON parsers, merge / de-dupe key, isolate entry point
-- `lib/tester.dart` - Try it: send, format, cURL, {key}
+- `lib/tester.dart` - Try it: send, format, cURL, {key};  `lib/variables.dart` - request variables
+- `lib/docs_scanner.dart` - Scan docs for key info
 - `lib/insight.dart`, `insight_page.dart` - More about this API
 - `lib/user_data.dart` - favourites/tags/notes/collections, the desktop export format and its encryption (pointycastle)
 - `lib/vault.dart` - My key storage (Android keystore)
@@ -67,5 +81,5 @@ Flutter 3.47 is in `C:\Claude\tools\flutter` (not on PATH; the script sets every
 debug key - fine for installing on your own phone (allow "install unknown apps"), not for the Play Store.
 App id `com.kramn.apiscout_mobile`.
 
-Not in this version (desktop only): docs scanner, request history and variables, saved test requests, C# generation,
+Not in this version (desktop only): saved test requests, C# generation, OpenAPI spec reading,
 compare, what changed, link check, drag-to-reorder and Test all for collections.

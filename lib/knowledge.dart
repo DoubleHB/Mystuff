@@ -138,12 +138,16 @@ class Knowledge {
 class ApiView {
   final ApiEntry entry;
   final KeyHint? hint;
-  final AccessLevel access;
+  final AccessLevel _baseAccess;
+
+  /// What a docs scan worked out; only used when the directories and the key knowledge say nothing.
+  AccessLevel docsAccess = AccessLevel.unknown;
+  AccessLevel get access => _baseAccess == AccessLevel.unknown ? docsAccess : _baseAccess;
   late final String searchText = '${entry.name} ${entry.description} ${entry.category} ${entry.rawCategory} ${entry.url}'.toLowerCase();
 
   ApiView(this.entry, Knowledge k)
       : hint = k.findHint(entry),
-        access = _access(entry, k);
+        _baseAccess = _access(entry, k);
 
   static final _freeTierWords = RegExp(r'\b(free (tier|plan|account|quota|usage)|freemium|free for (non-?commercial|personal)|limited free)\b', caseSensitive: false);
   static final _paidWords = RegExp(r'\b(free trial|\d+[- ]day trial|trial (version|period|account|key|plan)|paid|premium|subscription)\b', caseSensitive: false);
@@ -220,12 +224,12 @@ class ApiView {
                 : 'Listed as needing no key, so everything it offers is open to call.',
         AccessLevel.freeTier => hint != null
             ? 'Free to keep using within its limits; paid plans lift them.'
-            : 'The description mentions a free plan or usage limits - expect paid plans above them.',
+            : 'The description or docs mention a free plan or usage limits - expect paid plans above them.',
         AccessLevel.trialOnly => hint != null
             ? 'The free part is a demo or trial - real use needs a paid plan.'
             : entry.pricing == 'paid'
                 ? 'Flagged as paid / trial by the directory that listed it.'
-                : 'The description talks about trials or paid plans, with no free plan mentioned.',
-        AccessLevel.unknown => 'The directories do not say what is free - check the pricing page in the docs.',
+                : 'The description or docs talk about trials or paid plans, with no free plan mentioned.',
+        AccessLevel.unknown => 'The directories do not say what is free. \'Scan docs for key info\' may find out.',
       };
 }

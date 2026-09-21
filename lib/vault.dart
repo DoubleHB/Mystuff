@@ -9,6 +9,10 @@ abstract class KeyVault {
   Future<void> write(String apiKey, String value);
   Future<void> delete(String apiKey);
   Future<Map<String, String>> readAll();
+
+  /// App secrets that are not API keys (the key that seals the request history).
+  Future<String?> readSecret(String name);
+  Future<void> writeSecret(String name, String value);
 }
 
 class SecureKeyVault implements KeyVault {
@@ -27,6 +31,10 @@ class SecureKeyVault implements KeyVault {
   Future<void> write(String apiKey, String value) => _storage.write(key: '$_prefix$apiKey', value: value);
   @override
   Future<void> delete(String apiKey) => _storage.delete(key: '$_prefix$apiKey');
+  @override
+  Future<String?> readSecret(String name) => _storage.read(key: 'app:$name');
+  @override
+  Future<void> writeSecret(String name, String value) => _storage.write(key: 'app:$name', value: value);
 }
 
 /// For tests, and the fallback when the keystore cannot be opened (keys then last until the app closes).
@@ -42,4 +50,9 @@ class MemoryKeyVault implements KeyVault {
   Future<void> write(String apiKey, String value) async => _map[apiKey] = value;
   @override
   Future<void> delete(String apiKey) async => _map.remove(apiKey);
+  final _secrets = <String, String>{};
+  @override
+  Future<String?> readSecret(String name) async => _secrets[name];
+  @override
+  Future<void> writeSecret(String name, String value) async => _secrets[name] = value;
 }

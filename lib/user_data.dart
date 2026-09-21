@@ -13,15 +13,19 @@ class UserData {
   Map<String, String> notes = {};
   Map<String, List<String>> collections = {};
 
+  /// Request variables per API (name -> value). They travel with the keys in an export: someone may have put a token in one.
+  Map<String, Map<String, String>> variables = {};
+
   UserData();
 
-  Map<String, dynamic> toJson() => {'favourites': favourites.toList()..sort(), 'tags': tags, 'notes': notes, 'collections': collections};
+  Map<String, dynamic> toJson() => {'favourites': favourites.toList()..sort(), 'tags': tags, 'notes': notes, 'collections': collections, 'variables': variables};
 
   factory UserData.fromJson(Map<String, dynamic> j) => UserData()
     ..favourites = {..._strings(j['favourites'])}
     ..tags = _lists(j['tags'])
     ..notes = _texts(j['notes'])
-    ..collections = _lists(j['collections']);
+    ..collections = _lists(j['collections'])
+    ..variables = _maps(j['variables']);
 
   /// Every tag in use, most used first.
   List<(String, int)> get tagCounts {
@@ -42,6 +46,7 @@ class UserData {
 
 List<String> _strings(dynamic v) => v is List ? [for (final s in v) if (s is String && s.isNotEmpty) s] : [];
 Map<String, List<String>> _lists(dynamic v) => v is Map ? {for (final e in v.entries) if (e.key is String && e.value is List) e.key as String: _strings(e.value)} : {};
+Map<String, Map<String, String>> _maps(dynamic v) => v is Map ? {for (final e in v.entries) if (e.key is String && e.value is Map) e.key as String: _texts(e.value)} : {};
 Map<String, String> _texts(dynamic v) => v is Map ? {for (final e in v.entries) if (e.key is String && e.value is String) e.key as String: e.value as String} : {};
 
 /// "a, b; c" → tags: trimmed, no duplicates (whatever the case), at most eight, each at most 30 characters.
@@ -89,7 +94,7 @@ class BackupFile {
   static BackupFile read(String json) {
     dynamic j;
     try {
-      j = jsonDecode(json.startsWith('﻿') ? json.substring(1) : json);
+      j = jsonDecode(json.isNotEmpty && json.codeUnitAt(0) == 0xFEFF ? json.substring(1) : json); // a byte-order mark from a Windows editor
     } on FormatException {
       j = null;
     }
@@ -112,9 +117,12 @@ class BackupFile {
     return file;
   }
 
-  /// The saved keys inside the file (catalogue key → API key). Slow on purpose (key stretching): call it through compute().
-  Map<String, String> openKeys(String passphrase) {
-    if (!hasSecrets) return {};
+  /// The saved keys inside the file (catalogue key → API key).
+  Map<String, String> openKeys(String passphrase) => openSecrets(passphrase).$1;
+
+  /// Keys and request variables inside the file. Slow on purpose (key stretching): call it through compute().
+  (Map<String, String>, Map<String, Map<String, String>>) openSecrets(String passphrase) {
+    if (!hasSecrets) return ({}, {});
     final Uint8List sealed, saltBytes;
     try {
       sealed = base64Decode(secrets!);
@@ -131,10 +139,10 @@ class BackupFile {
       j = null;
     }
     if (j is! Map) throw BackupFormatException('The encrypted part of the file opened, but what is inside is not ApiScout data.');
-    return _texts(j['MyKeys'])..removeWhere((_, v) => v.isEmpty);
+    return (_texts(j['MyKeys'])..removeWhere((_, v) => v.isEmpty), _maps(j['Variables']));
   }
 
-  /// A file the desktop app's Import reads. [keys] go in only with a passphrase.
+  /// A file the desktop app's Import reads. [keys] and the request variables go in only with a passphrase.
   static String write(UserData data, {Map<String, String> keys = const {}, String? passphrase, int iterations = defaultIterations, DateTime? now, Random? random}) {
     final j = <String, dynamic>{
       'App': 'ApiScout',
@@ -149,11 +157,11 @@ class BackupFile {
       'Iterations': 0,
       'SecretCount': 0,
     };
-    if (passphrase != null && passphrase.isNotEmpty && keys.isNotEmpty) {
+    if (passphrase != null && passphrase.isNotEmpty && (keys.isNotEmpty || data.variables.isNotEmpty)) {
       final rnd = random ?? Random.secure();
       Uint8List bytes(int n) => Uint8List.fromList([for (var i = 0; i < n; i++) rnd.nextInt(256)]);
       final saltBytes = bytes(16);
-      final plain = utf8.encode(jsonEncode({'MyKeys': keys, 'TestRequests': <String, dynamic>{}, 'Variables': <String, dynamic>{}}));
+      final plain = utf8.encode(jsonEncode({'MyKeys': keys, 'TestRequests': <String, dynamic>{}, 'Variables': data.variables}));
       j['Salt'] = base64Encode(saltBytes);
       j['Iterations'] = iterations;
       j['SecretCount'] = keys.length;
@@ -275,19 +283,22 @@ Uint8List _open(Uint8List sealed, String passphrase, Uint8List salt, int iterati
 }
 
 /// compute() entry points: key stretching takes seconds on a phone.
-Map<String, String> openKeysIsolate(Map<String, String> args) => BackupFile.read(args['json']!).openKeys(args['passphrase']!);
+Map<String, dynamic> openSecretsIsolate(Map<String, String> args) {
+  final (keys, variables) = BackupFile.read(args['json']!).openSecrets(args['passphrase']!);
+  return {'keys': keys, 'variables': variables};
+}
 String writeBackupIsolate(Map<String, dynamic> args) => BackupFile.write(UserData.fromJson((args['data'] as Map).cast<String, dynamic>()),
     keys: (args['keys'] as Map).cast<String, String>(), passphrase: args['passphrase'] as String?);
 
 class ImportSummary {
-  int favourites = 0, tagged = 0, notes = 0, keys = 0, keptLocal = 0, collectionEntries = 0, notInCatalogue = 0;
+  int favourites = 0, tagged = 0, notes = 0, keys = 0, variables = 0, keptLocal = 0, collectionEntries = 0, notInCatalogue = 0;
   bool secretsSkipped = false;
 
   @override
   String toString() => '${collectionEntries > 0 ? '$collectionEntries collection entr${collectionEntries == 1 ? 'y' : 'ies'} added. ' : ''}'
-      'Imported $favourites favourite(s), tags for $tagged API(s), $notes note(s) and $keys key(s).'
+      'Imported $favourites favourite(s), tags for $tagged API(s), $notes note(s), $keys key(s) and $variables request variable(s).'
       '${keptLocal > 0 ? ' $keptLocal item(s) already on this phone were kept as they are.' : ''}'
-      '${secretsSkipped ? ' The saved keys in the file were skipped (no passphrase given).' : ''}'
+      '${secretsSkipped ? ' The saved keys and variables in the file were skipped (no passphrase given).' : ''}'
       '${notInCatalogue > 0 ? ' $notInCatalogue of them are not in this phone\'s catalogue yet - scan to see them.' : ''}';
 }
 
@@ -329,4 +340,83 @@ ImportSummary mergeUserData(UserData mine, UserData theirs) {
     }
   });
   return s;
+}
+
+/// Variables from an import: a value already set on this phone stays (the desktop's rule). Returns how many were added.
+int mergeVariables(UserData mine, Map<String, Map<String, String>> theirs) {
+  var added = 0;
+  theirs.forEach((api, map) {
+    final have = mine.variables.putIfAbsent(api, () => {});
+    map.forEach((name, value) {
+      if (!have.keys.any((k) => k.toLowerCase() == name.toLowerCase())) {
+        have[name] = value;
+        added++;
+      }
+    });
+    if (have.isEmpty) mine.variables.remove(api);
+  });
+  return added;
+}
+
+// ---------------------------------------------------------------- request history
+
+const historyPerApi = 8;
+const _historyResponseChars = 20000;
+
+/// One earlier "Test this API" result. The request is kept as typed, so {key} and {variables} stay placeholders.
+class TestHistoryEntry {
+  final DateTime at;
+  final String method, url, headers, body, summary, response;
+  final bool ok;
+  TestHistoryEntry({required this.at, required this.method, required this.url, this.headers = '', this.body = '', required this.ok, required this.summary, String response = ''})
+      : response = response.length > _historyResponseChars ? '${response.substring(0, _historyResponseChars)}\n\n… cut for the history' : response;
+
+  static const _months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  String get when => '${at.day} ${_months[at.month - 1]} ${at.hour.toString().padLeft(2, '0')}:${at.minute.toString().padLeft(2, '0')}';
+  String get firstLine => summary.split('\n').first;
+
+  Map<String, dynamic> toJson() => {'at': at.toIso8601String(), 'method': method, 'url': url, 'headers': headers, 'body': body, 'ok': ok, 'summary': summary, 'response': response};
+  factory TestHistoryEntry.fromJson(Map<String, dynamic> j) => TestHistoryEntry(
+        at: DateTime.tryParse(j['at'] as String? ?? '') ?? DateTime.fromMillisecondsSinceEpoch(0),
+        method: j['method'] as String? ?? 'GET',
+        url: j['url'] as String? ?? '',
+        headers: j['headers'] as String? ?? '',
+        body: j['body'] as String? ?? '',
+        ok: j['ok'] == true,
+        summary: j['summary'] as String? ?? '',
+        response: j['response'] as String? ?? '',
+      );
+}
+
+Map<String, List<TestHistoryEntry>> historyFromJson(dynamic j) => j is Map
+    ? {
+        for (final e in j.entries)
+          if (e.key is String && e.value is List) e.key as String: [for (final h in e.value as List) if (h is Map) TestHistoryEntry.fromJson(h.cast<String, dynamic>())]
+      }
+    : {};
+
+// A typed header may hold a token, so the history file is sealed (AES-256-GCM) with a random key that lives in the
+// Android keystore - the desktop does the same with Windows DPAPI.   layout: 12-byte nonce | ciphertext | 16-byte tag
+
+Uint8List newSealKey([Random? random]) {
+  final rnd = random ?? Random.secure();
+  return Uint8List.fromList([for (var i = 0; i < 32; i++) rnd.nextInt(256)]);
+}
+
+Uint8List sealWithKey(Uint8List key, Uint8List plain, [Random? random]) {
+  final rnd = random ?? Random.secure();
+  final nonce = Uint8List.fromList([for (var i = 0; i < 12; i++) rnd.nextInt(256)]);
+  final gcm = GCMBlockCipher(AESEngine())..init(true, AEADParameters(KeyParameter(key), 128, nonce, Uint8List(0)));
+  return Uint8List.fromList([...nonce, ...gcm.process(plain)]);
+}
+
+/// Null when the key is not the one the data was sealed with (or the data is damaged).
+Uint8List? openWithKey(Uint8List key, Uint8List sealed) {
+  if (sealed.length < 28 || key.length != 32) return null;
+  final gcm = GCMBlockCipher(AESEngine())..init(false, AEADParameters(KeyParameter(key), 128, sealed.sublist(0, 12), Uint8List(0)));
+  try {
+    return gcm.process(sealed.sublist(12));
+  } on InvalidCipherTextException {
+    return null;
+  }
 }

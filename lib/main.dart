@@ -420,13 +420,13 @@ Future<void> importFromFile(BuildContext context) async {
 
 /// Menu → Export: the same file format, so the desktop app's Import reads it.
 Future<void> exportToFile(BuildContext context) async {
-  if (state.userItemCount == 0 && state.keyed.isEmpty) return _say(context, 'Nothing to export yet: no favourites, tags, notes, collections or keys.');
+  if (state.userItemCount == 0 && state.keyed.isEmpty) return _say(context, 'Nothing to export yet: no favourites, tags, notes, collections, variables or keys.');
   try {
     String? passphrase = '';
-    if (state.keyed.isNotEmpty) {
+    if (state.secretItemCount > 0) {
       passphrase = await _askPassphrase(context,
-          title: 'Include your ${state.keyed.length} saved key(s)?',
-          explanation: 'With a passphrase the keys go into the file encrypted (AES-256); the desktop app asks for the same passphrase when it imports. Without one the keys stay out of the file.',
+          title: 'Include your saved keys and request variables?',
+          explanation: 'This phone holds ${state.keyed.length} key(s) and variables for ${state.user.variables.length} API(s). With a passphrase they go into the file encrypted (AES-256); the desktop app asks for the same passphrase when it imports. Without one they stay out of the file.',
           skipLabel: 'Without the keys',
           confirm: true);
       if (passphrase == null) return;
@@ -500,7 +500,7 @@ class FilterSheet extends StatelessWidget {
 void showAbout(BuildContext context) => showAboutDialog(
       context: context,
       applicationName: 'ApiScout',
-      applicationVersion: '1.1.0 (Android)',
+      applicationVersion: '1.2.0 (Android)',
       applicationLegalese: 'Free API finder. Rules and key knowledge: ${state.knowledge.exportedFrom}.',
       children: const [
         SizedBox(height: 12),

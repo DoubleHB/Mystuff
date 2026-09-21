@@ -1,7 +1,7 @@
 {
   "App": "ApiScout",
   "Version": 1,
-  "ExportedAt": "2026-09-21T22:42:06.3161662+01:00",
+  "ExportedAt": "2026-09-21T23:13:58.8605071+01:00",
   "Favourites": [
     "url:api.nasa.gov",
     "url:catfact.ninja"
@@ -21,8 +21,8 @@
       "url:api.nasa.gov"
     ]
   },
-  "Secrets": "z2yLzyPJfnT8biknJJoHvauhtzIBUQxRQ/OwvWQ41ClbUfkgsESGpjZnYYUu4EfaYTyAS2MVf4j3eZoTETvjHOLl7X\u002BpKdc2CSJwskr491PiDPJKWtWiEYM0dA/Y/qAvMLCk6Jcj3ysF3PUSAwwYBBHGO\u002BVF4j4rVKSDoGfhemQU2ef64/qTX9cZ7s6mV\u002BdO1KEYNsOVVuwD87eHNq7PNXF9xa7J38lylOxk//ePGlCntGunH\u002Bqh/ZiugH/xD/Eyze1J",
-  "Salt": "GBwHUnEY4l0e60fsTZWb3A==",
+  "Secrets": "U9AgGbHf5gawJtQImd8\u002BGnIF0QpTPZO0qd3R1cHLJ4X/tO19u5DwCV4XYhoCyUpC26ILmO4oSJDNijzywysDeJwtG4LmnODbJpvw2dXAy54i3HmNwTRrKGiOSaGtgM\u002B9EfylAHiB\u002BgBWigNaR0NBXmSeMU2sscgLck4fQCDS6vAT/VoNoMDNwZ6n4BeF\u002BUJLNwDdB8ADqiHWZcQIBmWbPWQ7gPn97kuC9bxBUcNRBJOckR51Ed/i7iVJFiM1\u002BZQ1vAet\u002BPzfmGgiQ9kkkVaxxaCdcUiLgHJNG9MGWYz0wJ1PPiwiDEPm7T2WHq7gZx6E5zQMssmyDEf8JL289A==",
+  "Salt": "IaCmMpH\u002Bm5rmuq4cQ9Ea1Q==",
   "Iterations": 310000,
   "SecretCount": 2
 }
