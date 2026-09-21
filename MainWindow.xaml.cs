@@ -29,8 +29,11 @@ public partial class MainWindow : Window
         InputBindings.Add(new KeyBinding(new ActionCommand(() => { if (!_vm.ShowShortlist) Compare_Click(this, new RoutedEventArgs()); }), Key.M, ModifierKeys.Control));
         InputBindings.Add(new KeyBinding(new ActionCommand(() => { if (!_vm.ShowShortlist) TagSelected_Click(this, new RoutedEventArgs()); }), Key.G, ModifierKeys.Control));
         InputBindings.Add(new KeyBinding(new ActionCommand(() => About_Click(this, new RoutedEventArgs())), Key.F1, ModifierKeys.None));
+        InputBindings.Add(new KeyBinding(new ActionCommand(() => { if (!_vm.ShowShortlist) AddToCollection_Click(this, new RoutedEventArgs()); }), Key.E, ModifierKeys.Control));
         InputBindings.Add(new KeyBinding(new ActionCommand(() => Changes_Click(this, new RoutedEventArgs())), Key.H, ModifierKeys.Control));
         _vm.CommitEdits += CommitFocusedTextBox;
+        // opening the popup leaves the focus on its button, so Esc is caught here rather than inside the popup
+        PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape && SourcesPopup.IsOpen) { SourcesButton.IsChecked = false; e.Handled = true; } };
 
         // Replacing the grid's ItemsSource (every filter change does) makes WPF drop the sort the user clicked: note it, put it back
         _vm.PropertyChanging += (_, e) =>
@@ -113,6 +116,7 @@ public partial class MainWindow : Window
             case Key.O: _vm.OpenRowCommand.Execute(row); break;
             case Key.U: _vm.ShortlistSelected = row; _vm.CopyCommand.Execute("url"); break;
             case Key.D: _vm.ToggleRowFavouriteCommand.Execute(row); break;
+            case Key.R when _vm.IsCollectionPage: _vm.RemoveFromCollectionCommand.Execute(row); break;
             default: return;
         }
         e.Handled = true;
@@ -144,6 +148,26 @@ public partial class MainWindow : Window
         _changes = new Views.ChangesWindow(_vm) { Owner = this };
         _changes.Closed += (_, _) => _changes = null;
         _changes.Show();
+    }
+
+    private void AddToCollection_Click(object sender, RoutedEventArgs e)
+    {
+        var rows = ResultsGrid.SelectedItems.OfType<ApiRow>().ToList();
+        if (rows.Count == 0) return;
+        var dialog = new Views.InputDialog("Add to a collection", $"Collection for the {rows.Count} selected API{(rows.Count == 1 ? "" : "s")} - pick one or type a new name:", _vm.CollectionNames, "Add") { Owner = this };
+        if (dialog.ShowDialog() == true) _vm.AddToCollection(rows, dialog.Value);
+    }
+
+    private void RenameCollection_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Views.InputDialog("Rename collection", $"New name for \"{_vm.ShortlistTitle}\":", [], "Rename") { Owner = this };
+        if (dialog.ShowDialog() == true && !_vm.RenameCollection(dialog.Value)) _vm.Notify("That name is already taken (or too long)");
+    }
+
+    private void DeleteCollection_Click(object sender, RoutedEventArgs e)
+    {
+        if (MessageBox.Show(this, $"Delete the collection \"{_vm.ShortlistTitle}\"?\n\nOnly the group goes - the APIs, their keys, notes and tests stay.", "ApiScout", MessageBoxButton.OKCancel, MessageBoxImage.Question) == MessageBoxResult.OK)
+            _vm.DeleteCollection();
     }
 
     private void TagSelected_Click(object sender, RoutedEventArgs e)

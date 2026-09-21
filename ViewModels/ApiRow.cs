@@ -262,6 +262,10 @@ public sealed partial class ApiRow : ObservableObject
         }
     }
 
+    /// <summary>"Weather, Side project" - the collections this API is in.</summary>
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasCollections))] private string _collectionsLabel = "";
+    public bool HasCollections => CollectionsLabel.Length > 0;
+
     public bool HasMyKey => MyKey.Trim().Length > 0;
     partial void OnMyKeyChanged(string value) => OnPropertyChanged(nameof(HasMyKey));
     public string NoteShort => Note.Length > 140 ? Note[..137] + "…" : Note;

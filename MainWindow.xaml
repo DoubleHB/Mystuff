@@ -66,7 +66,13 @@
                     <Button Content="Check links" Command="{Binding CheckLinksCommand}" Margin="8,0,0,0" Padding="12,7" IsEnabled="{Binding IsIdle}"
                             ToolTip="Test whether the docs site of every listed API still answers" />
                     <Button x:Name="ThemeButton" Content="Theme" Click="ThemeButton_Click" Margin="8,0,0,0" Padding="12,7" ToolTip="Switch light / dark" />
-                    <Button Content="About" Click="About_Click" Margin="8,0,0,0" Padding="12,7" ToolTip="Version, keyboard shortcuts, data folder, export / import your data (F1)" />
+                    <Button Click="About_Click" Margin="8,0,0,0" Padding="12,7" AutomationProperties.Name="About" ToolTip="Version, updates, keyboard shortcuts, data folder, export / import your data (F1)">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="About" />
+                            <!-- a newer version was found at start-up -->
+                            <TextBlock Text="  ⬆" Foreground="{DynamicResource WarnBrush}" FontWeight="Bold" ToolTip="{Binding UpdateNote}" Visibility="{Binding UpdateNote, Converter={StaticResource TextToVis}}" />
+                        </StackPanel>
+                    </Button>
                 </StackPanel>
             </Grid>
         </Border>
@@ -134,8 +140,39 @@
             </Grid.RowDefinitions>
 
             <!-- Dashboard: the whole catalogue at a glance; every tile is a shortcut to its filter -->
-            <ItemsControl Grid.ColumnSpan="3" ItemsSource="{Binding Dashboard}" Margin="0,0,0,12" Focusable="False" AutomationProperties.Name="Dashboard"
-                          Visibility="{Binding ShowDashboard, Converter={StaticResource BoolToVis}}">
+            <DockPanel Grid.ColumnSpan="3" Margin="0,0,0,12" Visibility="{Binding ShowDashboard, Converter={StaticResource BoolToVis}}">
+            <!-- API of the day: keyless or demo-key, with an example request that is known to work -->
+            <Border DockPanel.Dock="Right" Style="{StaticResource Card}" Margin="0" Padding="10,6,8,6" Width="410" AutomationProperties.Name="API of the day"
+                    Visibility="{Binding ApiOfTheDay, Converter={StaticResource NullToCollapsed}}">
+                <DockPanel DataContext="{Binding ApiOfTheDay}">
+                    <ContentControl DockPanel.Dock="Left" Content="{Binding}" ContentTemplate="{StaticResource BrandTile}" VerticalAlignment="Center" Margin="0,0,9,0" Focusable="False" />
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button Content="▶ Test" Style="{DynamicResource AccentButtonStyle}" Padding="9,3" FontSize="12" MinHeight="26" AutomationProperties.Name="Test the API of the day"
+                                Command="{Binding DataContext.TestApiOfTheDayCommand, RelativeSource={RelativeSource AncestorType=Window}}" ToolTip="Send its example request - no key or sign-up needed" />
+                        <Button Content="Details" Style="{StaticResource Mini}" AutomationProperties.Name="Show the API of the day"
+                                Command="{Binding DataContext.ShowApiOfTheDayCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                        <Button Content="↻" Style="{StaticResource Mini}" AutomationProperties.Name="Another API of the day" ToolTip="Show another one"
+                                Command="{Binding DataContext.AnotherApiOfTheDayCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                    </StackPanel>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock TextTrimming="CharacterEllipsis"><Run Text="API of the day  ·  " Foreground="{DynamicResource MutedBrush}" FontSize="11.5" /><Run Text="{Binding Name, Mode=OneWay}" FontWeight="SemiBold" /></TextBlock>
+                        <TextBlock Text="{Binding Description}" Style="{StaticResource Muted}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Description}"
+                                   Visibility="{Binding HasLastTest, Converter={StaticResource InvBoolToVis}}" />
+                        <TextBlock Text="{Binding LastTestLabel}" FontSize="12" TextTrimming="CharacterEllipsis" ToolTip="{Binding LastTestLabel}" AutomationProperties.Name="API of the day result"
+                                   Visibility="{Binding HasLastTest, Converter={StaticResource BoolToVis}}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="{DynamicResource WarnBrush}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding LastTestOk}" Value="True"><Setter Property="Foreground" Value="{DynamicResource UpBrush}" /></DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+            <ItemsControl ItemsSource="{Binding Dashboard}" Focusable="False" AutomationProperties.Name="Dashboard">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate><UniformGrid Rows="1" /></ItemsPanelTemplate>
                 </ItemsControl.ItemsPanel>
@@ -189,6 +226,7 @@
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
+            </DockPanel>
 
             <!-- Categories -->
             <Border Grid.Row="1" Style="{StaticResource Card}" Padding="6" Margin="0,0,12,0">
@@ -279,6 +317,7 @@
                                 <MenuItem Header="Open docs in browser" Command="{Binding OpenCommand}" CommandParameter="docs" />
                                 <MenuItem Header="Add / remove favourite" Command="{Binding ToggleFavouriteCommand}" InputGestureText="Ctrl+D" />
                                 <MenuItem Header="Tag the selected rows…" Click="TagSelected_Click" InputGestureText="Ctrl+G" />
+                                <MenuItem Header="Add the selected rows to a collection…" Click="AddToCollection_Click" InputGestureText="Ctrl+E" />
                                 <MenuItem Header="Compare the selected rows (2-4)" Click="Compare_Click" InputGestureText="Ctrl+M" />
                             </ContextMenu>
                         </DataGrid.ContextMenu>
@@ -567,6 +606,7 @@
                         <Border Style="{StaticResource Card}">
                             <StackPanel>
                                 <DockPanel>
+
                                     <Button DockPanel.Dock="Right" Content="Scan docs for key info" Command="{Binding ScanDocsCommand}" Padding="12,5"
                                             Visibility="{Binding Selected.IsScanningDocs, Converter={StaticResource InvBoolToVis}}" />
                                     <TextBlock DockPanel.Dock="Right" Text="Reading the docs…" Style="{StaticResource Muted}" VerticalAlignment="Center"
@@ -578,6 +618,10 @@
                                            Visibility="{Binding Selected.HasDocsScan, Converter={StaticResource InvBoolToVis}}" />
                                 <TextBlock Text="{Binding Selected.DocsScanSummary}" Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,6,0,4"
                                            Visibility="{Binding Selected.HasDocsScan, Converter={StaticResource BoolToVis}}" />
+                                <!-- the card has no room beside its title, so the button sits under the result - where a failed scan says "open it in the browser" -->
+                                <Button Content="Open in browser" Command="{Binding OpenCommand}" CommandParameter="docs" Style="{DynamicResource AccentButtonStyle}" Padding="12,4" FontSize="12.5"
+                                        HorizontalAlignment="Left" Margin="0,4,0,6" AutomationProperties.Name="Open docs in browser" ToolTip="Open this API's docs page in your browser"
+                                        Visibility="{Binding Selected.HasDocsScan, Converter={StaticResource BoolToVis}}" />
                                 <ItemsControl ItemsSource="{Binding Selected.DocsScan.Items}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
@@ -636,6 +680,15 @@
                                 </DockPanel>
                                 <TextBlock Text="TAGS  (your own labels, comma separated - filter by them above the list)" Style="{StaticResource Label}" TextWrapping="Wrap" />
                                 <TextBox Text="{Binding Selected.TagsText, UpdateSourceTrigger=LostFocus}" AutomationProperties.Name="Tags" />
+                                <TextBlock Text="COLLECTIONS" Style="{StaticResource Label}" />
+                                <DockPanel>
+                                    <Button DockPanel.Dock="Right" Content="Add to a collection…" Click="AddToCollection_Click" Style="{StaticResource Mini}" ToolTip="Ctrl+E - also works on several selected rows" />
+                                    <Grid VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding Selected.CollectionsLabel}" TextWrapping="Wrap" Foreground="{DynamicResource VioletBrush}" AutomationProperties.Name="Collections of this API" />
+                                        <TextBlock Text="In none yet - collections are named groups with their own page under My shortlist" Style="{StaticResource Muted}" TextWrapping="Wrap"
+                                                   Visibility="{Binding Selected.HasCollections, Converter={StaticResource InvBoolToVis}}" />
+                                    </Grid>
+                                </DockPanel>
                                 <TextBlock Text="NOTES" Style="{StaticResource Label}" />
                                 <TextBox Text="{Binding Selected.Note, UpdateSourceTrigger=LostFocus}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="54" AutomationProperties.Name="Notes" />
                             </StackPanel>
@@ -663,10 +716,25 @@
         <Grid Grid.Row="1" Background="{DynamicResource BgBrush}" Visibility="{Binding ShowShortlist, Converter={StaticResource BoolToVis}}">
             <DockPanel Margin="18,14,18,8">
                 <StackPanel DockPanel.Dock="Top" Margin="0,0,0,12">
-                    <TextBlock Text="My shortlist" FontSize="22" FontWeight="Bold" />
+                    <DockPanel>
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="Page" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <ComboBox ItemsSource="{Binding ShortlistPages}" SelectedItem="{Binding ShortlistPage}" MinWidth="260" AutomationProperties.Name="Shortlist page"
+                                      ToolTip="My shortlist, or one of your collections (right-click rows in the list → Add to a collection)" />
+                        </StackPanel>
+                        <TextBlock Text="{Binding ShortlistTitle}" FontSize="22" FontWeight="Bold" TextTrimming="CharacterEllipsis" />
+                    </DockPanel>
                     <TextBlock Text="{Binding ShortlistSummary}" Style="{StaticResource Muted}" FontSize="13" TextWrapping="Wrap" AutomationProperties.Name="Shortlist summary" />
-                    <TextBlock Text="Arrow keys move  ·  Enter details  ·  T test  ·  K copy key  ·  O open docs  ·  U copy docs URL  ·  D favourite on / off  ·  Esc back to the list"
+                    <TextBlock Text="Arrow keys move  ·  Enter details  ·  T test  ·  K copy key  ·  O open docs  ·  U copy docs URL  ·  D favourite on / off  ·  R remove from the collection  ·  Esc back to the list"
                                Style="{StaticResource Muted}" Margin="0,4,0,0" TextWrapping="Wrap" Visibility="{Binding ShortlistSelected, Converter={StaticResource NullToCollapsed}}" />
+                    <WrapPanel Margin="0,10,0,0">
+                        <Button Content="Copy page as Markdown" Command="{Binding CopyCollectionMarkdownCommand}" Style="{StaticResource Mini}" Margin="0,0,6,4" />
+                        <Button Content="Copy C# client" Command="{Binding CopyPageClientCommand}" Style="{StaticResource Mini}" Margin="0,0,6,4" AutomationProperties.Name="Copy page C# client"
+                                ToolTip="One file: a typed client for every API on this page that has a test that worked, and a class that builds them all from one HttpClient" />
+                        <Button Content="Save C# client…" Command="{Binding SavePageClientCommand}" Style="{StaticResource Mini}" Margin="0,0,18,4" />
+                        <Button Content="Rename collection…" Click="RenameCollection_Click" Style="{StaticResource Mini}" Margin="0,0,6,4" Visibility="{Binding IsCollectionPage, Converter={StaticResource BoolToVis}}" />
+                        <Button Content="Delete collection" Click="DeleteCollection_Click" Style="{StaticResource Mini}" Margin="0,0,6,4" Visibility="{Binding IsCollectionPage, Converter={StaticResource BoolToVis}}" />
+                    </WrapPanel>
                 </StackPanel>
                     <ListBox x:Name="ShortlistBox" ItemsSource="{Binding ShortlistRows}" SelectedItem="{Binding ShortlistSelected}" AutomationProperties.Name="Shortlist"
                              Background="Transparent" BorderThickness="0" Padding="0" IsTextSearchEnabled="False" PreviewKeyDown="Shortlist_PreviewKeyDown"
@@ -753,6 +821,9 @@
                                             <Button Content="Docs" Style="{StaticResource Mini}" CommandParameter="{Binding}" Command="{Binding DataContext.OpenRowCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
                                             <Button Content="Details" Style="{StaticResource Mini}" CommandParameter="{Binding}" Command="{Binding DataContext.ShowRowCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                     ToolTip="Back to the list with this API selected" />
+                                            <Button Content="Remove" Style="{StaticResource Mini}" CommandParameter="{Binding}" ToolTip="Take it out of this collection (R)"
+                                                    Command="{Binding DataContext.RemoveFromCollectionCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                    Visibility="{Binding DataContext.IsCollectionPage, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVis}}" />
                                         </StackPanel>
                                     </StackPanel>
                                 </Border>

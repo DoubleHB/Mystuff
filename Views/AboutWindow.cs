@@ -16,6 +16,31 @@ public sealed class AboutWindow : Window
 {
     private readonly MainViewModel _vm;
     private readonly Store _store;
+    private readonly TextBox _feed = new() { FontSize = 12.5, VerticalAlignment = VerticalAlignment.Center };
+    private readonly TextBlock _updateResult = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12.5, Margin = new Thickness(0, 6, 0, 0) };
+    private readonly Button _openUpdate;
+    private string? _download;
+
+    private async Task CheckForUpdateAsync()
+    {
+        _store.Settings.UpdateFeed = _feed.Text.Trim();
+        _updateResult.Text = "Checking…";
+        var info = await UpdateChecker.CheckAsync(_store.Settings.UpdateFeed, UpdateChecker.Current, CancellationToken.None);
+        _store.Settings.LastUpdateCheck = DateTime.Now;
+        _store.SaveSettings();
+        _updateResult.Text = info.Message;
+        _updateResult.SetResourceReference(TextBlock.ForegroundProperty, !info.Ok ? "DownBrush" : info.Newer ? "WarnBrush" : "UpBrush");
+        _download = info.Newer ? info.Download : null;
+        _openUpdate.Visibility = _download is null ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private void OpenDownload()
+    {
+        if (_download is null) return;
+        if (Http.IsWebUrl(_download)) _vm.OpenUrlCommand.Execute(_download);
+        else if (File.Exists(_download)) System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", $"/select,\"{_download}\"") { UseShellExecute = true });
+    }
+
     private readonly TextBlock _dataSummary = new() { TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock _result = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 10, 0, 0), FontSize = 12.5 };
 
@@ -51,14 +76,30 @@ public sealed class AboutWindow : Window
         folderRow.Children.Add(open); folderRow.Children.Add(copy); folderRow.Children.Add(folder);
         panel.Children.Add(folderRow);
 
+        panel.Children.Add(Heading("UPDATES"));
+        _feed.Text = store.Settings.UpdateFeed;
+        AutomationProperties.SetName(_feed, "Update source");
+        _feed.ToolTip = "A GitHub owner/repo, a folder holding the ApiScout git repository, or a latest.json file / URL. Empty = " + (UpdateChecker.DefaultFeed.Length > 0 ? UpdateChecker.DefaultFeed : "not set");
+        var check = Small("Check now", () => _ = CheckForUpdateAsync());
+        _openUpdate = Small("Open", () => OpenDownload());
+        _openUpdate.Visibility = Visibility.Collapsed;
+        var feedRow = new DockPanel();
+        DockPanel.SetDock(check, Dock.Right); DockPanel.SetDock(_openUpdate, Dock.Right);
+        feedRow.Children.Add(_openUpdate); feedRow.Children.Add(check); feedRow.Children.Add(_feed);
+        panel.Children.Add(feedRow);
+        _updateResult.Text = "Looks at version tags (v1.4.0): empty = the repository this build came from" + (UpdateChecker.DefaultFeed.Length > 0 ? $" ({UpdateChecker.DefaultFeed})" : "") +
+                             "; or type a GitHub owner/repo, a folder, or a latest.json. Checked once a day at start-up." + (store.IsPortable ? "  ·  This is a portable copy: its data sits in the data folder beside the exe." : "");
+        _updateResult.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
+        panel.Children.Add(_updateResult);
+
         panel.Children.Add(Heading("KEYBOARD"));
         panel.Children.Add(Muted("F5 scan  ·  Esc stop / back  ·  Ctrl+F search  ·  Ctrl+L my shortlist  ·  Ctrl+T test  ·  Ctrl+D favourite  ·  Ctrl+K copy key (yours, else the demo key)  ·  Ctrl+U copy docs URL  ·  " +
-                                 "Ctrl+C copy the selected rows  ·  Ctrl+G tag them  ·  Ctrl+M compare 2-4 of them  ·  Ctrl+H what changed  ·  F1 this box\n" +
+                                 "Ctrl+C copy the selected rows  ·  Ctrl+G tag them  ·  Ctrl+E add them to a collection  ·  Ctrl+M compare 2-4 of them  ·  Ctrl+H what changed  ·  F1 this box\n" +
                                  "Shortlist cards: arrows, Enter details, T test, K copy key, O open docs, U copy URL, D favourite.  " +
                                  "Compare: F5 measure, Ctrl+Shift+C copy as Markdown, Ctrl+1-4 open docs."));
 
         panel.Children.Add(Heading("MOVE MY DATA TO ANOTHER PC"));
-        panel.Children.Add(Muted("Export writes your favourites, tags and notes to one file. Saved keys and edited test requests are tied to this Windows " +
+        panel.Children.Add(Muted("Export writes your favourites, tags, collections and notes to one file. Saved keys and edited test requests are tied to this Windows " +
                                  "account, so they are only included if you give a passphrase - they are then encrypted with it (AES-256). " +
                                  "Import merges: nothing already on this PC is overwritten."));
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0) };

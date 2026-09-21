@@ -68,6 +68,17 @@ key when the provider publishes one, or how and where to get a free key when not
   provider's demo key become a constructor parameter, so the saved key never appears in the code. With more than
   one successful test a tick list asks which become methods (default: the newest test of each distinct request).
   "Save as .cs…" writes the classes or the client to a file.
+- **API of the day** (right end of the dashboard): a keyless or demo-key API with a known working example request,
+  a different one each day - ▶ Test sends it, Details opens it, ↻ picks another.
+- **Collections**: named groups of APIs ("Weather side project"). Right-click rows → "Add the selected rows to a
+  collection…" (Ctrl+E) or the button in the My key & notes card. Each collection is a page of My shortlist (Page
+  box, top right) with the same cards plus Remove (R), Rename and Delete. Every page - the shortlist too - has
+  "Copy page as Markdown" and "Copy / Save C# client": one file with a typed client per API that has a test that
+  worked and a `<Name>Apis` class that builds them all from one HttpClient. Collections travel with Export / Import.
+- **Updates** (About): compares the running version with the newest `v*` tag of an update source - a GitHub
+  `owner/repo`, a folder holding the git repository (tags are read straight from `.git`), or a `latest.json`
+  file / URL. Empty = the repository the build came from. Checked quietly once a day at start-up (⬆ on About).
+- **Docs scan card**: "Open in browser" under the scan result, for the pages that block automated readers.
 - **What changed** (status bar, Ctrl+H): for each of the last 12 scans - manual, automatic or background - the APIs
   that are new, gone, or have a different auth / free-access level (`changes.json`, `Services/ChangeLog.cs`).
   "Show in list" jumps to the API, "Copy as Markdown" exports the report; it updates live when a scan finishes.
@@ -135,9 +146,13 @@ Data: `%LOCALAPPDATA%\ApiScout` (settings.json, catalog.json, changes.json, user
 ## Build / test / publish
 
 ```
-dotnet run --project C:\Claude\ApiScout.Tests -c Release            # 194 checks (add -- --offline to skip live ones)
-dotnet publish C:\Claude\ApiScout\ApiScout.csproj -c Release -o C:\Claude\ApiScout-App
+dotnet run --project C:\Claude\ApiScout.Tests -c Release            # 206 checks (add -- --offline to skip live ones)
+powershell -ExecutionPolicy Bypass -File C:\Claude\ApiScout\publish.ps1   # ..\ApiScout-App + the portable zip (-SkipApp: zip only)
 ```
+
+`publish.ps1` also writes `C:\Claude\ApiScout-Dist\ApiScout-<version>-portable.zip`: one self-contained single-file
+`ApiScout.exe` (about 66 MB, no .NET install needed), `README.md` and `portable.txt`. While `portable.txt` sits beside
+the exe, all data lives in a `data` folder next to it. `latest.json` beside the zip is an update source.
 
 Close ApiScout.exe before republishing. Git: local repo (portable git at `C:\Claude\tools\MinGit\cmd\git.exe`); the
 self-check project `C:\Claude\ApiScout.Tests` sits outside it.

@@ -12,6 +12,7 @@ public sealed class Store
     private readonly object _gate = new();
 
     public string Folder { get; }
+    public bool IsPortable { get; }
     public Settings Settings { get; private set; } = new();
     public UserData User { get; private set; } = new();
     public Dictionary<string, DocsScanResult> DocsScans { get; private set; } = [];
@@ -35,8 +36,10 @@ public sealed class Store
     public Store()
     {
         var over = Environment.GetEnvironmentVariable("APISCOUT_DATA");
-        Folder = !string.IsNullOrWhiteSpace(over)
-            ? over
+        // portable copy: a portable.txt beside the exe keeps everything in a data folder next to it (a USB stick, say)
+        IsPortable = string.IsNullOrWhiteSpace(over) && File.Exists(Path.Combine(AppContext.BaseDirectory, "portable.txt"));
+        Folder = !string.IsNullOrWhiteSpace(over) ? over
+            : IsPortable ? Path.Combine(AppContext.BaseDirectory, "data")
             : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ApiScout");
         Directory.CreateDirectory(Folder);
         Settings = Load<Settings>("settings.json") ?? new();

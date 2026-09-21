@@ -14,6 +14,7 @@ public sealed class BackupFile
     public List<string> Favourites { get; set; } = [];
     public Dictionary<string, List<string>> Tags { get; set; } = [];
     public Dictionary<string, string> Notes { get; set; } = [];
+    public Dictionary<string, List<string>> Collections { get; set; } = [];
     /// <summary>Saved keys and edited test requests: AES-256-GCM under a key derived from the passphrase. Null = exported without them.</summary>
     public string? Secrets { get; set; }
     public string? Salt { get; set; }
@@ -29,7 +30,10 @@ public sealed class BackupSecrets
 
 public sealed record ImportSummary(int Favourites, int Tagged, int Notes, int Keys, int TestRequests, int KeptLocal, bool SecretsSkipped)
 {
+    public int CollectionEntries { get; init; }
+
     public override string ToString() =>
+        (CollectionEntries > 0 ? $"{CollectionEntries:N0} collection entr{(CollectionEntries == 1 ? "y" : "ies")} added. " : "") +
         $"Imported {Favourites:N0} favourite(s), tags for {Tagged:N0} API(s), {Notes:N0} note(s), {Keys:N0} key(s) and {TestRequests:N0} saved test request(s)." +
         (KeptLocal > 0 ? $" {KeptLocal:N0} item(s) already on this PC were kept as they are." : "") +
         (SecretsSkipped ? " The saved keys in the file were skipped (no passphrase given)." : "");
@@ -54,6 +58,7 @@ public static class Backup
             Favourites = [.. store.User.Favourites.Order()],
             Tags = store.User.Tags.ToDictionary(p => p.Key, p => p.Value.ToList()),
             Notes = new(store.User.Notes),
+            Collections = store.User.Collections.ToDictionary(p => p.Key, p => p.Value.ToList()),
         };
         if (!string.IsNullOrEmpty(passphrase))
         {
@@ -82,6 +87,7 @@ public static class Backup
         file.Favourites = [.. (file.Favourites ?? []).Where(f => !string.IsNullOrEmpty(f))];
         file.Tags = (file.Tags ?? []).Where(p => p.Value is not null).ToDictionary(p => p.Key, p => p.Value.Where(t => !string.IsNullOrWhiteSpace(t)).ToList());
         file.Notes = (file.Notes ?? []).Where(p => p.Value is not null).ToDictionary(p => p.Key, p => p.Value);
+        file.Collections = (file.Collections ?? []).Where(p => p.Value is not null && p.Key.Trim().Length > 0).ToDictionary(p => p.Key, p => p.Value.Where(k => !string.IsNullOrEmpty(k)).ToList());
         // the count comes from the file: refuse one that would keep PBKDF2 busy for hours
         if (file.Secrets is not null && file.Iterations is < 0 or > MaxIterations) throw new InvalidDataException("The export file asks for an unreasonable amount of key stretching - it is damaged or not from ApiScout.");
         return file;
@@ -91,7 +97,7 @@ public static class Backup
     /// <exception cref="CryptographicException">Wrong passphrase (or a damaged file).</exception>
     public static ImportSummary Import(Store store, BackupFile file, string? passphrase)
     {
-        int favourites = 0, tagged = 0, notes = 0, keys = 0, requests = 0, kept = 0;
+        int favourites = 0, tagged = 0, notes = 0, keys = 0, requests = 0, kept = 0, collected = 0;
 
         BackupSecrets? secrets = null;
         bool skipped = file.Secrets is not null && string.IsNullOrEmpty(passphrase);
@@ -117,6 +123,13 @@ public static class Backup
             if (!store.User.Notes.TryGetValue(key, out var local) || local.Length == 0) { store.User.Notes[key] = note; notes++; }
             else if (local != note) kept++;
         }
+        foreach (var (name, apiKeys) in file.Collections)
+        {
+            // same name = same collection: what the file has is added to the end
+            var mine = store.User.Collections.Keys.FirstOrDefault(k => k.Equals(name, StringComparison.OrdinalIgnoreCase)) ?? name;
+            if (!store.User.Collections.TryGetValue(mine, out var have)) store.User.Collections[mine] = have = [];
+            foreach (var k in apiKeys) if (!have.Contains(k)) { have.Add(k); collected++; }
+        }
         store.SaveUser();
 
         if (secrets is not null)
@@ -132,7 +145,7 @@ public static class Backup
                 else { store.SetTestRequest(key, request); requests++; }
             }
         }
-        return new(favourites, tagged, notes, keys, requests, kept, skipped);
+        return new(favourites, tagged, notes, keys, requests, kept, skipped) { CollectionEntries = collected };
     }
 
     // layout: 12-byte nonce | 16-byte tag | ciphertext

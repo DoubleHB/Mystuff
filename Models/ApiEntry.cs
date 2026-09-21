@@ -112,6 +112,9 @@ public sealed class Catalog
 public sealed class Settings
 {
     public bool Dark { get; set; } = true;
+    /// <summary>Where "Check for updates" looks: a GitHub owner/repo, a folder with a git repo, or a latest.json path / URL. Empty = the repo this build came from.</summary>
+    public string UpdateFeed { get; set; } = "";
+    public DateTime? LastUpdateCheck { get; set; }
     /// <summary>"Never", "Daily" or "Weekly": re-scan on start-up / while open once the last scan is that old.</summary>
     public string AutoRescan { get; set; } = "Weekly";
     /// <summary>Fetch provider favicons through a public icon service (only the domain name is sent).</summary>
@@ -140,6 +143,8 @@ public sealed class UserData
     public Dictionary<string, string> Notes { get; set; } = [];
     /// <summary>The user's own labels per API.</summary>
     public Dictionary<string, List<string>> Tags { get; set; } = [];
+    /// <summary>Named groups of APIs (collection name → API keys, in the order they were added).</summary>
+    public Dictionary<string, List<string>> Collections { get; set; } = [];
     /// <summary>APIs that answered "rate limited", and until when.</summary>
     public Dictionary<string, RateLimitNote> RateLimits { get; set; } = [];
     /// <summary>Edited "Test this API" requests (URL + header), DPAPI-encrypted because they may hold a key.</summary>

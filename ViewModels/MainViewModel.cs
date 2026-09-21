@@ -99,7 +99,20 @@ public sealed partial class MainViewModel : ObservableObject
         minute.Start();
         _rescanTimer.Start();
         Application.Current?.Dispatcher.BeginInvoke(AutoRescanIfDue, DispatcherPriority.ApplicationIdle);
+        Application.Current?.Dispatcher.BeginInvoke(() => _ = CheckForUpdateQuietlyAsync(), DispatcherPriority.ApplicationIdle);
     }
+
+    /// <summary>Once a day at start-up; says something only when there is a newer version.</summary>
+    private async Task CheckForUpdateQuietlyAsync()
+    {
+        if (_store.Settings.LastUpdateCheck is { } last && DateTime.Now - last < TimeSpan.FromDays(1)) return;
+        var info = await UpdateChecker.CheckAsync(_store.Settings.UpdateFeed, UpdateChecker.Current, CancellationToken.None);
+        _store.Settings.LastUpdateCheck = DateTime.Now;
+        _store.SaveSettings();
+        if (info.Newer) { UpdateNote = $"ApiScout {info.Latest} is available"; ShowToast($"⬆ {UpdateNote} - see About (F1)"); }
+    }
+
+    [ObservableProperty] private string _updateNote = "";
 
     public string[] AutoRescanOptions { get; } = ["Never", "Daily", "Weekly"];
 
@@ -434,9 +447,147 @@ public sealed partial class MainViewModel : ObservableObject
 
     partial void OnShowShortlistChanged(bool value) { if (value) RefreshShortlist(); }
 
+    // ---- collections: named groups of APIs, shown as further pages of the shortlist
+
+    public const string ShortlistPageName = "★ My shortlist (favourites and tagged)";
+    public ObservableCollection<string> ShortlistPages { get; } = [ShortlistPageName];
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsCollectionPage), nameof(ShortlistTitle))] private string _shortlistPage = ShortlistPageName;
+    public bool IsCollectionPage => ShortlistPage != ShortlistPageName;
+    public string ShortlistTitle => IsCollectionPage ? ShortlistPage : "My shortlist";
+    public IEnumerable<string> CollectionNames => _store.User.Collections.Keys;
+
+    partial void OnShortlistPageChanged(string value)
+    {
+        if (value is null) { ShortlistPage = ShortlistPageName; return; } // the page list was rebuilt under the combo box
+        if (ShowShortlist) RefreshShortlist();
+    }
+
+    private void RefreshCollections()
+    {
+        var names = _store.User.Collections.Keys.OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToList();
+        for (int i = ShortlistPages.Count - 1; i >= 1; i--) if (!names.Contains(ShortlistPages[i])) { if (ShortlistPage == ShortlistPages[i]) ShortlistPage = ShortlistPageName; ShortlistPages.RemoveAt(i); }
+        foreach (var n in names) if (!ShortlistPages.Contains(n)) ShortlistPages.Insert(1 + names.IndexOf(n), n);
+        foreach (var r in _all) r.CollectionsLabel = "";
+        var byKey = _all.ToDictionary(r => r.Key);
+        foreach (var (name, keys) in _store.User.Collections)
+            foreach (var k in keys) if (byKey.TryGetValue(k, out var row)) row.CollectionsLabel = row.CollectionsLabel.Length == 0 ? name : row.CollectionsLabel + ", " + name;
+        OnPropertyChanged(nameof(CollectionNames));
+    }
+
+    private string? FindCollection(string name) => _store.User.Collections.Keys.FirstOrDefault(k => k.Equals(name.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Adds the rows to a collection, creating it when the name is new.</summary>
+    public void AddToCollection(IReadOnlyList<ApiRow> rows, string name)
+    {
+        name = name.Trim();
+        if (name.Length == 0 || rows.Count == 0 || name == ShortlistPageName) return;
+        if (name.Length > 40) name = name[..40].Trim();
+        var key = FindCollection(name) ?? name;
+        if (!_store.User.Collections.TryGetValue(key, out var list)) _store.User.Collections[key] = list = [];
+        int added = 0;
+        foreach (var r in rows) if (!list.Contains(r.Key)) { list.Add(r.Key); added++; }
+        _store.SaveUser();
+        RefreshCollections();
+        if (ShowShortlist && ShortlistPage == key) RefreshShortlist();
+        ShowToast(added == 0 ? $"Already in \"{key}\"" : $"✓ {added} API{(added == 1 ? "" : "s")} added to \"{key}\" - see My shortlist (Ctrl+L)");
+    }
+
+    [RelayCommand]
+    private void RemoveFromCollection(ApiRow? row)
+    {
+        if (row is null || !IsCollectionPage || !_store.User.Collections.TryGetValue(ShortlistPage, out var list)) return;
+        ShortlistSelected = row;
+        list.Remove(row.Key);
+        _store.SaveUser();
+        RefreshCollections();
+        RefreshShortlist();
+    }
+
+    /// <summary>False when the name is empty or taken.</summary>
+    public bool RenameCollection(string newName)
+    {
+        newName = newName.Trim();
+        if (!IsCollectionPage || newName.Length is 0 or > 40 || newName == ShortlistPageName || (FindCollection(newName) is { } taken && taken != ShortlistPage)) return false;
+        var list = _store.User.Collections[ShortlistPage];
+        _store.User.Collections.Remove(ShortlistPage);
+        _store.User.Collections[newName] = list;
+        _store.SaveUser();
+        RefreshCollections();
+        ShortlistPage = newName;
+        return true;
+    }
+
+    public void DeleteCollection()
+    {
+        if (!IsCollectionPage) return;
+        var name = ShortlistPage;
+        _store.User.Collections.Remove(name);
+        _store.SaveUser();
+        RefreshCollections();
+        ShortlistPage = ShortlistPageName;
+        ShowToast($"Collection \"{name}\" deleted - the APIs themselves are untouched");
+    }
+
+    [RelayCommand]
+    private void CopyCollectionMarkdown()
+    {
+        if (ShortlistRows.Count == 0) { ShowToast("Nothing on this page yet"); return; }
+        CopyText($"## {ShortlistTitle}\n\n" + Exporter.MarkdownTable(ShortlistRows), $"{ShortlistRows.Count} APIs as Markdown");
+    }
+
+    /// <summary>One file with a client per API on the page that has a successful test, plus a facade. Null when none has.</summary>
+    public string? BuildPageClient() =>
+        ClientGenerator.GenerateMany(ShortlistTitle, ShortlistRows.Select(r => (r.Name, (IEnumerable<TestHistoryEntry>)(_store.TestHistory.GetValueOrDefault(r.Key) ?? []), r.DemoKey)));
+
+    [RelayCommand]
+    private void CopyPageClient()
+    {
+        if (BuildPageClient() is { } code) CopyText(code, "C# client for the page");
+        else ShowToast("No API on this page has a successful test yet - press ▶ Test on a card first");
+    }
+
+    [RelayCommand]
+    private void SavePageClient()
+    {
+        if (BuildPageClient() is not { } code) { ShowToast("No API on this page has a successful test yet - press ▶ Test on a card first"); return; }
+        var dlg = new SaveFileDialog { Title = "Save the C# client", FileName = JsonToCSharp.Pascal(ShortlistTitle).TrimStart('@') + "Apis.cs", Filter = "C# file|*.cs|All files|*.*", DefaultExt = ".cs" };
+        if (dlg.ShowDialog() != true) return;
+        try { File.WriteAllText(dlg.FileName, code.ReplaceLineEndings() + Environment.NewLine, new UTF8Encoding(false)); ShowToast("✓ Saved " + Path.GetFileName(dlg.FileName)); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException) { StatusText = "Could not save the file: " + ex.Message; }
+    }
+
+    // ---- API of the day: a keyless (or demo-key) API whose example request is known to work, a different one each day
+
+    [ObservableProperty] private ApiRow? _apiOfTheDay;
+    private int _dayOffset;
+
+    private void PickApiOfTheDay()
+    {
+        var candidates = _all.Where(r => r.HasExample && (r.KeylessWorks || r.HasDemoKey) && !r.IsLimited).OrderBy(r => r.Key, StringComparer.Ordinal).ToList();
+        ApiOfTheDay = candidates.Count == 0 ? null : candidates[(DateOnly.FromDateTime(DateTime.Today).DayNumber + _dayOffset) % candidates.Count];
+        if (ApiOfTheDay is { } pick) EnsureRowLoaded(pick);
+    }
+
+    [RelayCommand]
+    private void AnotherApiOfTheDay() { _dayOffset++; PickApiOfTheDay(); }
+
+    [RelayCommand(AllowConcurrentExecutions = true)]
+    private async Task TestApiOfTheDayAsync()
+    {
+        if (ApiOfTheDay is not { } row) return;
+        row.LastTestLabel = "Testing…";
+        await RunTestAsync(row);
+        if (!row.LastTestOk) ShowToast("That one did not answer properly today - ↻ picks another");
+    }
+
+    [RelayCommand]
+    private void ShowApiOfTheDay() => ShowRow(ApiOfTheDay);
+
     private void RefreshShortlist()
     {
-        var rows = _all.Where(r => r.IsFavourite || r.HasTags).OrderByDescending(r => r.IsFavourite).ThenBy(r => r.Name, StringComparer.OrdinalIgnoreCase).ToList();
+        var rows = IsCollectionPage && _store.User.Collections.TryGetValue(ShortlistPage, out var wanted)
+            ? [.. wanted.Select(k => _all.FirstOrDefault(r => r.Key == k)).OfType<ApiRow>()]
+            : _all.Where(r => r.IsFavourite || r.HasTags).OrderByDescending(r => r.IsFavourite).ThenBy(r => r.Name, StringComparer.OrdinalIgnoreCase).ToList();
         foreach (var r in rows) { EnsureRowLoaded(r); r.RefreshLimit(); }
         var keep = ShortlistSelected;
         int at = keep is null ? 0 : Math.Max(0, ShortlistRows.ToList().IndexOf(keep));
@@ -444,7 +595,9 @@ public sealed partial class MainViewModel : ObservableObject
         // a card that just left the page hands the selection to its neighbour
         ShortlistSelected = keep is not null && rows.Contains(keep) ? keep : rows.ElementAtOrDefault(Math.Min(at, rows.Count - 1));
         ShortlistSummary = rows.Count == 0
-            ? "Nothing here yet. Star an API (Ctrl+D) or give it a tag and it shows up on this page with its key and last test result."
+            ? (IsCollectionPage ? "This collection is empty (or its APIs are no longer in the catalogue). Right-click rows in the list → Add to a collection."
+                                : "Nothing here yet. Star an API (Ctrl+D) or give it a tag and it shows up on this page with its key and last test result.")
+            : IsCollectionPage ? $"Collection of {rows.Count:N0} API{(rows.Count == 1 ? "" : "s")}, {rows.Count(r => r.HasLastTest && r.LastTestOk):N0} with a test that worked (those go into the C# client)."
             : $"{rows.Count:N0} API{(rows.Count == 1 ? "" : "s")}: {rows.Count(r => r.IsFavourite):N0} favourite(s), {rows.Count(r => r.HasTags):N0} tagged, {rows.Count(r => r.HasMyKey):N0} with your own key saved.";
     }
 
@@ -661,6 +814,8 @@ public sealed partial class MainViewModel : ObservableObject
             Categories.Add(new CategoryItem(name));
         SelectedCategory = Categories.FirstOrDefault(c => c.Name == selectedName) ?? Categories[0];
         RefreshTagFilters();
+        RefreshCollections();
+        PickApiOfTheDay();
         OnPropertyChanged(nameof(IsEmpty));
         RefreshDashboard();
         ApplyFilter();
