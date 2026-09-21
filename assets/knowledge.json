@@ -1,0 +1,1137 @@
+{
+  "exportedFrom": "ApiScout 1.6.0",
+  "categoryRules": [
+    {
+      "pattern": "(?<![\\p{L}])(?:misc|other(?![\\p{L}])|uncategor)",
+      "category": "Other"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:anime|manga)",
+      "category": "Anime & Manga"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:animal|pets?)",
+      "category": "Animals"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:malware|security|authenticat|authoriz|identity|privacy|captcha|fraud)",
+      "category": "Security & Authentication"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:art(?!i)|design|fonts?|colou?rs?)",
+      "category": "Art & Design"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:blockchain|crypto|web3|nft)",
+      "category": "Blockchain & Crypto"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:sports?|football|soccer|cricket|f1|racing)",
+      "category": "Sports & Fitness"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:social)",
+      "category": "Social"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:books?|literature|librar)",
+      "category": "Books & Literature"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:calendar|holidays?|time|dates?)",
+      "category": "Calendar & Time"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:cloud|storage|hosting|file sharing|backend|iot(?![\\p{L}]))",
+      "category": "Cloud & Storage"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:continuous integration|development|developer|devops|tools?|programming|open ?source|source control|mcp|api)",
+      "category": "Development Tools"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:currency|exchange|financ|stocks?|bank|payments?|money|invest|tax)",
+      "category": "Currency & Finance"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:validation|data access|open data|analytics|databases?)",
+      "category": "Data & Validation"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:dictionar|language|translat|words?)",
+      "category": "Dictionaries & Language"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:documents?|productivity|office|pdf|notes?|collaboration|project management|forms?)",
+      "category": "Documents & Productivity"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:e-?mail)",
+      "category": "Email"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:environment|climate|energy|air quality|sustainab)",
+      "category": "Environment"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:events?|tickets?)",
+      "category": "Events"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:food|drink|recipes?|restaurants?|beer|wine|coffee)",
+      "category": "Food & Drink"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:games?|gaming|comics?|videogames?|esports?)",
+      "category": "Games & Comics"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:geo|maps?|location|places?|countr|ip address)",
+      "category": "Geocoding & Maps"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:government|civic|politic|legal|law|public sector)",
+      "category": "Government & Open Data"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:health|medic|fitness|covid|nutrition|drugs?)",
+      "category": "Health"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:jobs?|career|recruit|hr(?![\\p{L}]))",
+      "category": "Jobs"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:machine learning|artificial|llm|vision|nlp|ai(?![\\p{L}])|ml(?![\\p{L}]))",
+      "category": "Machine Learning & AI"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:text)",
+      "category": "Text Analysis"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:movies?|video|film|stream|media|entertainment|tv(?![\\p{L}]))",
+      "category": "Movies, TV & Video"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:music|audio|podcasts?|radio|lyrics)",
+      "category": "Music"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:news|rss|blog)",
+      "category": "News"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:personality|quotes?|jokes?|humou?r|trivia|random|fun(?![\\p{L}]))",
+      "category": "Quotes, Jokes & Fun"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:phone|sms|messag|telephony|telecom|chat|notification|push|communicat)",
+      "category": "Phone & Messaging"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:photo|images?|pictures?|wallpaper)",
+      "category": "Photography & Images"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:science|math|space|astronom|chemistry|physics|education|university|school|academic)",
+      "category": "Science, Math & Education"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:shopping|e-?commerce|commerce|retail|marketplace|products?|advertising|marketing|seo)",
+      "category": "Shopping & Marketing"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:test data|mock|fake|placeholder|dummy)",
+      "category": "Test Data"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:tracking|logistics|shipping|parcel|delivery)",
+      "category": "Tracking & Logistics"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:transport|transit|travel|flights?|aviation|rail|train|hotel|bus(?![\\p{L}]))",
+      "category": "Transport & Travel"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:url shorten|shorten|links?)",
+      "category": "URL Shorteners"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:vehicles?|cars?|automotive)",
+      "category": "Vehicles"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:weather|forecast)",
+      "category": "Weather"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:business|enterprise|crm|customer|sales|support|compan|real estate|property)",
+      "category": "Business"
+    }
+  ],
+  "keywordRules": [
+    {
+      "pattern": "(?<![\\p{L}])(?:weather|forecast|meteorolog|temperature|rainfall)(?![\\p{L}])",
+      "category": "Weather"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:bitcoin|crypto\\w*|blockchain|ethereum|nft|token prices?|defi)(?![\\p{L}])",
+      "category": "Blockchain & Crypto"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:stocks?|forex|currency|exchange rates?|financial|banks?|payments?|invoice|tax|market data)(?![\\p{L}])",
+      "category": "Currency & Finance"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:geocod\\w*|maps?|postcodes?|zip codes?|countries|country|cities|latitude|timezones?|ip address|geolocation|ip lookup)(?![\\p{L}])",
+      "category": "Geocoding & Maps"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:movies?|films?|tv shows?|series|youtube|videos?|streaming|actors?)(?![\\p{L}])",
+      "category": "Movies, TV & Video"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:music|songs?|lyrics|albums?|artists?|podcasts?|radio|spotify)(?![\\p{L}])",
+      "category": "Music"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:anime|manga)(?![\\p{L}])",
+      "category": "Anime & Manga"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:cats?|dogs?|animals?|birds?|pets?|species|fish|wildlife)(?![\\p{L}])",
+      "category": "Animals"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:games?|gaming|pok[eé]mon|minecraft|steam|chess|comics?|marvel|dungeons)(?![\\p{L}])",
+      "category": "Games & Comics"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:jokes?|quotes?|trivia|facts?|memes?|random|insults?|advice|fortune)(?![\\p{L}])",
+      "category": "Quotes, Jokes & Fun"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:recipes?|food|meals?|cocktails?|beers?|brewer\\w*|coffee|nutrition|restaurants?)(?![\\p{L}])",
+      "category": "Food & Drink"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:books?|poems?|poetry|bible|quran|literature|library|authors?)(?![\\p{L}])",
+      "category": "Books & Literature"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:dictionary|translat\\w*|words?|synonyms?|languages?|grammar|spelling)(?![\\p{L}])",
+      "category": "Dictionaries & Language"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:news|headlines|articles?|rss)(?![\\p{L}])",
+      "category": "News"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:football|soccer|nba|nfl|cricket|formula 1|f1|sports?|olympic\\w*|tennis|baseball|hockey)(?![\\p{L}])",
+      "category": "Sports & Fitness"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:nasa|space|astronom\\w*|planets?|science|math\\w*|numbers?|physics|chemistry|universit\\w*|research|papers?)(?![\\p{L}])",
+      "category": "Science, Math & Education"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:government|census|parliament|congress|legislation|open data|public data|elections?)(?![\\p{L}])",
+      "category": "Government & Open Data"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:health|medical|covid|disease|drugs?|hospital|fitness|fda)(?![\\p{L}])",
+      "category": "Health"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:images?|photos?|pictures?|avatars?|placeholder images?|wallpapers?)(?![\\p{L}])",
+      "category": "Photography & Images"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:art|museum|design|colou?rs?|fonts?|icons?)(?![\\p{L}])",
+      "category": "Art & Design"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:machine learning|ai|llm|sentiment|ocr|face detection|neural|gpt|text-to-speech)(?![\\p{L}])",
+      "category": "Machine Learning & AI"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:fake data|mock|dummy|lorem|test data|placeholder)(?![\\p{L}])",
+      "category": "Test Data"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:emails?|smtp|mailbox|disposable)(?![\\p{L}])",
+      "category": "Email"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:sms|phone numbers?|whatsapp|telegram|messaging|notifications?)(?![\\p{L}])",
+      "category": "Phone & Messaging"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:flights?|airports?|trains?|bus|transit|transport|travel|hotels?|airlines?)(?![\\p{L}])",
+      "category": "Transport & Travel"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:cars?|vehicles?|vin)(?![\\p{L}])",
+      "category": "Vehicles"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:jobs?|careers?|vacancies)(?![\\p{L}])",
+      "category": "Jobs"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:holidays?|calendar|dates?|time)(?![\\p{L}])",
+      "category": "Calendar & Time"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:air quality|carbon|emissions|climate|energy|pollution|earthquakes?|recycling)(?![\\p{L}])",
+      "category": "Environment"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:security|malware|phishing|password|breach\\w*|vulnerabilit\\w*|threat|virus)(?![\\p{L}])",
+      "category": "Security & Authentication"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:shorten\\w*|short urls?|short links?)(?![\\p{L}])",
+      "category": "URL Shorteners"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:twitter|facebook|instagram|reddit|social|discord|mastodon)(?![\\p{L}])",
+      "category": "Social"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:shopping|products?|prices?|e-?commerce|store|barcode)(?![\\p{L}])",
+      "category": "Shopping & Marketing"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:parcels?|shipping|tracking|logistics)(?![\\p{L}])",
+      "category": "Tracking & Logistics"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:github|json|developer|code|user ?agent|qr codes?|http|webhooks?|regex|screenshot|pdf|ip|dns|domain|whois|uuid|hash)(?![\\p{L}])",
+      "category": "Development Tools"
+    },
+    {
+      "pattern": "(?<![\\p{L}])(?:events?|tickets?|concerts?)(?![\\p{L}])",
+      "category": "Events"
+    }
+  ],
+  "hints": [
+    {
+      "hosts": [
+        "api.nasa.gov"
+      ],
+      "howTo": "DEMO_KEY works straight away (30 requests/hour, 50/day per IP). Fill in the short form on api.nasa.gov for your own free key (1,000 requests/hour) - it arrives by email instantly.",
+      "signupUrl": "https://api.nasa.gov/#signUp",
+      "demoKey": "DEMO_KEY",
+      "keyUsage": "Query parameter: api_key=DEMO_KEY",
+      "example": "https://api.nasa.gov/planetary/apod?api_key=DEMO_KEY",
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "api.open.fec.gov",
+        "api.data.gov",
+        "regulations.gov",
+        "collegescorecard.ed.gov"
+      ],
+      "howTo": "US government APIs behind api.data.gov share one key system. DEMO_KEY works for light testing; one free sign-up gives a key valid across all api.data.gov services.",
+      "signupUrl": "https://api.data.gov/signup/",
+      "demoKey": "DEMO_KEY",
+      "keyUsage": "Query parameter api_key=DEMO_KEY or header X-Api-Key",
+      "example": "https://api.open.fec.gov/v1/candidates/?per_page=1&api_key=DEMO_KEY",
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "alphavantage.co"
+      ],
+      "howTo": "The 'demo' key only answers the exact sample queries in the docs (e.g. IBM). Claim a free key with just an email address - 25 requests/day.",
+      "signupUrl": "https://www.alphavantage.co/support/#api-key",
+      "demoKey": "demo",
+      "keyUsage": "Query parameter: apikey=demo",
+      "example": "https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=IBM&apikey=demo",
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "twelvedata.com"
+      ],
+      "howTo": "The 'demo' key works for the symbols used in the docs (AAPL, EUR/USD…). The free Basic plan gives 800 credits/day after sign-up.",
+      "signupUrl": "https://twelvedata.com/register",
+      "demoKey": "demo",
+      "keyUsage": "Query parameter: apikey=demo",
+      "example": "https://api.twelvedata.com/time_series?symbol=AAPL&interval=1day&outputsize=5&apikey=demo",
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "eodhd.com",
+        "eodhistoricaldata.com"
+      ],
+      "howTo": "The 'demo' token works for a handful of tickers (AAPL.US, TSLA.US, VTI.US, AMZN.US, BTC-USD.CC, EURUSD.FOREX). Free sign-up gives 20 calls/day on any ticker.",
+      "signupUrl": "https://eodhd.com/register",
+      "demoKey": "demo",
+      "keyUsage": "Query parameter: api_token=demo",
+      "example": "https://eodhd.com/api/eod/AAPL.US?api_token=demo&fmt=json",
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "thesportsdb.com"
+      ],
+      "howTo": "The free shared key is 123 (the older key 3 still answers too). It goes in the URL path. Patreon supporters get a private key with livescores and higher limits.",
+      "signupUrl": "https://www.thesportsdb.com/pricing",
+      "demoKey": "123",
+      "keyUsage": "Part of the path: /api/v1/json/123/…",
+      "example": "https://www.thesportsdb.com/api/v1/json/123/searchteams.php?t=Arsenal",
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "theaudiodb.com"
+      ],
+      "howTo": "The free shared test key is 123 (the older key 2 still answers). It goes in the URL path.",
+      "signupUrl": "https://www.theaudiodb.com/pricing",
+      "demoKey": "123",
+      "keyUsage": "Part of the path: /api/v1/json/123/…",
+      "example": "https://www.theaudiodb.com/api/v1/json/123/search.php?s=coldplay",
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "thecocktaildb.com"
+      ],
+      "howTo": "The free test key is 1, in the URL path. Fine for development and education; supporters get a production key.",
+      "signupUrl": "https://www.thecocktaildb.com/api.php",
+      "demoKey": "1",
+      "keyUsage": "Part of the path: /api/json/v1/1/…",
+      "example": "https://www.thecocktaildb.com/api/json/v1/1/search.php?s=margarita",
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "themealdb.com"
+      ],
+      "howTo": "The free test key is 1, in the URL path. Fine for development and education; supporters get a production key.",
+      "signupUrl": "https://www.themealdb.com/api.php",
+      "demoKey": "1",
+      "keyUsage": "Part of the path: /api/json/v1/1/…",
+      "example": "https://www.themealdb.com/api/json/v1/1/search.php?s=pie",
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "ocr.space"
+      ],
+      "howTo": "The key 'helloworld' is a public test key (heavily rate limited). Register for a free key with 25,000 requests/month.",
+      "signupUrl": "https://ocr.space/ocrapi/freekey",
+      "demoKey": "helloworld",
+      "keyUsage": "Query parameter or header: apikey=helloworld",
+      "example": "https://api.ocr.space/parse/imageurl?apikey=helloworld&url=https://dl.a9t9.com/ocr/solarcell.jpg",
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "europeana.eu"
+      ],
+      "howTo": "The key 'api2demo' is Europeana's public demo key. Request your own free key from the Europeana account page.",
+      "signupUrl": "https://pro.europeana.eu/pages/get-api",
+      "demoKey": "api2demo",
+      "keyUsage": "Query parameter: wskey=api2demo",
+      "example": "https://api.europeana.eu/record/v2/search.json?wskey=api2demo&query=vermeer&rows=3",
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "reqres.in"
+      ],
+      "howTo": "ReqRes publishes a free shared key for its fake-data API. Send it as a header.",
+      "signupUrl": "https://reqres.in/signup",
+      "demoKey": "reqres-free-v1",
+      "keyUsage": "Header: x-api-key: reqres-free-v1",
+      "example": "https://reqres.in/api/users/2",
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "coingecko.com"
+      ],
+      "howTo": "Works without a key (roughly 5-15 calls/minute). A free Demo account gives a key with a steadier 30 calls/minute.",
+      "signupUrl": "https://www.coingecko.com/en/api/pricing",
+      "demoKey": null,
+      "keyUsage": "Header x-cg-demo-api-key",
+      "example": "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=gbp",
+      "keylessWorks": true
+    },
+    {
+      "hosts": [
+        "api.github.com",
+        "docs.github.com",
+        "developer.github.com"
+      ],
+      "howTo": "Works without a token at 60 requests/hour. A free personal access token lifts that to 5,000/hour.",
+      "signupUrl": "https://github.com/settings/tokens",
+      "demoKey": null,
+      "keyUsage": "Header Authorization: Bearer <token>",
+      "example": "https://api.github.com/repos/dotnet/wpf",
+      "keylessWorks": true
+    },
+    {
+      "hosts": [
+        "exchangerate-api.com",
+        "open.er-api.com"
+      ],
+      "howTo": "The open endpoint needs no key (daily rates). A free account adds a key with 1,500 requests/month.",
+      "signupUrl": "https://app.exchangerate-api.com/sign-up",
+      "demoKey": null,
+      "keyUsage": null,
+      "example": "https://open.er-api.com/v6/latest/GBP",
+      "keylessWorks": true
+    },
+    {
+      "hosts": [
+        "ipinfo.io"
+      ],
+      "howTo": "Works without a token for light use. A free account gives 50,000 lookups/month.",
+      "signupUrl": "https://ipinfo.io/signup",
+      "demoKey": null,
+      "keyUsage": "Query parameter token=…",
+      "example": "https://ipinfo.io/8.8.8.8/json",
+      "keylessWorks": true
+    },
+    {
+      "hosts": [
+        "thecatapi.com",
+        "thedogapi.com"
+      ],
+      "howTo": "Image search works without a key (10 results max). A free key unlocks votes, favourites and bigger pages.",
+      "signupUrl": "https://thecatapi.com/signup",
+      "demoKey": null,
+      "keyUsage": "Header x-api-key",
+      "example": "https://api.thecatapi.com/v1/images/search",
+      "keylessWorks": true
+    },
+    {
+      "hosts": [
+        "api.tfl.gov.uk",
+        "tfl.gov.uk"
+      ],
+      "howTo": "Works without a key at a low rate. Register on the TfL API portal for a free app_key (500 requests/minute).",
+      "signupUrl": "https://api-portal.tfl.gov.uk/signup",
+      "demoKey": null,
+      "keyUsage": "Query parameter app_key=…",
+      "example": "https://api.tfl.gov.uk/Line/Mode/tube/Status",
+      "keylessWorks": true
+    },
+    {
+      "hosts": [
+        "open.fda.gov",
+        "api.fda.gov"
+      ],
+      "howTo": "No key needed for 1,000 requests/day. A free api.data.gov key lifts it to 120,000/day.",
+      "signupUrl": "https://open.fda.gov/apis/authentication/",
+      "demoKey": null,
+      "keyUsage": "Query parameter api_key=…",
+      "example": "https://api.fda.gov/drug/label.json?limit=1",
+      "keylessWorks": true
+    },
+    {
+      "hosts": [
+        "omdbapi.com"
+      ],
+      "howTo": "Free key (1,000 requests/day): enter your email on the API key page, then click the activation link they send.",
+      "signupUrl": "https://www.omdbapi.com/apikey.aspx",
+      "demoKey": null,
+      "keyUsage": "Query parameter apikey=…",
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "openweathermap.org"
+      ],
+      "howTo": "Create a free account; a default key appears under 'API keys' and activates within a couple of hours. Free plan: 1,000 calls/day.",
+      "signupUrl": "https://home.openweathermap.org/users/sign_up",
+      "demoKey": null,
+      "keyUsage": "Query parameter appid=…",
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "weatherapi.com"
+      ],
+      "howTo": "Free plan after sign-up; the key is shown on your dashboard immediately.",
+      "signupUrl": "https://www.weatherapi.com/signup.aspx",
+      "demoKey": null,
+      "keyUsage": "Query parameter key=…",
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "newsapi.org"
+      ],
+      "howTo": "Free Developer key after registering (100 requests/day, localhost/dev use only).",
+      "signupUrl": "https://newsapi.org/register",
+      "demoKey": null,
+      "keyUsage": "Header X-Api-Key or query apiKey=…",
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "themoviedb.org"
+      ],
+      "howTo": "Create a free account, then request an API key under Settings → API (choose Developer). Approval is instant.",
+      "signupUrl": "https://www.themoviedb.org/settings/api",
+      "demoKey": null,
+      "keyUsage": "Header Authorization: Bearer <read token> or query api_key=…",
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "giphy.com"
+      ],
+      "howTo": "Create an app in the GIPHY developer dashboard to get a free beta key.",
+      "signupUrl": "https://developers.giphy.com/dashboard/",
+      "demoKey": null,
+      "keyUsage": "Query parameter api_key=…",
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "unsplash.com"
+      ],
+      "howTo": "Register as a developer and create an application; the Access Key is shown on the app page (50 requests/hour in demo mode).",
+      "signupUrl": "https://unsplash.com/oauth/applications",
+      "demoKey": null,
+      "keyUsage": "Header Authorization: Client-ID <access key>",
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "pexels.com"
+      ],
+      "howTo": "Free key: sign in and request one - it is issued instantly.",
+      "signupUrl": "https://www.pexels.com/api/new/",
+      "demoKey": null,
+      "keyUsage": "Header Authorization: <key>",
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "pixabay.com"
+      ],
+      "howTo": "Sign in to Pixabay - your key is then printed inside the API documentation page itself.",
+      "signupUrl": "https://pixabay.com/api/docs/",
+      "demoKey": null,
+      "keyUsage": "Query parameter key=…",
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "coinmarketcap.com"
+      ],
+      "howTo": "Free Basic plan (10,000 credits/month) after sign-up; the key is on the developer dashboard.",
+      "signupUrl": "https://pro.coinmarketcap.com/signup",
+      "demoKey": null,
+      "keyUsage": "Header X-CMC_PRO_API_KEY",
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "etherscan.io"
+      ],
+      "howTo": "Create a free account, then add a key under 'API Keys' (5 calls/second).",
+      "signupUrl": "https://etherscan.io/myapikey",
+      "demoKey": null,
+      "keyUsage": "Query parameter apikey=…",
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "finnhub.io"
+      ],
+      "howTo": "Free key shown on the dashboard right after registering (60 calls/minute).",
+      "signupUrl": "https://finnhub.io/register",
+      "demoKey": null,
+      "keyUsage": "Query parameter token=…",
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "polygon.io"
+      ],
+      "howTo": "Free Basic plan (5 calls/minute, end-of-day data) after sign-up.",
+      "signupUrl": "https://polygon.io/dashboard/signup",
+      "demoKey": null,
+      "keyUsage": "Query parameter apiKey=…",
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "financialmodelingprep.com"
+      ],
+      "howTo": "Free plan (250 requests/day) after sign-up; the key is on your dashboard.",
+      "signupUrl": "https://site.financialmodelingprep.com/register",
+      "demoKey": null,
+      "keyUsage": "Query parameter apikey=…",
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "stlouisfed.org"
+      ],
+      "howTo": "Create a free FRED account and request a key - issued instantly.",
+      "signupUrl": "https://fredaccount.stlouisfed.org/apikeys",
+      "demoKey": null,
+      "keyUsage": "Query parameter api_key=…",
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "spoonacular.com"
+      ],
+      "howTo": "Free plan (150 points/day) - sign up and copy the key from your profile.",
+      "signupUrl": "https://spoonacular.com/food-api/console#Dashboard",
+      "demoKey": null,
+      "keyUsage": "Query parameter apiKey=…",
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "edamam.com"
+      ],
+      "howTo": "Sign up for the free Developer plan to get an app_id and app_key.",
+      "signupUrl": "https://developer.edamam.com/edamam-recipe-api",
+      "demoKey": null,
+      "keyUsage": "Query parameters app_id=…&app_key=…",
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "last.fm"
+      ],
+      "howTo": "Create an API account - the key is shown immediately.",
+      "signupUrl": "https://www.last.fm/api/account/create",
+      "demoKey": null,
+      "keyUsage": "Query parameter api_key=…",
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "spotify.com"
+      ],
+      "howTo": "Create an app in the Spotify developer dashboard to get a client id and secret, then use the OAuth client-credentials flow.",
+      "signupUrl": "https://developer.spotify.com/dashboard",
+      "demoKey": null,
+      "keyUsage": null,
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "googleapis.com",
+        "developers.google.com",
+        "cloud.google.com"
+      ],
+      "howTo": "Create a project in Google Cloud Console, enable the API you want, then create an API key (or OAuth client) under Credentials. Most Google APIs have a free quota.",
+      "signupUrl": "https://console.cloud.google.com/apis/credentials",
+      "demoKey": null,
+      "keyUsage": "Query parameter key=…",
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "twitch.tv"
+      ],
+      "howTo": "Register an application in the Twitch developer console for a client id and secret.",
+      "signupUrl": "https://dev.twitch.tv/console/apps",
+      "demoKey": null,
+      "keyUsage": null,
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "reddit.com"
+      ],
+      "howTo": "Create a 'script' app under Reddit preferences → apps to get a client id and secret.",
+      "signupUrl": "https://www.reddit.com/prefs/apps",
+      "demoKey": null,
+      "keyUsage": null,
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "rawg.io"
+      ],
+      "howTo": "Free key (20,000 requests/month) from the API page once signed in.",
+      "signupUrl": "https://rawg.io/apidocs",
+      "demoKey": null,
+      "keyUsage": "Query parameter key=…",
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "football-data.org"
+      ],
+      "howTo": "Register for the free tier (12 competitions, 10 calls/minute); the token arrives by email.",
+      "signupUrl": "https://www.football-data.org/client/register",
+      "demoKey": null,
+      "keyUsage": "Header X-Auth-Token",
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "azure.com",
+        "azure.microsoft.com",
+        "learn.microsoft.com"
+      ],
+      "howTo": "An Azure management or service API. Create a free Azure account (12 months of free services plus always-free allowances; a card is needed for identity checks), register an app in Microsoft Entra ID, and call the API with an OAuth bearer token. Usage beyond the free allowances is billed.",
+      "signupUrl": "https://azure.microsoft.com/free/",
+      "demoKey": null,
+      "keyUsage": "Header Authorization: Bearer <Entra ID token>",
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "aws.amazon.com",
+        "docs.aws.amazon.com"
+      ],
+      "howTo": "An Amazon Web Services API. Create an AWS account (Free Tier: 12 months plus always-free allowances; a card is required), create an IAM user or role, and sign requests with Signature V4 - in practice use the AWS SDK or CLI rather than raw HTTP. Usage beyond the Free Tier is billed.",
+      "signupUrl": "https://aws.amazon.com/free/",
+      "demoKey": null,
+      "keyUsage": "AWS Signature V4 (access key id + secret) - use the AWS SDK",
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "rapidapi.com"
+      ],
+      "howTo": "This API is sold through RapidAPI. One free RapidAPI account gives a single key that works for every API on the marketplace - subscribe to this API's free (Basic) plan, then copy the key from the code snippet panel.",
+      "signupUrl": "https://rapidapi.com/auth/sign-up",
+      "demoKey": null,
+      "keyUsage": "Headers X-RapidAPI-Key and X-RapidAPI-Host",
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "apilayer.com",
+        "ipstack.com",
+        "marketstack.com",
+        "weatherstack.com",
+        "numverify.com",
+        "fixer.io",
+        "aviationstack.com",
+        "currencylayer.com",
+        "mediastack.com",
+        "positionstack.com"
+      ],
+      "howTo": "An APILayer product: sign up for the free plan and the access key is on your dashboard.",
+      "signupUrl": "https://apilayer.com/signup",
+      "demoKey": null,
+      "keyUsage": "Query parameter access_key=… (or header apikey)",
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "abstractapi.com"
+      ],
+      "howTo": "Each Abstract API has its own free key - sign up, pick the API, copy the key.",
+      "signupUrl": "https://app.abstractapi.com/users/signup",
+      "demoKey": null,
+      "keyUsage": "Query parameter api_key=…",
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "mapbox.com"
+      ],
+      "howTo": "A default public token is created with your free account.",
+      "signupUrl": "https://account.mapbox.com/access-tokens/",
+      "demoKey": null,
+      "keyUsage": "Query parameter access_token=…",
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "tomtom.com"
+      ],
+      "howTo": "Register on the TomTom developer portal; a key is created with your first app (2,500 free requests/day).",
+      "signupUrl": "https://developer.tomtom.com/user/register",
+      "demoKey": null,
+      "keyUsage": "Query parameter key=…",
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "opencagedata.com"
+      ],
+      "howTo": "Free trial key (2,500 requests/day) after sign-up.",
+      "signupUrl": "https://opencagedata.com/users/sign_up",
+      "demoKey": null,
+      "keyUsage": "Query parameter key=…",
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "locationiq.com"
+      ],
+      "howTo": "Free plan (5,000 requests/day); the token is on your dashboard.",
+      "signupUrl": "https://my.locationiq.com/register",
+      "demoKey": null,
+      "keyUsage": "Query parameter key=…",
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "openrouteservice.org"
+      ],
+      "howTo": "Free key (2,000 requests/day) from the dev dashboard.",
+      "signupUrl": "https://openrouteservice.org/dev/#/signup",
+      "demoKey": null,
+      "keyUsage": "Header Authorization or query api_key=…",
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "huggingface.co"
+      ],
+      "howTo": "Create a free account and generate an access token under Settings.",
+      "signupUrl": "https://huggingface.co/settings/tokens",
+      "demoKey": null,
+      "keyUsage": "Header Authorization: Bearer <token>",
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "deepl.com"
+      ],
+      "howTo": "DeepL API Free: 500,000 characters/month. Needs a card for identity checks but is not charged.",
+      "signupUrl": "https://www.deepl.com/pro-api",
+      "demoKey": null,
+      "keyUsage": "Header Authorization: DeepL-Auth-Key <key>",
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "wordnik.com"
+      ],
+      "howTo": "Sign up, then request a key from the developer page (can take a day or two).",
+      "signupUrl": "https://developer.wordnik.com/",
+      "demoKey": null,
+      "keyUsage": "Query parameter api_key=…",
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "dictionaryapi.com"
+      ],
+      "howTo": "Merriam-Webster: register for up to two free keys (1,000 queries/day each).",
+      "signupUrl": "https://dictionaryapi.com/register/index",
+      "demoKey": null,
+      "keyUsage": "Query parameter key=…",
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "marvel.com"
+      ],
+      "howTo": "Create a Marvel developer account for a public and private key; requests are signed with an md5 hash of ts+private+public.",
+      "signupUrl": "https://developer.marvel.com/account",
+      "demoKey": null,
+      "keyUsage": null,
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "petfinder.com"
+      ],
+      "howTo": "Create an account and request an API key and secret (OAuth client credentials).",
+      "signupUrl": "https://www.petfinder.com/developers/",
+      "demoKey": null,
+      "keyUsage": null,
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "calendarific.com"
+      ],
+      "howTo": "Free plan (500 requests/month) after sign-up.",
+      "signupUrl": "https://calendarific.com/signup",
+      "demoKey": null,
+      "keyUsage": "Query parameter api_key=…",
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "iqair.com",
+        "airvisual.com"
+      ],
+      "howTo": "Create a free Community key in the IQAir dashboard.",
+      "signupUrl": "https://dashboard.iqair.com/",
+      "demoKey": null,
+      "keyUsage": "Query parameter key=…",
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "openaq.org"
+      ],
+      "howTo": "Register for a free key (required since API v3).",
+      "signupUrl": "https://explore.openaq.org/register",
+      "demoKey": null,
+      "keyUsage": "Header X-API-Key",
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "company-information.service.gov.uk",
+        "companieshouse.gov.uk"
+      ],
+      "howTo": "Register on the Companies House developer hub, create an application, then add a REST key. Free.",
+      "signupUrl": "https://developer.company-information.service.gov.uk/",
+      "demoKey": null,
+      "keyUsage": "HTTP Basic auth - key as the username, blank password",
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "metoffice.gov.uk"
+      ],
+      "howTo": "Register on Met Office DataHub and subscribe to the free Site Specific plan (360 calls/day).",
+      "signupUrl": "https://datahub.metoffice.gov.uk/",
+      "demoKey": null,
+      "keyUsage": "Header apikey",
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "ticketmaster.com"
+      ],
+      "howTo": "Register on the developer portal; a Consumer Key is issued instantly (5,000 calls/day).",
+      "signupUrl": "https://developer-acct.ticketmaster.com/user/register",
+      "demoKey": null,
+      "keyUsage": "Query parameter apikey=…",
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "yelp.com"
+      ],
+      "howTo": "Create an app in Yelp Developers to get an API key.",
+      "signupUrl": "https://www.yelp.com/developers/v3/manage_app",
+      "demoKey": null,
+      "keyUsage": "Header Authorization: Bearer <key>",
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "virustotal.com"
+      ],
+      "howTo": "Join the VirusTotal community - your free public key is on your profile (4 lookups/minute).",
+      "signupUrl": "https://www.virustotal.com/gui/join-us",
+      "demoKey": null,
+      "keyUsage": "Header x-apikey",
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "shodan.io"
+      ],
+      "howTo": "Register for a free account; the key is on your account page.",
+      "signupUrl": "https://account.shodan.io/register",
+      "demoKey": null,
+      "keyUsage": "Query parameter key=…",
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "abuseipdb.com"
+      ],
+      "howTo": "Free plan (1,000 checks/day) after registering.",
+      "signupUrl": "https://www.abuseipdb.com/register",
+      "demoKey": null,
+      "keyUsage": "Header Key",
+      "example": null,
+      "keylessWorks": false
+    },
+    {
+      "hosts": [
+        "haveibeenpwned.com"
+      ],
+      "howTo": "Breach lookups by account need a paid key; the Pwned Passwords range API is free and keyless.",
+      "signupUrl": "https://haveibeenpwned.com/API/Key",
+      "demoKey": null,
+      "keyUsage": "Header hibp-api-key",
+      "example": "https://api.pwnedpasswords.com/range/21BD1",
+      "keylessWorks": false
+    }
+  ],
+  "fullFreeHosts": [
+    "api.github.com",
+    "api.nasa.gov",
+    "api.open.fec.gov",
+    "api.tfl.gov.uk",
+    "company-information.service.gov.uk",
+    "europeana.eu",
+    "last.fm",
+    "marvel.com",
+    "open.fda.gov",
+    "openaq.org",
+    "petfinder.com",
+    "spotify.com",
+    "stlouisfed.org",
+    "themoviedb.org",
+    "twitch.tv"
+  ],
+  "trialOnlyHosts": [
+    "haveibeenpwned.com"
+  ]
+}
