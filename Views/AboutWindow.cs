@@ -16,6 +16,7 @@ public sealed class AboutWindow : Window
 {
     private readonly MainViewModel _vm;
     private readonly Store _store;
+    private readonly TextBlock _dataSummary = new() { TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock _result = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 10, 0, 0), FontSize = 12.5 };
 
     public static string VersionText =>
@@ -39,7 +40,8 @@ public sealed class AboutWindow : Window
         panel.Children.Add(Muted($"free API finder  ·  version {VersionText}  ·  {RuntimeInformation.FrameworkDescription}"));
 
         panel.Children.Add(Heading("YOUR DATA"));
-        panel.Children.Add(new TextBlock { Text = vm.DataSummary, TextWrapping = TextWrapping.Wrap });
+        _dataSummary.Text = vm.DataSummary;
+        panel.Children.Add(_dataSummary);
         var folder = new TextBox { Text = store.Folder, IsReadOnly = true, FontFamily = new System.Windows.Media.FontFamily("Cascadia Mono, Consolas"), FontSize = 12.5, VerticalAlignment = VerticalAlignment.Center };
         AutomationProperties.SetName(folder, "Data folder");
         var open = Small("Open folder", () => System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", $"\"{store.Folder}\"") { UseShellExecute = true }));
@@ -50,8 +52,8 @@ public sealed class AboutWindow : Window
         panel.Children.Add(folderRow);
 
         panel.Children.Add(Heading("KEYBOARD"));
-        panel.Children.Add(Muted("F5 scan  ·  Esc stop / back  ·  Ctrl+F search  ·  Ctrl+L my shortlist  ·  Ctrl+T test  ·  Ctrl+D favourite  ·  Ctrl+K copy key  ·  Ctrl+U copy docs URL  ·  " +
-                                 "Ctrl+C copy the selected rows  ·  Ctrl+G tag them  ·  Ctrl+M compare 2-4 of them  ·  F1 this box\n" +
+        panel.Children.Add(Muted("F5 scan  ·  Esc stop / back  ·  Ctrl+F search  ·  Ctrl+L my shortlist  ·  Ctrl+T test  ·  Ctrl+D favourite  ·  Ctrl+K copy key (yours, else the demo key)  ·  Ctrl+U copy docs URL  ·  " +
+                                 "Ctrl+C copy the selected rows  ·  Ctrl+G tag them  ·  Ctrl+M compare 2-4 of them  ·  Ctrl+H what changed  ·  F1 this box\n" +
                                  "Shortlist cards: arrows, Enter details, T test, K copy key, O open docs, U copy URL, D favourite.  " +
                                  "Compare: F5 measure, Ctrl+Shift+C copy as Markdown, Ctrl+1-4 open docs."));
 
@@ -101,6 +103,7 @@ public sealed class AboutWindow : Window
             }
             var summary = Backup.Import(_store, file, passphrase);
             _vm.ReloadUserData();
+            _dataSummary.Text = _vm.DataSummary;
             Say(summary.ToString(), ok: true);
         }
         catch (CryptographicException) { Say("That passphrase does not open this file. Nothing was imported.", ok: false); }

@@ -208,6 +208,8 @@ public sealed partial class ApiRow : ObservableObject
     [ObservableProperty] private string _testClasses = "";
     /// <summary>What the code box under the response holds: the classes for one response, or a whole client.</summary>
     [ObservableProperty] private string _testCodeTitle = ClassesTitle;
+    /// <summary>Suggested name for "Save as .cs".</summary>
+    public string TestCodeFile { get; set; } = "Classes.cs";
     public const string ClassesTitle = "C# CLASSES  (System.Text.Json)", ClientTitle = "C# CLIENT  (HttpClient + System.Text.Json, one method per request that worked)";
     [ObservableProperty] private bool _isTesting;
     [ObservableProperty] private bool _testOk;
@@ -235,6 +237,29 @@ public sealed partial class ApiRow : ObservableObject
     {
         LastTestOk = h?.Ok == true;
         LastTestLabel = h is null ? "" : $"{h.At:d MMM HH:mm} · {h.Method} · {h.Summary.Split('\n')[0]}";
+    }
+
+    /// <summary>True once the saved key has been looked up, so an empty box means "no key", not "not loaded yet".</summary>
+    public bool KeyLoaded { get; set; }
+
+    /// <summary>A re-scan builds new rows; this carries over what the session holds for the same API.</summary>
+    public void CopySessionFrom(ApiRow was)
+    {
+        Status = was.Status; LatencyMs = was.LatencyMs;
+        KeyLoaded = was.KeyLoaded; MyKey = was.MyKey;
+        if (was.TestUrl.Length > 0)
+        {
+            TestMethod = was.TestMethod; TestUrl = was.TestUrl; TestHeader = was.TestHeader; TestBody = was.TestBody;
+            TestOk = was.TestOk; TestSummary = was.TestSummary; TestResponse = was.TestResponse; TestRaw = was.TestRaw;
+            TestCodeTitle = was.TestCodeTitle; TestCodeFile = was.TestCodeFile; TestClasses = was.TestClasses;
+        }
+        if (was.HistoryLoaded)
+        {
+            HistoryLoaded = true;
+            foreach (var h in was.History) History.Add(h);
+            HistoryChanged();
+            SelectedHistory = was.SelectedHistory;
+        }
     }
 
     public bool HasMyKey => MyKey.Trim().Length > 0;

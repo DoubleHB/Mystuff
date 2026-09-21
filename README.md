@@ -65,7 +65,12 @@ key when the provider publishes one, or how and where to get a free key when not
 - **C# client** (Try it card, beside "C# classes"): one small typed `HttpClient` class from every request in the
   API's history that worked - a method per distinct request, numeric path segments and query values as parameters
   defaulting to what was tested, JSON bodies as request classes, response classes with unique names. `{key}` and the
-  provider's demo key become a constructor parameter, so the saved key never appears in the code.
+  provider's demo key become a constructor parameter, so the saved key never appears in the code. With more than
+  one successful test a tick list asks which become methods (default: the newest test of each distinct request).
+  "Save as .cs…" writes the classes or the client to a file.
+- **What changed** (status bar, Ctrl+H): for each of the last 12 scans - manual, automatic or background - the APIs
+  that are new, gone, or have a different auth / free-access level (`changes.json`, `Services/ChangeLog.cs`).
+  "Show in list" jumps to the API, "Copy as Markdown" exports the report; it updates live when a scan finishes.
 - **Keyboard**: F5 scan, Esc stop / back, Ctrl+F search, Ctrl+L shortlist, Ctrl+T test, Ctrl+D favourite, Ctrl+K key,
   Ctrl+U docs URL, Ctrl+G tag, Ctrl+M compare, F1 About. Shortlist cards: arrows, Enter details, T, K, O, U, D.
   Compare: F5 measure, Ctrl+Shift+C copy as Markdown, Ctrl+1-4 open docs, arrows / PgUp / PgDn scroll.
@@ -101,7 +106,12 @@ key when the provider publishes one, or how and where to get a free key when not
 - A scan in which a source failed keeps what only that source knew, so nothing is "gone" now and "new" next week.
 - Files are written to a temp file, flushed, then swapped in; an unreadable settings / userdata file is copied aside
   (`*.unreadable-<time>`) before anything can overwrite it. CSV / Excel copies defuse leading `= + - @`.
-- The scheduled `--scan` does nothing while a window on the same data folder is open (that window re-scans itself).
+- The scheduled `--scan` does nothing while a window on the same data folder is open (that window re-scans itself),
+  and a second window on the same folder just brings the first one forward.
+- Nothing typed is lost: a note, tags or a key being typed are committed when the window closes, when a scan
+  replaces the rows and when you move to another API; a re-scan also carries the Try it request, response and
+  history over to the new rows. The grid keeps its sort when filters change.
+- An automatic re-scan that fails (offline) or is stopped waits six hours before trying again.
 
 ## Keys policy
 
@@ -116,16 +126,16 @@ ApiScout never looks for leaked or private keys - the docs scan only reads the p
 - `Services/KeyKnowledge.cs` - demo keys, sign-up links, generic how-to per auth type
 - `Services/DocsScanner.cs`, `ApiTester.cs`, `JsonToCSharp.cs`, `ClientGenerator.cs`, `LineDiff.cs`, `LogoService.cs`, `LinkChecker.cs`, `Exporter.cs`, `Store.cs`
 - `Services/ScheduledScan.cs` - the Windows scheduled task; `Services/Backup.cs` - export / import
-- `Views/CompareWindow.cs` - compare window + input prompt, `Views/AboutWindow.cs` (both code only)
+- `Views/CompareWindow.cs` - compare window + input prompt, `Views/AboutWindow.cs`, `ChangesWindow.cs`, `ClientDialog.cs` (all code only)
 - `ViewModels/MainViewModel.cs`, `ApiRow.cs`; `MainWindow.xaml`
 
-Data: `%LOCALAPPDATA%\ApiScout` (settings.json, catalog.json, userdata.json, docs-scans.json, test-history.dat, logos\, apiscout.log).
+Data: `%LOCALAPPDATA%\ApiScout` (settings.json, catalog.json, changes.json, userdata.json, docs-scans.json, test-history.dat, logos\, apiscout.log).
 `APISCOUT_DATA` env var redirects it (used for testing).
 
 ## Build / test / publish
 
 ```
-dotnet run --project C:\Claude\ApiScout.Tests -c Release            # 185 checks (add -- --offline to skip live ones)
+dotnet run --project C:\Claude\ApiScout.Tests -c Release            # 194 checks (add -- --offline to skip live ones)
 dotnet publish C:\Claude\ApiScout\ApiScout.csproj -c Release -o C:\Claude\ApiScout-App
 ```
 

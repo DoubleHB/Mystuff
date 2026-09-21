@@ -54,6 +54,14 @@ public partial class App : Application
         }
         _windowOpen = WindowMutex(Store.Folder);
         _holdsMutex = TryTakeWindowMutex();
+        if (!_holdsMutex)
+        {
+            // two windows on one data folder would each rewrite userdata.json with their own idea of it
+            foreach (var other in System.Diagnostics.Process.GetProcessesByName("ApiScout"))
+                if (other.Id != Environment.ProcessId && other.MainWindowHandle != IntPtr.Zero) { if (IsIconic(other.MainWindowHandle)) ShowWindow(other.MainWindowHandle, 9); SetForegroundWindow(other.MainWindowHandle); break; }
+            Shutdown(0);
+            return;
+        }
         ApplyTheme(Store.Settings.Dark);
         var window = new MainWindow(new MainViewModel(Store));
         MainWindow = window;
@@ -61,6 +69,11 @@ public partial class App : Application
     }
 
     // held for as long as a window of this user's data folder is open
+    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr window);
+    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr window, int command); // 9 = restore
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool IsIconic(IntPtr window);
+
     private Mutex? _windowOpen;
     private bool _holdsMutex;
 
@@ -95,6 +108,7 @@ public partial class App : Application
             var previous = Store.LoadCatalog();
             int kept = outcome.FailedSources > 0 ? Scanner.KeepUnreadable(outcome.Catalog, previous) : 0;
             var (added, removed) = Scanner.StampFirstSeen(outcome.Catalog, previous);
+            if (previous is { Entries.Count: > 0 }) Store.AddScanReport(ChangeLog.Build(outcome.Catalog, previous, Store.DocsScans, "Background scan", outcome.FailedSources));
             Store.SaveCatalog(outcome.Catalog);
             Store.Log($"Headless scan: {outcome.Catalog.Entries.Count:N0} APIs, {added:N0} new, {removed:N0} gone" + (outcome.FailedSources > 0 ? $", {outcome.FailedSources} source(s) failed ({kept:N0} kept): {string.Join("; ", outcome.Notes.Where(n => n.Contains("failed")))}" : ""));
             if (added > 0)

@@ -9,7 +9,7 @@
         <KeyBinding Key="F5" Command="{Binding ScanCommand}" />
         <KeyBinding Key="Escape" Command="{Binding CancelCommand}" />
         <KeyBinding Key="D" Modifiers="Ctrl" Command="{Binding ToggleFavouriteCommand}" />
-        <KeyBinding Key="K" Modifiers="Ctrl" Command="{Binding CopyCommand}" CommandParameter="demokey" />
+        <KeyBinding Key="K" Modifiers="Ctrl" Command="{Binding CopyCommand}" CommandParameter="key" />
         <KeyBinding Key="U" Modifiers="Ctrl" Command="{Binding CopyCommand}" CommandParameter="url" />
         <KeyBinding Key="T" Modifiers="Ctrl" Command="{Binding TestApiCommand}" />
     </Window.InputBindings>
@@ -39,13 +39,20 @@
                     </StackPanel>
                 </StackPanel>
 
-                <Grid Grid.Column="1" MaxWidth="620" HorizontalAlignment="Left" VerticalAlignment="Center">
-                    <TextBox x:Name="SearchBox" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" MinWidth="420" Padding="34,7,10,7" FontSize="14"
+                <!-- grows to 620 and stays at the left; in a narrow window it shrinks instead of being clipped -->
+                <Grid Grid.Column="1" VerticalAlignment="Center" Margin="0,0,16,0">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" MaxWidth="620" />
+                    <ColumnDefinition Width="0" />
+                  </Grid.ColumnDefinitions>
+                  <Grid>
+                    <TextBox x:Name="SearchBox" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" MinWidth="220" Padding="34,7,10,7" FontSize="14"
                              AutomationProperties.Name="Search" />
                     <TextBlock Text="&#xE721;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Margin="12,0,0,0" VerticalAlignment="Center" HorizontalAlignment="Left"
                                Foreground="{DynamicResource MutedBrush}" IsHitTestVisible="False" />
                     <TextBlock Text="Search name, description, category or URL   (Ctrl+F)" Margin="36,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"
-                               Foreground="{DynamicResource MutedBrush}" Visibility="{Binding SearchText, Converter={StaticResource EmptyTextToVis}}" />
+                               Foreground="{DynamicResource MutedBrush}" Visibility="{Binding SearchText, Converter={StaticResource EmptyTextToVis}}" TextTrimming="CharacterEllipsis" />
+                  </Grid>
                 </Grid>
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
@@ -54,7 +61,8 @@
                     <Button Content="■  Stop" Command="{Binding CancelCommand}" Padding="16,7" Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}" />
                     <ToggleButton Content="★ My shortlist" IsChecked="{Binding ShowShortlist}" Margin="8,0,0,0" Padding="12,7" AutomationProperties.Name="My shortlist"
                                   ToolTip="Your favourites and tagged APIs as cards, with their keys and last test result (Ctrl+L)" />
-                    <ToggleButton x:Name="SourcesButton" Content="Sources ▾" Margin="8,0,0,0" Padding="12,7" />
+                    <!-- not clickable while its popup is open: the click that closes the popup would otherwise open it again -->
+                    <ToggleButton x:Name="SourcesButton" Content="Sources ▾" Margin="8,0,0,0" Padding="12,7" IsHitTestVisible="{Binding IsOpen, ElementName=SourcesPopup, Converter={StaticResource InvBool}}" />
                     <Button Content="Check links" Command="{Binding CheckLinksCommand}" Margin="8,0,0,0" Padding="12,7" IsEnabled="{Binding IsIdle}"
                             ToolTip="Test whether the docs site of every listed API still answers" />
                     <Button x:Name="ThemeButton" Content="Theme" Click="ThemeButton_Click" Margin="8,0,0,0" Padding="12,7" ToolTip="Switch light / dark" />
@@ -64,7 +72,7 @@
         </Border>
 
         <!-- Sources popup -->
-        <Popup IsOpen="{Binding IsChecked, ElementName=SourcesButton, Mode=TwoWay}" PlacementTarget="{Binding ElementName=SourcesButton}" Placement="Bottom"
+        <Popup x:Name="SourcesPopup" PreviewKeyDown="SourcesPopup_PreviewKeyDown" IsOpen="{Binding IsChecked, ElementName=SourcesButton, Mode=TwoWay}" PlacementTarget="{Binding ElementName=SourcesButton}" Placement="Bottom"
                StaysOpen="False" AllowsTransparency="True" Closed="SourcesPopup_Closed" HorizontalOffset="-330" VerticalOffset="6">
             <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="1" CornerRadius="10" Padding="16" Width="460">
                 <StackPanel>
@@ -113,7 +121,8 @@
         </Popup>
 
         <!-- ===== Body ===== -->
-        <Grid Grid.Row="1" Margin="14,14,14,8">
+        <!-- collapsed while the shortlist page is up, so Tab and the arrow keys cannot wander into controls nobody can see -->
+        <Grid Grid.Row="1" Margin="14,14,14,8" Visibility="{Binding ShowShortlist, Converter={StaticResource InvBoolToVis}}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="236" />
                 <ColumnDefinition Width="*" />
@@ -168,8 +177,9 @@
                                 </StackPanel.Resources>
                                 <TextBlock Text="{Binding Title}" Style="{StaticResource Muted}" FontSize="11.5" TextTrimming="CharacterEllipsis" />
                                 <DockPanel Margin="0,1,0,0">
-                                    <TextBlock DockPanel.Dock="Right" Text="{Binding Sub}" Style="{StaticResource Muted}" FontSize="11.5" VerticalAlignment="Bottom" Margin="6,0,0,3" TextTrimming="CharacterEllipsis" />
-                                    <ContentControl Style="{StaticResource Tint}" Focusable="False" FontSize="20" FontWeight="Bold" Content="{Binding Value}" />
+                                    <!-- the number first: in a narrow window it is the small text that gives way -->
+                                    <ContentControl DockPanel.Dock="Left" Style="{StaticResource Tint}" Focusable="False" FontSize="20" FontWeight="Bold" Content="{Binding Value}" />
+                                    <TextBlock Text="{Binding Sub}" Style="{StaticResource Muted}" FontSize="11.5" VerticalAlignment="Bottom" HorizontalAlignment="Right" Margin="6,0,0,3" TextTrimming="CharacterEllipsis" />
                                 </DockPanel>
                                 <!-- an explicit style drops the Fluent template for the classic flat bar, which takes the tint as its fill -->
                                 <ProgressBar Style="{StaticResource Tint}" Height="3" Margin="0,5,0,0" Minimum="0" Maximum="100" Value="{Binding Percent, Mode=OneWay}" BorderThickness="0"
@@ -258,7 +268,7 @@
                                 <MenuItem Header="Copy details" Command="{Binding CopyCommand}" CommandParameter="text" InputGestureText="Ctrl+C" />
                                 <MenuItem Header="Copy name" Command="{Binding CopyCommand}" CommandParameter="name" />
                                 <MenuItem Header="Copy docs URL" Command="{Binding CopyCommand}" CommandParameter="url" InputGestureText="Ctrl+U" />
-                                <MenuItem Header="Copy demo key" Command="{Binding CopyCommand}" CommandParameter="demokey" InputGestureText="Ctrl+K" />
+                                <MenuItem Header="Copy key (yours, else the demo key)" Command="{Binding CopyCommand}" CommandParameter="key" InputGestureText="Ctrl+K" />
                                 <MenuItem Header="Copy sign-up link" Command="{Binding CopyCommand}" CommandParameter="signup" />
                                 <Separator />
                                 <MenuItem Header="Copy as Markdown" Command="{Binding CopyCommand}" CommandParameter="markdown" />
@@ -280,7 +290,7 @@
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
-                            <DataGridTemplateColumn Header="API" Width="*" MinWidth="260" SortMemberPath="Name">
+                            <DataGridTemplateColumn Header="API" Width="*" MinWidth="220" SortMemberPath="Name">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <DockPanel Margin="4,0,8,0">
@@ -316,14 +326,14 @@
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
-                            <DataGridTemplateColumn Header="Category" Width="180" SortMemberPath="Category">
+                            <DataGridTemplateColumn Header="Category" Width="150" SortMemberPath="Category">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <TextBlock Text="{Binding Category}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="4,0" />
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
-                            <DataGridTemplateColumn Header="Link" Width="120" SortMemberPath="Status">
+                            <DataGridTemplateColumn Header="Link" Width="104" SortMemberPath="Status">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <TextBlock Text="{Binding StatusLabel}" Foreground="{Binding Status, Converter={StaticResource StatusBrush}}" VerticalAlignment="Center" FontSize="12" Margin="4,0" />
@@ -354,7 +364,7 @@
                             <StackPanel>
                                 <DockPanel>
                                     <Button DockPanel.Dock="Right" Content="{Binding Selected.IsFavourite, Converter={StaticResource Star}}" Command="{Binding ToggleFavouriteCommand}"
-                                            FontSize="18" Padding="8,2" Foreground="{DynamicResource WarnBrush}" VerticalAlignment="Top" ToolTip="Favourite (Ctrl+D)" />
+                                            FontSize="18" Padding="8,2" Foreground="{DynamicResource WarnBrush}" VerticalAlignment="Top" ToolTip="Favourite (Ctrl+D)" AutomationProperties.Name="Favourite" />
                                     <ContentControl DockPanel.Dock="Left" Content="{Binding Selected}" ContentTemplate="{StaticResource BrandTile}" VerticalAlignment="Top" Margin="0,2,12,0" Focusable="False">
                                         <ContentControl.LayoutTransform>
                                             <ScaleTransform ScaleX="1.35" ScaleY="1.35" />
@@ -410,7 +420,7 @@
                                 </TextBlock>
 
                                 <StackPanel Visibility="{Binding Selected.HasDemoKey, Converter={StaticResource BoolToVis}}">
-                                    <TextBlock Text="DEMO KEY  (published by the provider - shared and rate limited)" Style="{StaticResource Label}" />
+                                    <TextBlock Text="DEMO KEY  (published by the provider - shared and rate limited)" Style="{StaticResource Label}" TextWrapping="Wrap" />
                                     <DockPanel>
                                         <Button DockPanel.Dock="Right" Content="Copy key" Command="{Binding CopyCommand}" CommandParameter="demokey" Style="{DynamicResource AccentButtonStyle}"
                                                 Padding="12,4" Margin="8,0,0,0" AutomationProperties.Name="Copy demo key" ToolTip="Ctrl+K" />
@@ -479,7 +489,7 @@
                                         </TextBox.InputBindings>
                                     </TextBox>
                                 </DockPanel>
-                                <TextBlock Text="HEADERS  (optional, one Name: value per line)" Style="{StaticResource Label}" />
+                                <TextBlock Text="HEADERS  (optional, one Name: value per line)" Style="{StaticResource Label}" TextWrapping="Wrap" />
                                 <TextBox Text="{Binding Selected.TestHeader, UpdateSourceTrigger=PropertyChanged}" FontFamily="Cascadia Mono, Consolas" FontSize="12.5"
                                          AcceptsReturn="True" TextWrapping="NoWrap" MaxHeight="90" VerticalScrollBarVisibility="Auto" AutomationProperties.Name="Test headers" />
 
@@ -500,7 +510,7 @@
                                 </DockPanel>
 
                                 <StackPanel Visibility="{Binding Selected.HasHistory, Converter={StaticResource BoolToVis}}">
-                                    <TextBlock Text="HISTORY  (last 8 results, newest first - pick one to see it again)" Style="{StaticResource Label}" />
+                                    <TextBlock Text="HISTORY  (last 8 results, newest first - pick one to see it again)" Style="{StaticResource Label}" TextWrapping="Wrap" />
                                     <ComboBox ItemsSource="{Binding Selected.History}" SelectedItem="{Binding Selected.SelectedHistory}" DisplayMemberPath="Label"
                                               HorizontalAlignment="Stretch" FontSize="12" AutomationProperties.Name="Test history" />
                                     <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
@@ -540,6 +550,7 @@
                                     </StackPanel>
                                     <StackPanel Visibility="{Binding Selected.TestClasses, Converter={StaticResource TextToVis}}">
                                         <DockPanel Margin="0,10,0,4">
+                                            <Button DockPanel.Dock="Right" Content="Save as .cs…" Command="{Binding SaveCodeCommand}" Style="{StaticResource Mini}" AutomationProperties.Name="Save code as file" />
                                             <Button DockPanel.Dock="Right" Content="Copy code" Command="{Binding CopyCommand}" CommandParameter="classes" Style="{DynamicResource AccentButtonStyle}"
                                                     Padding="10,3" FontSize="12" AutomationProperties.Name="Copy classes" />
                                             <TextBlock Text="{Binding Selected.TestCodeTitle}" Style="{StaticResource Label}" Margin="0" VerticalAlignment="Center" TextWrapping="Wrap" />
@@ -602,13 +613,19 @@
                             <StackPanel>
                                 <TextBlock Text="My key &amp; notes" Style="{StaticResource CardTitle}" />
                                 <TextBlock Style="{StaticResource Muted}" TextWrapping="Wrap" Text="Keep the key you signed up for next to the API. Stored encrypted for your Windows account only." />
-                                <DockPanel Margin="0,8,0,0">
-                                    <Button DockPanel.Dock="Right" Content="Copy" Command="{Binding CopyCommand}" CommandParameter="mykey" Style="{StaticResource Mini}" AutomationProperties.Name="Copy my key" />
-                                    <Button DockPanel.Dock="Right" Content="Save" Command="{Binding SaveMyKeyCommand}" Style="{StaticResource Mini}" />
-                                    <ToggleButton DockPanel.Dock="Right" Content="Show" IsChecked="{Binding ShowMyKey}" Margin="6,0,0,0" Padding="9,3" FontSize="12" MinHeight="26" />
+                                <!-- local tab order: Show, the box, Save, Copy - not the order the dock panel needs them declared in -->
+                                <DockPanel Margin="0,8,0,0" KeyboardNavigation.TabNavigation="Local">
+                                    <Button DockPanel.Dock="Right" Content="Copy" Command="{Binding CopyCommand}" CommandParameter="mykey" Style="{StaticResource Mini}" AutomationProperties.Name="Copy my key" TabIndex="3" />
+                                    <Button DockPanel.Dock="Right" Content="Save" Command="{Binding SaveMyKeyCommand}" Style="{StaticResource Mini}" AutomationProperties.Name="Save my key" TabIndex="2"
+                                            ToolTip="Also saved by Enter, and when you move to another API or close ApiScout" />
+                                    <ToggleButton DockPanel.Dock="Right" Content="Show" IsChecked="{Binding ShowMyKey}" Margin="6,0,0,0" Padding="9,3" FontSize="12" MinHeight="26" AutomationProperties.Name="Show my key" TabIndex="0" />
                                     <Grid>
                                         <TextBox Text="{Binding Selected.MyKey, UpdateSourceTrigger=PropertyChanged}" FontFamily="Cascadia Mono, Consolas" FontSize="12.5"
-                                                 Visibility="{Binding ShowMyKey, Converter={StaticResource BoolToVis}}" AutomationProperties.Name="My key" />
+                                                 Visibility="{Binding ShowMyKey, Converter={StaticResource BoolToVis}}" AutomationProperties.Name="My key" TabIndex="1">
+                                            <TextBox.InputBindings>
+                                                <KeyBinding Key="Enter" Command="{Binding SaveMyKeyCommand}" />
+                                            </TextBox.InputBindings>
+                                        </TextBox>
                                         <Border Visibility="{Binding ShowMyKey, Converter={StaticResource InvBoolToVis}}" Background="{DynamicResource CardAltBrush}" CornerRadius="4" Padding="10,6">
                                             <Grid>
                                                 <TextBlock Text="●●●●●●●●●●●●  (hidden)" Foreground="{DynamicResource MutedBrush}" Visibility="{Binding Selected.MyKey, Converter={StaticResource TextToVis}}" />
@@ -685,7 +702,7 @@
                                         <DockPanel>
                                             <ContentControl DockPanel.Dock="Left" Content="{Binding}" ContentTemplate="{StaticResource BrandTile}" Margin="0,0,10,0" VerticalAlignment="Top" Focusable="False" />
                                             <Button DockPanel.Dock="Right" Content="{Binding IsFavourite, Converter={StaticResource Star}}" FontSize="16" Padding="7,1" VerticalAlignment="Top"
-                                                    Foreground="{DynamicResource WarnBrush}" ToolTip="Favourite on / off" CommandParameter="{Binding}"
+                                                    Foreground="{DynamicResource WarnBrush}" ToolTip="Favourite on / off" AutomationProperties.Name="Favourite" CommandParameter="{Binding}"
                                                     Command="{Binding DataContext.ToggleRowFavouriteCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
                                             <StackPanel>
                                                 <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="Bold" TextTrimming="CharacterEllipsis" />
@@ -750,6 +767,8 @@
             <DockPanel>
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                     <TextBlock Text="{Binding CountText}" VerticalAlignment="Center" FontWeight="SemiBold" Margin="0,0,14,0" />
+                    <Button Content="What changed" Click="Changes_Click" Style="{StaticResource Mini}" Margin="0,0,6,0" AutomationProperties.Name="What changed"
+                            ToolTip="What the last scans found: new APIs, APIs that are gone, and changed auth or free access (Ctrl+H)" />
                     <Button Content="Compare selected" Click="Compare_Click" Style="{StaticResource Mini}" Margin="0,0,14,0" AutomationProperties.Name="Compare selected"
                             ToolTip="Select 2 to 4 rows (Ctrl+click, or Shift+arrows) to see them side by side (Ctrl+M)" />
                     <TextBlock Text="Copy list as" Style="{StaticResource Muted}" VerticalAlignment="Center" />

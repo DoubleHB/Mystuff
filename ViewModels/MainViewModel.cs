@@ -86,9 +86,15 @@ public sealed partial class MainViewModel : ObservableObject
         minute.Tick += (_, _) =>
         {
             // "until 20:45" expires by itself
-            bool any = false;
-            foreach (var r in _all.Where(x => x.LimitedUntil is not null)) { r.RefreshLimit(); any = true; }
-            if (any) { RefreshDashboard(); if (SelectedCategory?.Name == LimitedCategory) ApplyFilter(); }
+            bool expired = false;
+            foreach (var r in _all.Where(x => x.LimitedUntil is not null))
+            {
+                if (r.LimitedUntil > DateTime.Now) { r.RefreshLimit(); continue; }
+                r.LimitedUntil = null; // over: forget it, here and on disk
+                _store.User.RateLimits.Remove(r.Key);
+                expired = true;
+            }
+            if (expired) { _store.SaveUser(); LimitsChanged(); }
         };
         minute.Start();
         _rescanTimer.Start();
@@ -220,15 +226,24 @@ public sealed partial class MainViewModel : ObservableObject
     public bool BackgroundScan
     {
         get => _store.Settings.BackgroundScan;
-        set
+        set => _ = SetBackgroundScanAsync(value);
+    }
+
+    /// <summary>schtasks.exe can take seconds (or hang behind antivirus), so it runs off the UI thread; the tick box settles when it answers.</summary>
+    private async Task SetBackgroundScanAsync(bool value)
+    {
+        bool ok; string message;
+        if (value && AutoRescan == "Never") (ok, message) = (false, "Choose Daily or Weekly first.");
+        else
         {
-            var (ok, message) = value && AutoRescan == "Never" ? (false, "Choose Daily or Weekly first.")
-                : value ? ScheduledScan.Register(AutoRescan == "Daily") : ScheduledScan.Unregister();
-            _store.Settings.BackgroundScan = value && ok;
-            _store.SaveSettings();
-            StatusText = message;
-            OnPropertyChanged();
+            bool daily = AutoRescan == "Daily";
+            StatusText = "Asking Windows Task Scheduler…";
+            (ok, message) = await Task.Run(() => value ? ScheduledScan.Register(daily) : ScheduledScan.Unregister());
         }
+        _store.Settings.BackgroundScan = value && ok;
+        _store.SaveSettings();
+        StatusText = message;
+        OnPropertyChanged(nameof(BackgroundScan));
     }
 
     public static bool RescanDue(string setting, DateTime? lastScan, DateTime now) => lastScan is { } at && setting switch
@@ -241,11 +256,15 @@ public sealed partial class MainViewModel : ObservableObject
     private void AutoRescanIfDue()
     {
         if (IsBusy || !RescanDue(_store.Settings.AutoRescan, _catalog?.ScannedAt, DateTime.Now)) return;
+        // offline, or stopped with Esc: try again in a few hours, not every half hour; and never pull the rows away under a running test
+        if (DateTime.Now - _lastAutoAttempt < TimeSpan.FromHours(6) || _all.Any(r => r.IsTesting)) return;
+        _lastAutoAttempt = DateTime.Now;
         _autoScan = true;
         ScanCommand.Execute(null);
     }
 
     private bool _autoScan;
+    private DateTime _lastAutoAttempt = DateTime.MinValue;
 
     /// <summary>The ticked sources plus the user's own list URLs.</summary>
     public static List<(string Id, string Name)> EnabledSources(Settings settings)
@@ -299,7 +318,7 @@ public sealed partial class MainViewModel : ObservableObject
 
     partial void OnSelectedChanged(ApiRow? oldValue, ApiRow? newValue)
     {
-        if (oldValue is not null) oldValue.PropertyChanged -= SelectedRowChanged;
+        if (oldValue is not null) { oldValue.PropertyChanged -= SelectedRowChanged; SaveTypedKey(oldValue); }
         HasSelection = newValue is not null;
         ShowMyKey = false;
         if (newValue is null) return;
@@ -308,10 +327,37 @@ public sealed partial class MainViewModel : ObservableObject
         newValue.PropertyChanged += SelectedRowChanged;
     }
 
+    /// <summary>The key box writes to the row as you type and the rest of the app already treats that as "your key", so it is stored when you leave the row or close the window - not only by the Save button.</summary>
+    private void SaveTypedKey(ApiRow row)
+    {
+        if (!row.KeyLoaded || row.MyKey.Trim() == (_store.GetMyKey(row.Key) ?? "")) return;
+        _store.SetMyKey(row.Key, row.MyKey);
+    }
+
+    /// <summary>Raised before rows are replaced or re-filtered: the window commits the text box being typed in (notes and tags save on leaving the box).</summary>
+    public event Action? CommitEdits;
+
+    /// <summary>Window closing.</summary>
+    public void Flush()
+    {
+        CommitEdits?.Invoke();
+        if (Selected is { } r) SaveTypedKey(r);
+    }
+
+    /// <summary>Badge colours come from converters that hand out the brush of the moment, so after a theme switch the bound items are asked again.</summary>
+    public void ThemeChanged()
+    {
+        CommitEdits?.Invoke();
+        var keep = Selected;
+        Selected = null;
+        Selected = keep;
+        if (ShowShortlist) RefreshShortlist();
+    }
+
     /// <summary>Pulls a row's saved key, test request and history out of the store the first time they are needed.</summary>
     private void EnsureRowLoaded(ApiRow row)
     {
-        if (row.MyKey.Length == 0) row.MyKey = _store.GetMyKey(row.Key) ?? "";
+        if (!row.KeyLoaded) { row.KeyLoaded = true; if (row.MyKey.Length == 0) row.MyKey = _store.GetMyKey(row.Key) ?? ""; }
         if (row.TestUrl.Length == 0)
         {
             var saved = _store.GetTestRequest(row.Key);
@@ -343,7 +389,16 @@ public sealed partial class MainViewModel : ObservableObject
             row.LimitedUntil = null;
             _store.SaveUser();
         }
+        else return;
+        LimitsChanged();
+    }
+
+    /// <summary>A rate limit started or ended: tile, sidebar count and - only if that is the list being shown - the list.</summary>
+    private void LimitsChanged()
+    {
         RefreshDashboard();
+        if (SelectedCategory?.Name == LimitedCategory) ApplyFilter();
+        else CountCategories(Filtered());
     }
 
     private void SelectedRowChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -393,10 +448,11 @@ public sealed partial class MainViewModel : ObservableObject
             : $"{rows.Count:N0} API{(rows.Count == 1 ? "" : "s")}: {rows.Count(r => r.IsFavourite):N0} favourite(s), {rows.Count(r => r.HasTags):N0} tagged, {rows.Count(r => r.HasMyKey):N0} with your own key saved.";
     }
 
-    [RelayCommand]
+    [RelayCommand(AllowConcurrentExecutions = true)] // each row guards itself with IsTesting
     private async Task TestRowAsync(ApiRow? row)
     {
         if (row is null) return;
+        ShortlistSelected = row;
         row.LastTestLabel = "Testing…";
         await RunTestAsync(row);
     }
@@ -405,6 +461,7 @@ public sealed partial class MainViewModel : ObservableObject
     private void CopyRowKey(ApiRow? row)
     {
         if (row is null) return;
+        if (ShowShortlist) ShortlistSelected = row;
         EnsureRowLoaded(row);
         if (row.HasMyKey) CopyText(row.MyKey.Trim(), "Your key");
         else if (row.HasDemoKey) CopyText(row.DemoKey!, "Demo key");
@@ -412,17 +469,30 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void OpenRow(ApiRow? row) => OpenUrl(row?.Url);
+    private void OpenRow(ApiRow? row) { if (row is not null) ShortlistSelected = row; OpenUrl(row?.Url); }
 
     [RelayCommand]
     private void ToggleRowFavourite(ApiRow? row)
     {
         if (row is null) return;
+        ShortlistSelected = row;
         row.IsFavourite = !row.IsFavourite;
         if (row.IsFavourite) _store.User.Favourites.Add(row.Key); else _store.User.Favourites.Remove(row.Key);
         _store.SaveUser();
         ApplyFilter();
         RefreshShortlist();
+    }
+
+    // ---------------------------------------------------------------- what changed
+
+    public IReadOnlyList<ScanReport> ScanReports => _store.ScanReports;
+
+    public bool HasApi(string key) => _all.Any(r => r.Key == key);
+
+    /// <summary>Selects an API by key in the main list (from the What changed window).</summary>
+    public void ShowApi(string key)
+    {
+        if (_all.FirstOrDefault(r => r.Key == key) is { } row) ShowRow(row);
     }
 
     /// <summary>"Details": back to the list with this API selected.</summary>
@@ -534,17 +604,24 @@ public sealed partial class MainViewModel : ObservableObject
             int before = _all.Count;
             int kept = outcome.FailedSources > 0 ? Scanner.KeepUnreadable(outcome.Catalog, _catalog) : 0;
             var (added, removed) = Scanner.StampFirstSeen(outcome.Catalog, _catalog);
+            ScanReport? report = null;
+            if (_catalog is { Entries.Count: > 0 } previous)
+            {
+                report = ChangeLog.Build(outcome.Catalog, previous, _store.DocsScans, auto ? "Automatic re-scan" : "Scan", outcome.FailedSources);
+                _store.AddScanReport(report);
+            }
             _store.SaveCatalog(outcome.Catalog);
             Load(outcome.Catalog);
+            if (report is not null) OnPropertyChanged(nameof(ScanReports)); // after Load, so an open What changed window finds the new rows
             var failed = outcome.Notes.Where(n => n.Contains("failed")).ToList();
             StatusText = $"{(auto ? "Automatic re-scan" : "Scan")} finished: {_all.Count:N0} unique APIs in {Categories.Count - SpecialCategories} categories" +
-                         (before > 0 ? $" - {added:N0} new, {removed:N0} gone since the last scan" : "") +
+                         (before > 0 ? $" - {added:N0} new, {removed:N0} gone, {report?.Changed.Count ?? 0:N0} changed since the last scan{(report is { IsEmpty: false } ? " (see What changed, Ctrl+H)" : "")}" : "") +
                          (failed.Count > 0 ? $". {failed.Count} source(s) failed{(kept > 0 ? $" ({kept:N0} APIs kept from the last scan)" : "")}: {string.Join("; ", failed)}" : ".");
             if (before > 0 && added > 0) ShowToast($"🆕 {added:N0} new API{(added == 1 ? "" : "s")} since the last scan");
         }
         catch (OperationCanceledException) { StatusText = "Scan cancelled."; }
         catch (Exception ex) { StatusText = "Scan failed: " + ex.Message; _store.Log("Scan failed: " + ex); }
-        finally { IsBusy = false; Progress = 0; _cts = null; }
+        finally { IsBusy = false; Progress = 0; _cts?.Dispose(); _cts = null; }
     }
 
     [RelayCommand]
@@ -557,6 +634,7 @@ public sealed partial class MainViewModel : ObservableObject
 
     private void Load(Catalog catalog)
     {
+        CommitEdits?.Invoke(); // a note being typed belongs to a row that is about to be replaced
         var keep = Selected?.Key;
         var old = _all.ToDictionary(r => r.Key);
         _catalog = catalog;
@@ -569,7 +647,7 @@ public sealed partial class MainViewModel : ObservableObject
             if (_store.User.RateLimits.TryGetValue(r.Key, out var limit) && limit.Until > DateTime.Now) { r.LimitEstimated = limit.Estimated; r.LimitedUntil = limit.Until; }
             if (_store.TestHistory.TryGetValue(r.Key, out var past) && past.Count > 0) r.SetLastTest(past[0]);
             if (_store.DocsScans.TryGetValue(r.Key, out var scan)) r.DocsScan = scan;
-            if (old.TryGetValue(r.Key, out var was)) { r.Status = was.Status; r.LatencyMs = was.LatencyMs; }
+            if (old.TryGetValue(r.Key, out var was)) r.CopySessionFrom(was); // link status, and whatever is typed or shown in Try it
         }
 
         var selectedName = SelectedCategory?.Name ?? AllCategory;
@@ -587,14 +665,24 @@ public sealed partial class MainViewModel : ObservableObject
         RefreshDashboard();
         ApplyFilter();
         if (keep is not null) Selected = Rows.FirstOrDefault(r => r.Key == keep);
+        // the cards must not keep pointing at the rows that were just replaced
+        if (ShowShortlist) RefreshShortlist(); else { ShortlistRows = []; ShortlistSelected = null; }
     }
 
     // ---------------------------------------------------------------- filtering
 
     private void ApplyFilter(bool countCategories = true)
     {
+        var pre = Filtered();
+        if (countCategories) CountCategories(pre);
+        ShowCategory(pre);
+    }
+
+    /// <summary>Everything the filters let through, before the category is applied.</summary>
+    private List<ApiRow> Filtered()
+    {
         var words = SearchText.ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        var pre = _all.Where(r =>
+        return _all.Where(r =>
             (!HttpsOnly || r.Entry.Https == true) &&
             (!CorsOnly || r.Cors == "Yes") &&
             (!OnlineOnly || r.Status == "Online") &&
@@ -602,8 +690,10 @@ public sealed partial class MainViewModel : ObservableObject
             (AccessFilter == "Any free access" || r.AccessLabel == AccessFilter) &&
             (TagFilter is null or AnyTag || r.Tags.Contains(TagFilter, StringComparer.OrdinalIgnoreCase)) &&
             words.All(w => r.SearchText.Contains(w) || r.TagsText.Contains(w, StringComparison.OrdinalIgnoreCase))).ToList();
+    }
 
-        if (countCategories)
+    private void CountCategories(List<ApiRow> pre)
+    {
         {
             var counts = pre.GroupBy(r => r.Category).ToDictionary(g => g.Key, g => g.Count());
             foreach (var c in Categories)
@@ -617,7 +707,10 @@ public sealed partial class MainViewModel : ObservableObject
                     _ => counts.GetValueOrDefault(c.Name),
                 };
         }
+    }
 
+    private void ShowCategory(List<ApiRow> pre)
+    {
         var cat = SelectedCategory?.Name ?? AllCategory;
         var keep = Selected;
         Rows = cat switch
@@ -658,7 +751,7 @@ public sealed partial class MainViewModel : ObservableObject
     private void Copy(string? what)
     {
         if (Target is not { } r) return;
-        if (ShowShortlist && what == "demokey") { CopyRowKey(r); return; }
+        if (what == "key") { CopyRowKey(r); return; } // Ctrl+K: your own key if one is saved, otherwise the demo key
         var (text, label) = what switch
         {
             "name" => (r.Name, "Name"),
@@ -716,7 +809,7 @@ public sealed partial class MainViewModel : ObservableObject
         for (int attempt = 0; ; attempt++)
         {
             try { Clipboard.SetDataObject(text, true); break; }
-            catch (COMException) when (attempt < 5) { Thread.Sleep(40); } // another app has the clipboard open
+            catch (COMException) when (attempt < 1) { Thread.Sleep(60); } // another app has the clipboard open (WPF has already retried for about a second)
             catch (COMException) { ShowToast("Clipboard is busy - try again"); return; }
         }
         ShowToast($"✓ {label} copied");
@@ -778,10 +871,12 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (ShowShortlist) { ToggleRowFavourite(ShortlistSelected); return; }
         if (Selected is not { } r) return;
+        CommitEdits?.Invoke(); // in the Favourites list the row may now leave, taking a half-typed note with it
         r.IsFavourite = !r.IsFavourite;
         if (r.IsFavourite) _store.User.Favourites.Add(r.Key); else _store.User.Favourites.Remove(r.Key);
         _store.SaveUser();
-        ApplyFilter();
+        // only the Favourites list itself changes; everywhere else the counts are enough (and the list keeps its scroll position)
+        if (SelectedCategory?.Name == FavouritesCategory) ApplyFilter(); else CountCategories(Filtered());
     }
 
     [RelayCommand]
@@ -792,7 +887,7 @@ public sealed partial class MainViewModel : ObservableObject
         ShowToast(r.MyKey.Trim().Length == 0 ? "Your key was removed" : "✓ Your key was saved (encrypted)");
     }
 
-    [RelayCommand]
+    [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task ScanDocsAsync()
     {
         if (Selected is not { } r || r.IsScanningDocs) return;
@@ -809,7 +904,7 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     /// <summary>"Test this API": sends the request in the box; {key} stands for the key saved under My key.</summary>
-    [RelayCommand]
+    [RelayCommand(AllowConcurrentExecutions = true)]
     private Task TestApiAsync() => ShowShortlist ? TestRowAsync(ShortlistSelected) : Selected is { } r ? RunTestAsync(r) : Task.CompletedTask;
 
     private async Task RunTestAsync(ApiRow r)
@@ -831,6 +926,7 @@ public sealed partial class MainViewModel : ObservableObject
             }
             if (r.TestUrl.Trim() != r.DefaultTestUrl || r.TestHeader.Trim() != r.DefaultTestHeader || r.TestMethod != "GET" || r.TestBody.Trim().Length > 0)
                 _store.SetTestRequest(r.Key, new ApiTestRequest(r.TestMethod, r.TestUrl.Trim(), r.TestHeader.Trim(), r.TestBody.Trim()));
+            else if (_store.User.TestRequests.Remove(r.Key)) _store.SaveUser(); // back to the suggested request by hand: forget the saved one
             var request = new ApiTestRequest(r.TestMethod, Fill(r.TestUrl), Fill(r.TestHeader), Fill(body));
             var result = await Task.Run(() => ApiTester.SendAsync(request, CancellationToken.None));
             r.TestOk = result.Ok;
@@ -875,7 +971,7 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     /// <summary>"Test" beside an endpoint the docs scan found: load it into the Try it card; plain GETs are sent straight away.</summary>
-    [RelayCommand]
+    [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task UseEndpointAsync(FoundItem? item)
     {
         if (Selected is not { } r || item is null) return;
@@ -903,6 +999,8 @@ public sealed partial class MainViewModel : ObservableObject
         _store.ClearHistory(r.Key);
         r.History.Clear();
         r.HistoryChanged();
+        r.SelectedHistory = null;
+        r.SetLastTest(null);
     }
 
     [RelayCommand]
@@ -913,6 +1011,7 @@ public sealed partial class MainViewModel : ObservableObject
         var code = JsonToCSharp.Generate(r.TestRaw.Length > 0 ? r.TestRaw : r.TestResponse, rootName);
         if (code is null) { ShowToast("Classes need a JSON object or array of objects"); return; }
         r.TestCodeTitle = ApiRow.ClassesTitle;
+        r.TestCodeFile = rootName + ".cs";
         r.TestClasses = code;
     }
 
@@ -921,11 +1020,36 @@ public sealed partial class MainViewModel : ObservableObject
     private void GenerateClient()
     {
         if (Selected is not { } r) return;
-        var code = ClientGenerator.Generate(r.Name, r.History, r.DemoKey);
-        if (code is null) { ShowToast("Get one request to work first - the client is built from your successful tests"); return; }
+        var usable = ClientGenerator.Usable(r.History);
+        if (usable.Count == 0) { ShowToast("Get one request to work first - the client is built from your successful tests"); return; }
+        // more than one to choose from: the window asks which become methods
+        IReadOnlyList<TestHistoryEntry>? picked = usable;
+        if (usable.Count > 1 && PickClientRequests is not null) picked = PickClientRequests(r.Name, usable, ClientGenerator.NewestOfEach(usable));
+        if (picked is null || picked.Count == 0) return;
+        var code = ClientGenerator.Generate(r.Name, picked, r.DemoKey);
+        if (code is null) return;
         r.TestCodeTitle = ApiRow.ClientTitle;
+        r.TestCodeFile = ClientGenerator.ClassNameFor(r.Name) + ".cs";
         r.TestClasses = code;
-        ShowToast($"C# client built from {r.History.Count(h => h.Ok)} successful test(s) - try other endpoints to add methods");
+        int methods = ClientGenerator.NewestOfEach(picked).Count;
+        ShowToast($"C# client with {methods} method{(methods == 1 ? "" : "s")} - test other endpoints to add more");
+    }
+
+    /// <summary>Set by the window: shows the tick list and returns the chosen tests (null = cancelled).</summary>
+    public Func<string, IReadOnlyList<TestHistoryEntry>, IReadOnlyCollection<TestHistoryEntry>, IReadOnlyList<TestHistoryEntry>?>? PickClientRequests { get; set; }
+
+    [RelayCommand]
+    private void SaveCode()
+    {
+        if (Selected is not { TestClasses.Length: > 0 } r) return;
+        var dlg = new SaveFileDialog { Title = "Save the C# code", FileName = r.TestCodeFile, Filter = "C# file|*.cs|All files|*.*", DefaultExt = ".cs" };
+        if (dlg.ShowDialog() != true) return;
+        try
+        {
+            File.WriteAllText(dlg.FileName, r.TestClasses.ReplaceLineEndings() + Environment.NewLine, new UTF8Encoding(false));
+            ShowToast("✓ Saved " + Path.GetFileName(dlg.FileName));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException) { StatusText = "Could not save the file: " + ex.Message; }
     }
 
     /// <summary>Docs scan for every listed API whose free access is "Not stated" and that has not been scanned yet.</summary>
@@ -970,7 +1094,7 @@ public sealed partial class MainViewModel : ObservableObject
         finally
         {
             _store.SaveDocsScans();
-            IsBusy = false; Progress = 0; _cts = null;
+            IsBusy = false; Progress = 0; _cts?.Dispose(); _cts = null;
             RefreshDashboard();
             ApplyFilter();
         }
@@ -1028,7 +1152,7 @@ public sealed partial class MainViewModel : ObservableObject
             await Application.Current.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Background);
             StatusText = $"Link check stopped after {done:N0} of {rows.Count:N0}.";
         }
-        finally { IsBusy = false; Progress = 0; _cts = null; RefreshDashboard(); if (OnlineOnly) ApplyFilter(); }
+        finally { IsBusy = false; Progress = 0; _cts?.Dispose(); _cts = null; RefreshDashboard(); if (OnlineOnly) ApplyFilter(); }
     }
 
     // ---------------------------------------------------------------- settings

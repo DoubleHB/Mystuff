@@ -29,7 +29,7 @@ public static partial class ClientGenerator
     /// <summary>Null when no successful request is in the history yet.</summary>
     public static string? Generate(string apiName, IEnumerable<TestHistoryEntry> history, string? demoKey = null)
     {
-        var className = JsonToCSharp.Pascal(apiName).TrimStart('@') + "Client";
+        var className = ClassNameFor(apiName);
         var classes = new JsonToCSharp.ClassSet();
         classes.Reserve(className);
 
@@ -115,7 +115,7 @@ public static partial class ClientGenerator
             }
 
             // one method per distinct request shape - the newest test of it wins
-            if (!shapes.Add($"{method} {uri.Host}{Regex.Replace(uri.AbsolutePath, @"/\d+(?=/|$)", "/#")}?{string.Join('&', queryNames.Order(StringComparer.Ordinal))}")) continue;
+            if (!shapes.Add(ShapeOf(h)!)) continue;
 
             // ---- name
             var noun = words.Count == 0 ? "Data" : JsonToCSharp.Pascal(endsWithId ? Single(words[^1]) : words[^1]).TrimStart('@', '_');
@@ -222,6 +222,25 @@ public static partial class ClientGenerator
         if (!classes.IsEmpty) code.Append(classes.Render());
         return code.ToString().TrimEnd();
     }
+
+    /// <summary>What makes two tests "the same request": method, host, path (ids ignored) and parameter names. Null for an unusable URL.</summary>
+    internal static string? ShapeOf(TestHistoryEntry h)
+    {
+        if (!Uri.TryCreate(h.Url.Trim().Replace("{key}", "KEY", StringComparison.OrdinalIgnoreCase), UriKind.Absolute, out var uri)) return null;
+        var names = uri.Query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries).Select(p => p.Split('=')[0]).Order(StringComparer.Ordinal);
+        return $"{h.Method.Trim().ToUpperInvariant()} {uri.Host}{Regex.Replace(uri.AbsolutePath, @"/\d+(?=/|$)", "/#")}?{string.Join('&', names)}";
+    }
+
+    /// <summary>The tests that worked, newest first - what the client can be built from.</summary>
+    public static List<TestHistoryEntry> Usable(IEnumerable<TestHistoryEntry> history) =>
+        [.. history.Where(h => h.Ok && ShapeOf(h) is not null).OrderByDescending(h => h.At)];
+
+    /// <summary>The newest test of each distinct request - the default selection.</summary>
+    public static List<TestHistoryEntry> NewestOfEach(IEnumerable<TestHistoryEntry> history) =>
+        [.. Usable(history).GroupBy(h => ShapeOf(h)!).Select(g => g.First())];
+
+    /// <summary>"ReqResClient" - also the suggested file name.</summary>
+    public static string ClassNameFor(string apiName) => JsonToCSharp.Pascal(apiName).TrimStart('@') + "Client";
 
     /// <summary>A demo key as short as "1" is only trusted where the name says it is a key (?api_key=1).</summary>
     private static string MarkShortKey(string url, string demoKey, ref bool found)

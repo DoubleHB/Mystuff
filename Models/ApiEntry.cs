@@ -69,6 +69,36 @@ public sealed class TestHistoryEntry
     public override string ToString() => Label;
 }
 
+/// <summary>One line of a scan report. <see cref="What"/> is only set for changed APIs ("Auth: API key → No key").</summary>
+public sealed class ScanChange
+{
+    public string Key { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string Url { get; set; } = "";
+    public string Category { get; set; } = "";
+    public string What { get; set; } = "";
+}
+
+/// <summary>What one scan changed compared with the catalogue before it (changes.json keeps the last few).</summary>
+public sealed class ScanReport
+{
+    public DateTime At { get; set; }
+    public DateTime ComparedWith { get; set; }
+    /// <summary>"Scan", "Automatic re-scan" or "Background scan".</summary>
+    public string Trigger { get; set; } = "Scan";
+    public int Total { get; set; }
+    public int FailedSources { get; set; }
+    public List<ScanChange> Added { get; set; } = [];
+    public List<ScanChange> Removed { get; set; } = [];
+    public List<ScanChange> Changed { get; set; } = [];
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool IsEmpty => Added.Count + Removed.Count + Changed.Count == 0;
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string Label => $"{At:d MMM yyyy HH:mm}  ·  {Trigger}  ·  " + (IsEmpty ? "no changes" : $"{Added.Count:N0} new, {Removed.Count:N0} gone, {Changed.Count:N0} changed");
+    public override string ToString() => Label;
+}
+
 public sealed class Catalog
 {
     public DateTime ScannedAt { get; set; }

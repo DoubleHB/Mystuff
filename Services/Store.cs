@@ -17,6 +17,17 @@ public sealed class Store
     public Dictionary<string, DocsScanResult> DocsScans { get; private set; } = [];
     public Dictionary<string, List<TestHistoryEntry>> TestHistory { get; private set; } = [];
 
+    /// <summary>What the last scans changed, newest first.</summary>
+    public List<ScanReport> ScanReports { get; private set; } = [];
+    public const int ScanReportsKept = 12;
+
+    public void AddScanReport(ScanReport report)
+    {
+        ScanReports.Insert(0, report);
+        if (ScanReports.Count > ScanReportsKept) ScanReports.RemoveRange(ScanReportsKept, ScanReports.Count - ScanReportsKept);
+        Save("changes.json", ScanReports, indented: false);
+    }
+
     public const int HistoryPerApi = 8;
     private const int HistoryResponseChars = 60_000;
     private const string HistoryFile = "test-history.dat";
@@ -31,6 +42,7 @@ public sealed class Store
         Settings = Load<Settings>("settings.json") ?? new();
         User = Load<UserData>("userdata.json") ?? new();
         DocsScans = Load<Dictionary<string, DocsScanResult>>("docs-scans.json") ?? [];
+        ScanReports = Load<List<ScanReport>>("changes.json") ?? [];
         LoadHistory();
     }
 
