@@ -59,7 +59,17 @@ key when the provider publishes one, or how and where to get a free key when not
   GitHub / GitHub Pages show the repo owner's avatar and "github.com/owner"; RapidAPI publishes no provider logo,
   so those keep RapidAPI's icon with the label "RapidAPI · by provider". A docs scan also picks up the docs page's
   own icon (apple-touch-icon / rel=icon) for sites the icon services do not know.
-- **My shortlist** (header button): favourites and tagged APIs as cards - brand, key badge, what is free, demo key /
+- **Dashboard** (tiles above the list, can be hidden under Sources): APIs by free-access level with share bars, new
+  this week / in 14 days, rate limited right now, and the share of docs links that were online in the last link
+  check. Every tile is a shortcut: click to filter, click again to clear. "⏳ Rate limited now" is also a category.
+- **C# client** (Try it card, beside "C# classes"): one small typed `HttpClient` class from every request in the
+  API's history that worked - a method per distinct request, numeric path segments and query values as parameters
+  defaulting to what was tested, JSON bodies as request classes, response classes with unique names. `{key}` and the
+  provider's demo key become a constructor parameter, so the saved key never appears in the code.
+- **Keyboard**: F5 scan, Esc stop / back, Ctrl+F search, Ctrl+L shortlist, Ctrl+T test, Ctrl+D favourite, Ctrl+K key,
+  Ctrl+U docs URL, Ctrl+G tag, Ctrl+M compare, F1 About. Shortlist cards: arrows, Enter details, T, K, O, U, D.
+  Compare: F5 measure, Ctrl+Shift+C copy as Markdown, Ctrl+1-4 open docs, arrows / PgUp / PgDn scroll.
+- **My shortlist** (header button, Ctrl+L): favourites and tagged APIs as cards - brand, key badge, what is free, demo key /
   "my key saved", tags, note, rate-limit notice and the last test result - with Test, Copy key, Docs and Details.
 - **Rate-limit memory**: a 429 (or "0 requests left") is remembered per API with the time it should work again, taken
   from Retry-After / (X-)RateLimit-Reset, else assumed to be an hour and marked as an estimate. Shown in the Try it
@@ -83,6 +93,16 @@ key when the provider publishes one, or how and where to get a free key when not
 - Favourites (Ctrl+D), notes, and a "My key" vault per API (DPAPI-encrypted for your Windows account).
 - Search (Ctrl+F), auth filter, HTTPS only, CORS enabled, light/dark.
 
+## Safety notes
+
+- "Test this API" follows redirects itself: another host never receives your headers (where a key usually sits), and
+  a redirect that would re-send a body elsewhere is shown instead of followed. No cookies are kept between requests.
+- The scanners (docs, links, logos) refuse localhost and private addresses - the directories are lists anyone can edit.
+- A scan in which a source failed keeps what only that source knew, so nothing is "gone" now and "new" next week.
+- Files are written to a temp file, flushed, then swapped in; an unreadable settings / userdata file is copied aside
+  (`*.unreadable-<time>`) before anything can overwrite it. CSV / Excel copies defuse leading `= + - @`.
+- The scheduled `--scan` does nothing while a window on the same data folder is open (that window re-scans itself).
+
 ## Keys policy
 
 Demo keys in `Services/KeyKnowledge.cs` are only ones the provider publishes in its own docs (NASA `DEMO_KEY`,
@@ -94,7 +114,7 @@ ApiScout never looks for leaked or private keys - the docs scan only reads the p
 - `Services/Sources.cs` - one fetcher per directory; `MarkdownListParser.cs` - generic awesome-list table/bullet parser
 - `Services/Scanner.cs` - parallel run, merge, de-dupe key; `Categoriser.cs` - category rules + keyword classifier
 - `Services/KeyKnowledge.cs` - demo keys, sign-up links, generic how-to per auth type
-- `Services/DocsScanner.cs`, `ApiTester.cs`, `JsonToCSharp.cs`, `LineDiff.cs`, `LogoService.cs`, `LinkChecker.cs`, `Exporter.cs`, `Store.cs`
+- `Services/DocsScanner.cs`, `ApiTester.cs`, `JsonToCSharp.cs`, `ClientGenerator.cs`, `LineDiff.cs`, `LogoService.cs`, `LinkChecker.cs`, `Exporter.cs`, `Store.cs`
 - `Services/ScheduledScan.cs` - the Windows scheduled task; `Services/Backup.cs` - export / import
 - `Views/CompareWindow.cs` - compare window + input prompt, `Views/AboutWindow.cs` (both code only)
 - `ViewModels/MainViewModel.cs`, `ApiRow.cs`; `MainWindow.xaml`
@@ -105,7 +125,7 @@ Data: `%LOCALAPPDATA%\ApiScout` (settings.json, catalog.json, userdata.json, doc
 ## Build / test / publish
 
 ```
-dotnet run --project C:\Claude\ApiScout.Tests -c Release            # 158 checks (add -- --offline to skip live ones)
+dotnet run --project C:\Claude\ApiScout.Tests -c Release            # 185 checks (add -- --offline to skip live ones)
 dotnet publish C:\Claude\ApiScout\ApiScout.csproj -c Release -o C:\Claude\ApiScout-App
 ```
 

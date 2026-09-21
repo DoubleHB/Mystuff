@@ -24,13 +24,30 @@ public sealed partial class SourceToggle(SourceInfo info, bool on) : ObservableO
     [ObservableProperty] private bool _isOn = on;
 }
 
+/// <summary>One dashboard tile: a number about the whole catalogue that is also a shortcut to the matching filter.</summary>
+public sealed partial class DashTile(string id, string title, string colour, bool showBar = false) : ObservableObject
+{
+    public string Id { get; } = id;
+    public string Title { get; } = title;
+    /// <summary>"Up", "Accent", "Warn", "Violet" or "Muted" - the window maps it to a theme brush.</summary>
+    public string Colour { get; } = colour;
+    /// <summary>Tiles without a bar keep its space, so all seven line up.</summary>
+    public double BarOpacity { get; } = showBar ? 1 : 0;
+    [ObservableProperty] private string _value = "0";
+    [ObservableProperty] private string _sub = "";
+    [ObservableProperty] private double _percent;
+    [ObservableProperty] private bool _isActive;
+    [ObservableProperty] private string _tip = "";
+}
+
 public sealed partial class MainViewModel : ObservableObject
 {
     public const string AllCategory = "All APIs";
     public const string FavouritesCategory = "★ Favourites";
     public const string DemoKeyCategory = "🔑 Demo key included";
     public const string NewCategory = "🆕 New (last 14 days)";
-    private const int SpecialCategories = 4;
+    public const string LimitedCategory = "⏳ Rate limited now";
+    private const int SpecialCategories = 5;
 
     /// <summary>Raised when a request was loaded into the Try it card from elsewhere, so the window can scroll to it.</summary>
     public event Action? ShowTestCard;
@@ -66,7 +83,13 @@ public sealed partial class MainViewModel : ObservableObject
         // automatic re-scan: shortly after start-up, then checked every half hour while the app stays open
         _rescanTimer.Tick += (_, _) => AutoRescanIfDue();
         var minute = new DispatcherTimer { Interval = TimeSpan.FromMinutes(1) };
-        minute.Tick += (_, _) => { foreach (var r in _all.Where(x => x.LimitedUntil is not null)) r.RefreshLimit(); }; // "until 20:45" expires by itself
+        minute.Tick += (_, _) =>
+        {
+            // "until 20:45" expires by itself
+            bool any = false;
+            foreach (var r in _all.Where(x => x.LimitedUntil is not null)) { r.RefreshLimit(); any = true; }
+            if (any) { RefreshDashboard(); if (SelectedCategory?.Name == LimitedCategory) ApplyFilter(); }
+        };
         minute.Start();
         _rescanTimer.Start();
         Application.Current?.Dispatcher.BeginInvoke(AutoRescanIfDue, DispatcherPriority.ApplicationIdle);
@@ -84,6 +107,100 @@ public sealed partial class MainViewModel : ObservableObject
             OnPropertyChanged();
             foreach (var r in _all) r.RefreshLogo();
         }
+    }
+
+    public bool ShowDashboard
+    {
+        get => _store.Settings.ShowDashboard;
+        set { _store.Settings.ShowDashboard = value; _store.SaveSettings(); OnPropertyChanged(); }
+    }
+
+    // ---------------------------------------------------------------- dashboard
+
+    public IReadOnlyList<DashTile> Dashboard { get; } =
+    [
+        new("full", "Full free access", "Up", showBar: true),
+        new("tier", "Free tier (limited)", "Accent", showBar: true),
+        new("trial", "Demo / trial only", "Warn", showBar: true),
+        new("unknown", "Not stated", "Muted", showBar: true),
+        new("new", "New this week", "Violet"),
+        new("limited", "Rate limited now", "Warn"),
+        new("links", "Docs links online", "Up", showBar: true),
+    ];
+
+    /// <summary>The tiles count the whole catalogue, whatever the filters say.</summary>
+    private void RefreshDashboard()
+    {
+        int total = _all.Count;
+        var access = _all.GroupBy(r => r.Access).ToDictionary(g => g.Key, g => g.Count());
+        foreach (var (id, level, what) in new[]
+                 {
+                     ("full", AccessLevel.FullFree, "everything they offer is free"), ("tier", AccessLevel.FreeTier, "a free plan with limits"),
+                     ("trial", AccessLevel.TrialOnly, "only a demo or a trial is free"), ("unknown", AccessLevel.Unknown, "the directories do not say - 'Scan docs for Not stated' can find out"),
+                 })
+        {
+            var tile = Tile(id);
+            int n = access.GetValueOrDefault(level);
+            tile.Value = n.ToString("N0");
+            tile.Percent = total == 0 ? 0 : 100.0 * n / total;
+            tile.Sub = total == 0 ? "" : $"{tile.Percent:0}%";
+            tile.Tip = $"{n:N0} of {total:N0} APIs: {what}. Click to list them, click again to clear.";
+        }
+
+        var weekAgo = DateTime.Now.AddDays(-7);
+        int newAll = _all.Count(r => r.IsNew), newWeek = _all.Count(r => r.IsNew && r.Entry.FirstSeen >= weekAgo);
+        var fresh = Tile("new");
+        fresh.Value = newWeek.ToString("N0");
+        fresh.Sub = $"{newAll:N0} in 14 days";
+        fresh.Tip = $"APIs a scan found for the first time: {newWeek:N0} in the last 7 days, {newAll:N0} in the last 14. Click to open \"{NewCategory}\".";
+
+        int limited = _all.Count(r => r.IsLimited);
+        var lim = Tile("limited");
+        lim.Value = limited.ToString("N0");
+        lim.Sub = limited == 0 ? "all clear" : "click to see when";
+        lim.Tip = "APIs that answered your tests with 'too many requests' and have not reset yet. Click to list them.";
+
+        int looked = _all.Count(r => r.Status.Length > 0), online = _all.Count(r => r.Status == "Online"), restricted = _all.Count(r => r.Status == "Restricted");
+        var links = Tile("links");
+        links.Value = looked == 0 ? "-" : $"{100.0 * online / looked:0}%";
+        links.Percent = looked == 0 ? 0 : 100.0 * online / looked;
+        links.Sub = looked == 0 ? "not checked yet" : $"of {looked:N0} checked";
+        links.Tip = looked == 0 ? "Click to run 'Check links' on the listed APIs."
+            : $"{online:N0} online, {restricted:N0} restricted (want a key or block bots), {looked - online - restricted:N0} slow or down - of the {looked:N0} checked this session. Click for 'Online only'.";
+    }
+
+    private DashTile Tile(string id) => Dashboard.First(t => t.Id == id);
+
+    private static readonly Dictionary<string, string> TileAccess = new() { ["full"] = "Full free access", ["tier"] = "Free tier (limited)", ["trial"] = "Demo / trial only", ["unknown"] = "Not stated" };
+
+    [RelayCommand]
+    private void DashboardTile(string? id)
+    {
+        if (id is null || _all.Count == 0) return;
+        ShowShortlist = false;
+        if (TileAccess.TryGetValue(id, out var label)) AccessFilter = AccessFilter == label ? "Any free access" : label;
+        else if (id is "new" or "limited")
+        {
+            var name = id == "new" ? NewCategory : LimitedCategory;
+            SelectedCategory = Categories.FirstOrDefault(c => c.Name == (SelectedCategory?.Name == name ? AllCategory : name));
+        }
+        else if (id == "links")
+        {
+            if (_all.Any(r => r.Status.Length > 0)) OnlineOnly = !OnlineOnly;
+            else CheckLinksCommand.Execute(null);
+        }
+    }
+
+    private void MarkActiveTiles()
+    {
+        foreach (var t in Dashboard)
+            t.IsActive = t.Id switch
+            {
+                "new" => SelectedCategory?.Name == NewCategory,
+                "limited" => SelectedCategory?.Name == LimitedCategory,
+                "links" => OnlineOnly,
+                _ => TileAccess[t.Id] == AccessFilter,
+            };
     }
 
     public string AutoRescan
@@ -226,6 +343,7 @@ public sealed partial class MainViewModel : ObservableObject
             row.LimitedUntil = null;
             _store.SaveUser();
         }
+        RefreshDashboard();
     }
 
     private void SelectedRowChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -252,6 +370,9 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty] private bool _showShortlist;
     [ObservableProperty] private IReadOnlyList<ApiRow> _shortlistRows = [];
     [ObservableProperty] private string _shortlistSummary = "";
+    /// <summary>The card the keyboard is on. Ctrl+T / Ctrl+D / Ctrl+K / Ctrl+U act on it while the page is open.</summary>
+    [ObservableProperty] private ApiRow? _shortlistSelected;
+    private ApiRow? Target => ShowShortlist ? ShortlistSelected : Selected;
 
     /// <summary>Raised when the list should scroll to the selected row (coming back from the shortlist).</summary>
     public event Action? ScrollToSelected;
@@ -262,7 +383,11 @@ public sealed partial class MainViewModel : ObservableObject
     {
         var rows = _all.Where(r => r.IsFavourite || r.HasTags).OrderByDescending(r => r.IsFavourite).ThenBy(r => r.Name, StringComparer.OrdinalIgnoreCase).ToList();
         foreach (var r in rows) { EnsureRowLoaded(r); r.RefreshLimit(); }
+        var keep = ShortlistSelected;
+        int at = keep is null ? 0 : Math.Max(0, ShortlistRows.ToList().IndexOf(keep));
         ShortlistRows = rows;
+        // a card that just left the page hands the selection to its neighbour
+        ShortlistSelected = keep is not null && rows.Contains(keep) ? keep : rows.ElementAtOrDefault(Math.Min(at, rows.Count - 1));
         ShortlistSummary = rows.Count == 0
             ? "Nothing here yet. Star an API (Ctrl+D) or give it a tag and it shows up on this page with its key and last test result."
             : $"{rows.Count:N0} API{(rows.Count == 1 ? "" : "s")}: {rows.Count(r => r.IsFavourite):N0} favourite(s), {rows.Count(r => r.HasTags):N0} tagged, {rows.Count(r => r.HasMyKey):N0} with your own key saved.";
@@ -407,13 +532,14 @@ public sealed partial class MainViewModel : ObservableObject
                 return;
             }
             int before = _all.Count;
+            int kept = outcome.FailedSources > 0 ? Scanner.KeepUnreadable(outcome.Catalog, _catalog) : 0;
             var (added, removed) = Scanner.StampFirstSeen(outcome.Catalog, _catalog);
             _store.SaveCatalog(outcome.Catalog);
             Load(outcome.Catalog);
             var failed = outcome.Notes.Where(n => n.Contains("failed")).ToList();
             StatusText = $"{(auto ? "Automatic re-scan" : "Scan")} finished: {_all.Count:N0} unique APIs in {Categories.Count - SpecialCategories} categories" +
                          (before > 0 ? $" - {added:N0} new, {removed:N0} gone since the last scan" : "") +
-                         (failed.Count > 0 ? $". {failed.Count} source(s) failed: {string.Join("; ", failed)}" : ".");
+                         (failed.Count > 0 ? $". {failed.Count} source(s) failed{(kept > 0 ? $" ({kept:N0} APIs kept from the last scan)" : "")}: {string.Join("; ", failed)}" : ".");
             if (before > 0 && added > 0) ShowToast($"🆕 {added:N0} new API{(added == 1 ? "" : "s")} since the last scan");
         }
         catch (OperationCanceledException) { StatusText = "Scan cancelled."; }
@@ -422,7 +548,12 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void Cancel() => _cts?.Cancel();
+    private void Cancel()
+    {
+        // Esc: stop what is running, otherwise leave the shortlist page
+        if (_cts is not null) _cts.Cancel();
+        else if (ShowShortlist) ShowShortlist = false;
+    }
 
     private void Load(Catalog catalog)
     {
@@ -447,11 +578,13 @@ public sealed partial class MainViewModel : ObservableObject
         Categories.Add(new CategoryItem(FavouritesCategory));
         Categories.Add(new CategoryItem(DemoKeyCategory));
         Categories.Add(new CategoryItem(NewCategory));
+        Categories.Add(new CategoryItem(LimitedCategory));
         foreach (var name in _all.Select(r => r.Category).Distinct().OrderBy(n => n == "Other").ThenBy(n => n, StringComparer.OrdinalIgnoreCase))
             Categories.Add(new CategoryItem(name));
         SelectedCategory = Categories.FirstOrDefault(c => c.Name == selectedName) ?? Categories[0];
         RefreshTagFilters();
         OnPropertyChanged(nameof(IsEmpty));
+        RefreshDashboard();
         ApplyFilter();
         if (keep is not null) Selected = Rows.FirstOrDefault(r => r.Key == keep);
     }
@@ -480,6 +613,7 @@ public sealed partial class MainViewModel : ObservableObject
                     FavouritesCategory => pre.Count(r => r.IsFavourite),
                     DemoKeyCategory => pre.Count(r => r.HasDemoKey),
                     NewCategory => pre.Count(r => r.IsNew),
+                    LimitedCategory => pre.Count(r => r.IsLimited),
                     _ => counts.GetValueOrDefault(c.Name),
                 };
         }
@@ -492,8 +626,10 @@ public sealed partial class MainViewModel : ObservableObject
             FavouritesCategory => [.. pre.Where(r => r.IsFavourite)],
             DemoKeyCategory => [.. pre.Where(r => r.HasDemoKey)],
             NewCategory => [.. pre.Where(r => r.IsNew)],
+            LimitedCategory => [.. pre.Where(r => r.IsLimited)],
             _ => [.. pre.Where(r => r.Category == cat)],
         };
+        MarkActiveTiles();
         if (keep is not null && Rows.Contains(keep)) Selected = keep;
         CountText = $"{Rows.Count:N0} of {_all.Count:N0} APIs";
     }
@@ -521,7 +657,8 @@ public sealed partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void Copy(string? what)
     {
-        if (Selected is not { } r) return;
+        if (Target is not { } r) return;
+        if (ShowShortlist && what == "demokey") { CopyRowKey(r); return; }
         var (text, label) = what switch
         {
             "name" => (r.Name, "Name"),
@@ -534,7 +671,7 @@ public sealed partial class MainViewModel : ObservableObject
             "howto" => (r.HowTo, "How-to"),
             "mykey" => (r.MyKey, "Your key"),
             "response" => (r.TestResponse, "Response"),
-            "classes" => (r.TestClasses, "C# classes"),
+            "classes" => (r.TestClasses, "C# code"),
             "testcurl" => (ApiTester.ToCurl(new ApiTestRequest(r.TestMethod, r.TestUrl, r.TestHeader, r.TestBody)), "cURL command"),
             "markdown" => (Exporter.Markdown(r), "Markdown"),
             "json" => (Exporter.JsonOne(r), "JSON"),
@@ -569,7 +706,7 @@ public sealed partial class MainViewModel : ObservableObject
         if (rows.Count == 1) { CopyText(Exporter.Text(rows[0]), "Details"); return; }
         var sb = new StringBuilder("Name\tCategory\tAuth\tDemo key\tGet a key\tDocs URL\tDescription\r\n");
         foreach (var r in rows)
-            sb.Append($"{r.Name}\t{r.Category}\t{r.AuthLabel}\t{r.DemoKey}\t{r.SignupUrl}\t{r.Url}\t{r.Description.Replace('\t', ' ')}\r\n");
+            sb.Append(string.Join('\t', new[] { r.Name, r.Category, r.AuthLabel, r.DemoKey, r.SignupUrl, r.Url, r.Description }.Select(Exporter.Cell))).Append("\r\n");
         CopyText(sb.ToString(), $"{rows.Count} rows");
     }
 
@@ -624,7 +761,7 @@ public sealed partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void Open(string? what)
     {
-        if (Selected is not { } r) return;
+        if (Target is not { } r) return;
         OpenUrl(what switch { "signup" => r.SignupUrl, "spec" => r.SpecUrl, "example" => r.Example, _ => r.Url });
     }
 
@@ -639,6 +776,7 @@ public sealed partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void ToggleFavourite()
     {
+        if (ShowShortlist) { ToggleRowFavourite(ShortlistSelected); return; }
         if (Selected is not { } r) return;
         r.IsFavourite = !r.IsFavourite;
         if (r.IsFavourite) _store.User.Favourites.Add(r.Key); else _store.User.Favourites.Remove(r.Key);
@@ -667,12 +805,12 @@ public sealed partial class MainViewModel : ObservableObject
             _store.SaveDocsScans();
         }
         catch (Exception ex) { r.DocsScan = new DocsScanResult { ScannedAt = DateTime.Now, PageUrl = r.Url, Error = ex.Message }; }
-        finally { r.IsScanningDocs = false; }
+        finally { r.IsScanningDocs = false; RefreshDashboard(); }
     }
 
     /// <summary>"Test this API": sends the request in the box; {key} stands for the key saved under My key.</summary>
     [RelayCommand]
-    private Task TestApiAsync() => Selected is { } r ? RunTestAsync(r) : Task.CompletedTask;
+    private Task TestApiAsync() => ShowShortlist ? TestRowAsync(ShortlistSelected) : Selected is { } r ? RunTestAsync(r) : Task.CompletedTask;
 
     private async Task RunTestAsync(ApiRow r)
     {
@@ -774,7 +912,20 @@ public sealed partial class MainViewModel : ObservableObject
         var rootName = JsonToCSharp.Pascal(r.Name).TrimStart('@', '_') + "Response";
         var code = JsonToCSharp.Generate(r.TestRaw.Length > 0 ? r.TestRaw : r.TestResponse, rootName);
         if (code is null) { ShowToast("Classes need a JSON object or array of objects"); return; }
+        r.TestCodeTitle = ApiRow.ClassesTitle;
         r.TestClasses = code;
+    }
+
+    /// <summary>A small typed HttpClient class from every request in this API's history that worked.</summary>
+    [RelayCommand]
+    private void GenerateClient()
+    {
+        if (Selected is not { } r) return;
+        var code = ClientGenerator.Generate(r.Name, r.History, r.DemoKey);
+        if (code is null) { ShowToast("Get one request to work first - the client is built from your successful tests"); return; }
+        r.TestCodeTitle = ApiRow.ClientTitle;
+        r.TestClasses = code;
+        ShowToast($"C# client built from {r.History.Count(h => h.Ok)} successful test(s) - try other endpoints to add methods");
     }
 
     /// <summary>Docs scan for every listed API whose free access is "Not stated" and that has not been scanned yet.</summary>
@@ -820,6 +971,7 @@ public sealed partial class MainViewModel : ObservableObject
         {
             _store.SaveDocsScans();
             IsBusy = false; Progress = 0; _cts = null;
+            RefreshDashboard();
             ApplyFilter();
         }
     }
@@ -871,8 +1023,12 @@ public sealed partial class MainViewModel : ObservableObject
             await Application.Current.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Background);
             StatusText = $"Checked {rows.Count:N0} links: {online:N0} online, {rows.Count - online:N0} restricted, slow or down.";
         }
-        catch (OperationCanceledException) { StatusText = $"Link check stopped after {done:N0} of {rows.Count:N0}."; }
-        finally { IsBusy = false; Progress = 0; _cts = null; }
+        catch (OperationCanceledException)
+        {
+            await Application.Current.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Background);
+            StatusText = $"Link check stopped after {done:N0} of {rows.Count:N0}.";
+        }
+        finally { IsBusy = false; Progress = 0; _cts = null; RefreshDashboard(); if (OnlineOnly) ApplyFilter(); }
     }
 
     // ---------------------------------------------------------------- settings

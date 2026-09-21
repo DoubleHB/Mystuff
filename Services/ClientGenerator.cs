@@ -1,0 +1,269 @@
+using System.Globalization;
+using System.Text;
+using System.Text.RegularExpressions;
+using ApiScout.Models;
+
+namespace ApiScout.Services;
+
+/// <summary>
+/// Turns the requests that worked in the Try it card into one small typed HttpClient class:
+/// a method per distinct request, query values as parameters (defaulting to what was tested),
+/// response classes inferred from the saved responses. The saved key is never written out -
+/// {key} becomes a constructor parameter.
+/// </summary>
+public static partial class ClientGenerator
+{
+    private const string KeyToken = "APISCOUTKEYTOKEN";
+
+    [GeneratedRegex(@"^(api|apis|json|xml|rest|public|service|services|v\d+(\.\d+)*|\d+(\.\d+)+)$", RegexOptions.IgnoreCase)]
+    private static partial Regex SkipSegmentRx();
+    [GeneratedRegex(@"^(api[-_]?key|apikey|key|token|access[-_]?token|access[-_]?key|app[-_]?id|appid|auth|client[-_]?id)$", RegexOptions.IgnoreCase)]
+    private static partial Regex KeyNameRx();
+    [GeneratedRegex(@"^-?\d+\.\d+$")]
+    private static partial Regex DecimalRx();
+
+    private static readonly HashSet<string> ReservedNames = ["ct", "url", "request", "response", "body", "http", "apiKey"];
+
+    private sealed record Param(string Type, string Name, string Default);
+
+    /// <summary>Null when no successful request is in the history yet.</summary>
+    public static string? Generate(string apiName, IEnumerable<TestHistoryEntry> history, string? demoKey = null)
+    {
+        var className = JsonToCSharp.Pascal(apiName).TrimStart('@') + "Client";
+        var classes = new JsonToCSharp.ClassSet();
+        classes.Reserve(className);
+
+        var methods = new List<string>();
+        var methodNames = new HashSet<string>();
+        var shapes = new HashSet<string>();
+        bool usesKey = false, usesDemoKey = false, usesCulture = false, usesText = false;
+        string? firstCall = null;
+
+        foreach (var h in history.Where(h => h.Ok).OrderByDescending(h => h.At))
+        {
+            // the key never appears in the code: {key} and the provider's demo key both become _apiKey
+            bool demoHere = false;
+            string Mark(string s)
+            {
+                s = s.Replace("{key}", KeyToken, StringComparison.OrdinalIgnoreCase);
+                if (demoKey is { Length: >= 4 } && s.Contains(demoKey, StringComparison.Ordinal)) { s = s.Replace(demoKey, KeyToken); demoHere = true; }
+                return s;
+            }
+
+            var urlText = Mark(h.Url.Trim());
+            if (demoKey is { Length: > 0 and < 4 }) urlText = MarkShortKey(urlText, demoKey, ref demoHere);
+            if (!Uri.TryCreate(urlText, UriKind.Absolute, out var uri)) continue;
+            var method = h.Method.Trim().ToUpperInvariant();
+
+            // ---- path: numeric segments after a word become id parameters
+            var parameters = new List<Param>();
+            var used = new HashSet<string>(ReservedNames);
+            var path = new StringBuilder();
+            var words = new List<string>();
+            bool endsWithId = false;
+            string? previousWord = null;
+            foreach (var raw in uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries))
+            {
+                path.Append('/');
+                endsWithId = false;
+                if (raw.Contains(KeyToken)) { path.Append(Lit(raw).Replace(KeyToken, "{Uri.EscapeDataString(_apiKey)}")); previousWord = null; continue; }
+                if (previousWord is not null && long.TryParse(raw, NumberStyles.None, CultureInfo.InvariantCulture, out var id) && raw.Length <= 18)
+                {
+                    var name = Unique(Camel(JsonToCSharp.Pascal(Single(previousWord)).TrimStart('@', '_')) + "Id", used);
+                    parameters.Add(new(id <= int.MaxValue ? "int" : "long", name, raw));
+                    path.Append('{').Append(name).Append('}');
+                    endsWithId = true; previousWord = null;
+                    continue;
+                }
+                path.Append(Lit(raw));
+                var word = Path.GetFileNameWithoutExtension(Uri.UnescapeDataString(raw));
+                if (word.Length > 0 && !SkipSegmentRx().IsMatch(word) && word.Any(char.IsLetter)) { words.Add(word); previousWord = word; }
+                else previousWord = null;
+            }
+
+            // ---- query: every value becomes a parameter that defaults to what was tested
+            var query = new StringBuilder();
+            var queryNames = new List<string>();
+            foreach (var pair in uri.Query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+            {
+                int eq = pair.IndexOf('=');
+                var rawName = eq < 0 ? pair : pair[..eq];
+                var value = eq < 0 ? "" : Unescape(pair[(eq + 1)..]);
+                query.Append(query.Length == 0 ? '?' : '&').Append(Lit(rawName));
+                queryNames.Add(rawName);
+                if (eq < 0) continue;
+                query.Append('=');
+                if (value.Contains(KeyToken)) { query.Append(value == KeyToken ? "{Uri.EscapeDataString(_apiKey)}" : Lit(value).Replace(KeyToken, "{Uri.EscapeDataString(_apiKey)}")); continue; }
+
+                var pname = Unique(Camel(JsonToCSharp.Pascal(Unescape(rawName)).TrimStart('@', '_')), used);
+                if (int.TryParse(value, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out _) && (value == "0" || !value.TrimStart('-').StartsWith('0')))
+                {
+                    parameters.Add(new("int", pname, value));
+                    query.Append('{').Append(pname).Append('}');
+                }
+                else if (DecimalRx().IsMatch(value) && double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out _))
+                {
+                    parameters.Add(new("double", pname, value));
+                    query.Append('{').Append(pname).Append(".ToString(CultureInfo.InvariantCulture)}");
+                    usesCulture = true;
+                }
+                else
+                {
+                    parameters.Add(new("string", pname, Quote(value)));
+                    query.Append("{Uri.EscapeDataString(").Append(pname).Append(")}");
+                }
+            }
+
+            // one method per distinct request shape - the newest test of it wins
+            if (!shapes.Add($"{method} {uri.Host}{Regex.Replace(uri.AbsolutePath, @"/\d+(?=/|$)", "/#")}?{string.Join('&', queryNames.Order(StringComparer.Ordinal))}")) continue;
+
+            // ---- name
+            var noun = words.Count == 0 ? "Data" : JsonToCSharp.Pascal(endsWithId ? Single(words[^1]) : words[^1]).TrimStart('@', '_');
+            var baseName = Verb(method) + noun;
+            var methodName = baseName;
+            for (int n = 2; !methodNames.Add(methodName); n++) methodName = baseName + n;
+
+            // ---- headers
+            var headerLines = new List<string>();
+            ApiTester.ParseHeaders(Mark(h.Headers), out var headers);
+            string? contentType = null;
+            foreach (var (name, value) in headers)
+            {
+                if (name.Equals("Content-Type", StringComparison.OrdinalIgnoreCase)) { contentType = value; continue; }
+                var text = value == KeyToken ? "_apiKey" : value.Contains(KeyToken) ? "$\"" + Lit(value).Replace(KeyToken, "{_apiKey}") + "\"" : Quote(value);
+                headerLines.Add($"request.Headers.TryAddWithoutValidation({Quote(name)}, {text});");
+            }
+
+            // ---- body
+            string? contentLine = null;
+            var body = h.Body.Trim();
+            if (ApiTester.HasBody(method) && body.Length > 0)
+            {
+                var markedBody = Mark(body);
+                var bodyType = markedBody.Contains(KeyToken) ? null : classes.Add(body, methodName + "Request");
+                if (bodyType is not null && IsModel(bodyType))
+                {
+                    parameters.Insert(0, new(bodyType.TrimEnd('?'), "body", ""));
+                    contentLine = "request.Content = JsonContent.Create(body);";
+                }
+                else
+                {
+                    parameters.Insert(0, new("string", "body", ""));
+                    var type = (contentType ?? ApiTester.GuessContentType(body)).Split(';')[0].Trim();
+                    contentLine = $"request.Content = new StringContent(body{(markedBody.Contains(KeyToken) ? ".Replace(\"{key}\", _apiKey)" : "")}, Encoding.UTF8, {Quote(type)});";
+                    usesText = true;
+                }
+            }
+
+            // ---- response
+            var sample = h.Response.Trim();
+            var responseType = sample.Length == 0 ? "" : classes.Add(sample, methodName + "Response") is { } t ? (IsModel(t) ? t.TrimEnd('?') : "JsonElement") : "string";
+
+            if (urlText.Contains(KeyToken) || headers.Any(x => x.Value.Contains(KeyToken)) || Mark(body).Contains(KeyToken)) usesKey = true;
+            usesDemoKey |= demoHere;
+
+            // ---- the method
+            var sb = new StringBuilder();
+            sb.AppendLine($"    /// <summary>{method} {Xml(h.Url.Trim())}</summary>");
+            if (contentLine is not null && body.Length <= 400)
+                sb.AppendLine($"    /// <remarks>Tested with this body: {Xml(Regex.Replace(body, @"\s+", " "))}</remarks>");
+            var args = string.Join(", ", parameters.Where(p => p.Default.Length == 0).Select(p => $"{p.Type} {p.Name}")
+                .Concat(parameters.Where(p => p.Default.Length > 0).Select(p => $"{p.Type} {p.Name} = {p.Default}"))
+                .Append("CancellationToken ct = default"));
+            var returns = responseType switch { "" => "Task", "string" => "Task<string>", "JsonElement" => "Task<JsonElement>", _ => $"Task<{responseType}?>" };
+            sb.AppendLine($"    public async {returns} {methodName}Async({args})");
+            sb.AppendLine("    {");
+            sb.AppendLine($"        var url = $\"{Lit(uri.GetLeftPart(UriPartial.Authority))}{path}{query}\";");
+            sb.AppendLine($"        using var request = new HttpRequestMessage(HttpMethod.{HttpMethodName(method)}, url);");
+            foreach (var line in headerLines) sb.AppendLine("        " + line);
+            if (contentLine is not null) sb.AppendLine("        " + contentLine);
+            sb.AppendLine("        using var response = await _http.SendAsync(request, ct);");
+            sb.AppendLine("        response.EnsureSuccessStatusCode();");
+            if (responseType == "string") sb.AppendLine("        return await response.Content.ReadAsStringAsync(ct); // the tested response was not (complete) JSON");
+            else if (responseType.Length > 0) sb.AppendLine($"        return await response.Content.ReadFromJsonAsync<{responseType}>(ct);");
+            sb.Append("    }");
+            methods.Add(sb.ToString());
+            firstCall ??= $"{methodName}Async({(parameters.Any(p => p.Default.Length == 0) ? "…" : "")})";
+        }
+
+        if (methods.Count == 0) return null;
+
+        var code = new StringBuilder();
+        code.AppendLine($"// {className} - generated by ApiScout from {methods.Count} request{(methods.Count == 1 ? "" : "s")} that worked in \"Try it\".");
+        code.AppendLine("// Types come from one response each: widen int to double, or add ?, where the API can answer differently.");
+        code.AppendLine("//");
+        code.AppendLine($"//   var client = new {className}(new HttpClient(){(usesKey && !usesDemoKey ? ", \"your key\"" : "")});");
+        code.AppendLine($"//   var result = await client.{firstCall};");
+        code.AppendLine();
+        code.AppendLine("using System;");
+        code.AppendLine("using System.Collections.Generic;");
+        if (usesCulture) code.AppendLine("using System.Globalization;");
+        code.AppendLine("using System.Net.Http;");
+        code.AppendLine("using System.Net.Http.Json;");
+        if (usesText) code.AppendLine("using System.Text;");
+        code.AppendLine("using System.Text.Json;");
+        code.AppendLine("using System.Text.Json.Serialization;");
+        code.AppendLine("using System.Threading;");
+        code.AppendLine("using System.Threading.Tasks;");
+        code.AppendLine();
+        code.AppendLine($"public sealed class {className}");
+        code.AppendLine("{");
+        code.AppendLine("    private readonly HttpClient _http;");
+        if (usesKey) code.AppendLine("    private readonly string _apiKey;");
+        code.AppendLine();
+        if (usesKey && usesDemoKey) code.AppendLine("    /// <param name=\"apiKey\">Defaults to the provider's shared demo key, which is heavily rate limited - pass your own.</param>");
+        code.AppendLine($"    public {className}(HttpClient http{(usesKey ? ", string apiKey" + (usesDemoKey ? " = " + Quote(demoKey!) : "") : "")})");
+        code.AppendLine("    {");
+        code.AppendLine("        _http = http;");
+        if (usesKey) code.AppendLine("        _apiKey = apiKey;");
+        code.AppendLine("    }");
+        foreach (var m in methods) { code.AppendLine(); code.AppendLine(m); }
+        code.AppendLine("}");
+        if (!classes.IsEmpty) code.Append(classes.Render());
+        return code.ToString().TrimEnd();
+    }
+
+    /// <summary>A demo key as short as "1" is only trusted where the name says it is a key (?api_key=1).</summary>
+    private static string MarkShortKey(string url, string demoKey, ref bool found)
+    {
+        int q = url.IndexOf('?');
+        if (q < 0) return url;
+        var pairs = url[(q + 1)..].Split('&');
+        for (int i = 0; i < pairs.Length; i++)
+        {
+            int eq = pairs[i].IndexOf('=');
+            if (eq > 0 && pairs[i][(eq + 1)..] == demoKey && KeyNameRx().IsMatch(pairs[i][..eq])) { pairs[i] = pairs[i][..(eq + 1)] + KeyToken; found = true; }
+        }
+        return url[..(q + 1)] + string.Join('&', pairs);
+    }
+
+    private static bool IsModel(string type) => type.StartsWith("List<", StringComparison.Ordinal) ||
+        (type.TrimEnd('?') is var t && t is not ("int" or "long" or "double" or "bool" or "string" or "object" or "JsonElement" or "DateTimeOffset"));
+
+    private static string Verb(string method) => method switch { "POST" => "Post", "PUT" => "Put", "PATCH" => "Patch", "DELETE" => "Delete", _ => "Get" };
+    private static string HttpMethodName(string method) => Verb(method);
+
+    private static string Single(string word) => JsonToCSharp.Singular(word) is var s && s == word + "Item" ? word : s;
+
+    private static string Camel(string pascal) => pascal.Length == 0 ? "value" : char.ToLowerInvariant(pascal[0]) + pascal[1..];
+
+    private static string Unique(string name, HashSet<string> used)
+    {
+        if (name.Length == 0 || !(char.IsLetter(name[0]) || name[0] == '_')) name = "p" + name;
+        if (JsonToCSharp.IsKeyword(name)) name += "Value"; // "in", "long"…
+        var candidate = name;
+        for (int n = 2; !used.Add(candidate); n++) candidate = name + n;
+        return candidate;
+    }
+
+    private static string Unescape(string s)
+    {
+        try { return Uri.UnescapeDataString(s.Replace('+', ' ')); }
+        catch (UriFormatException) { return s; }
+    }
+
+    /// <summary>Text inside a C# interpolated string literal.</summary>
+    private static string Lit(string s) => s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("{", "{{").Replace("}", "}}").Replace("\r", "\\r").Replace("\n", "\\n");
+    private static string Quote(string s) => "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "\\r").Replace("\n", "\\n").Replace("\t", "\\t") + "\"";
+    private static string Xml(string s) => s.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");
+}

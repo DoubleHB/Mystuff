@@ -25,6 +25,8 @@ public static partial class JsonToCSharp
     {
         public string Name { get; } = name;
         public List<(string Json, string Prop, string Type)> Props { get; } = [];
+        /// <summary>Only there to keep the name taken (the client class itself).</summary>
+        public bool Hidden { get; init; }
     }
 
     /// <summary>Null when <paramref name="json"/> is not valid JSON or holds no object to model.</summary>
@@ -47,21 +49,53 @@ public static partial class JsonToCSharp
             sb.AppendLine($"// var data = JsonSerializer.Deserialize<{rootType.TrimEnd('?')}>(json);");
             sb.AppendLine("// Types are inferred from this one response: widen int to double where a value can have decimals,");
             sb.AppendLine("// and add ? to anything the API may leave out.");
-            foreach (var c in classes)
-            {
-                sb.AppendLine();
-                sb.AppendLine($"public sealed class {c.Name}");
-                sb.AppendLine("{");
-                foreach (var (jsonName, prop, type) in c.Props)
-                {
-                    sb.AppendLine($"    [JsonPropertyName(\"{jsonName.Replace("\\", "\\\\").Replace("\"", "\\\"")}\")]");
-                    var init = type.EndsWith('?') ? "" : type.StartsWith("List<") ? " = [];" : type == "string" ? " = \"\";"
-                        : classes.Any(k => k.Name == type) ? " = new();" : "";
-                    sb.AppendLine($"    public {type} {prop} {{ get; set; }}{init}");
-                }
-                sb.AppendLine("}");
-            }
+            Render(sb, classes);
             return sb.ToString().TrimEnd();
+        }
+    }
+
+    /// <summary>The classes several JSON samples need, with names kept unique across all of them (used by the client generator).</summary>
+    internal sealed class ClassSet
+    {
+        private readonly List<ClassDef> _classes = [];
+        public bool IsEmpty => _classes.Count == 0;
+
+        /// <summary>The C# type for this sample ("SearchResponse", "List&lt;Item&gt;", "int"…); null when it is not valid JSON.</summary>
+        public string? Add(string json, string rootName)
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(json, new JsonDocumentOptions { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip });
+                return TypeOf([doc.RootElement], Pascal(rootName), _classes);
+            }
+            catch (JsonException) { return null; }
+        }
+
+        public void Reserve(string name) => _classes.Add(new ClassDef(name) { Hidden = true });
+
+        public string Render(string indent = "")
+        {
+            var sb = new StringBuilder();
+            JsonToCSharp.Render(sb, _classes, indent);
+            return sb.ToString();
+        }
+    }
+
+    private static void Render(StringBuilder sb, List<ClassDef> classes, string indent = "")
+    {
+        foreach (var c in classes.Where(c => !c.Hidden))
+        {
+            sb.AppendLine();
+            sb.AppendLine($"{indent}public sealed class {c.Name}");
+            sb.AppendLine(indent + "{");
+            foreach (var (jsonName, prop, type) in c.Props)
+            {
+                sb.AppendLine($"{indent}    [JsonPropertyName(\"{jsonName.Replace("\\", "\\\\").Replace("\"", "\\\"")}\")]");
+                var init = type.EndsWith('?') ? "" : type.StartsWith("List<") ? " = [];" : type == "string" ? " = \"\";"
+                    : classes.Any(k => k.Name == type) ? " = new();" : "";
+                sb.AppendLine($"{indent}    public {type} {prop} {{ get; set; }}{init}");
+            }
+            sb.AppendLine(indent + "}");
         }
     }
 
@@ -127,6 +161,8 @@ public static partial class JsonToCSharp
         }
         return name;
     }
+
+    internal static bool IsKeyword(string s) => Keywords.Contains(s);
 
     internal static string Pascal(string s)
     {

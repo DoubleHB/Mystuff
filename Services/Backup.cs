@@ -42,7 +42,7 @@ public sealed record ImportSummary(int Favourites, int Tagged, int Notes, int Ke
 /// </summary>
 public static class Backup
 {
-    private const int DefaultIterations = 310_000;
+    private const int DefaultIterations = 310_000, MaxIterations = 5_000_000;
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
 
     public static string Export(Store store, string? passphrase)
@@ -78,6 +78,12 @@ public static class Backup
         try { file = JsonSerializer.Deserialize<BackupFile>(json); }
         catch (JsonException) { file = null; }
         if (file is null || file.App != "ApiScout") throw new InvalidDataException("This is not an ApiScout export file.");
+        // a hand-edited file may say null where a list belongs
+        file.Favourites = [.. (file.Favourites ?? []).Where(f => !string.IsNullOrEmpty(f))];
+        file.Tags = (file.Tags ?? []).Where(p => p.Value is not null).ToDictionary(p => p.Key, p => p.Value.Where(t => !string.IsNullOrWhiteSpace(t)).ToList());
+        file.Notes = (file.Notes ?? []).Where(p => p.Value is not null).ToDictionary(p => p.Key, p => p.Value);
+        // the count comes from the file: refuse one that would keep PBKDF2 busy for hours
+        if (file.Secrets is not null && file.Iterations is < 0 or > MaxIterations) throw new InvalidDataException("The export file asks for an unreasonable amount of key stretching - it is damaged or not from ApiScout.");
         return file;
     }
 
@@ -93,7 +99,10 @@ public static class Backup
         {
             // decrypt first, so a wrong passphrase changes nothing
             var plain = Open(Convert.FromBase64String(file.Secrets), passphrase, Convert.FromBase64String(file.Salt ?? ""), file.Iterations > 0 ? file.Iterations : DefaultIterations);
-            secrets = JsonSerializer.Deserialize<BackupSecrets>(plain) ?? new();
+            try { secrets = JsonSerializer.Deserialize<BackupSecrets>(plain) ?? new(); }
+            catch (JsonException) { throw new InvalidDataException("The encrypted part of the file opened, but what is inside is not ApiScout data."); }
+            secrets.MyKeys = (secrets.MyKeys ?? []).Where(p => !string.IsNullOrEmpty(p.Value)).ToDictionary(p => p.Key, p => p.Value);
+            secrets.TestRequests = (secrets.TestRequests ?? []).Where(p => p.Value?.Url is not null).ToDictionary(p => p.Key, p => p.Value);
         }
 
         foreach (var f in file.Favourites) if (store.User.Favourites.Add(f)) favourites++;

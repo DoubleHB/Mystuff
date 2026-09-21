@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Security;
 using System.Text;
 
@@ -80,12 +80,25 @@ public static class ScheduledScan
 
     private static (int Code, string Output) Run(string arguments)
     {
-        using var p = Process.Start(new ProcessStartInfo("schtasks.exe", arguments)
+        Process? started;
+        try
         {
-            UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true,
-        })!;
-        var output = p.StandardOutput.ReadToEnd() + p.StandardError.ReadToEnd();
-        p.WaitForExit(15000);
-        return (p.ExitCode, output);
+            started = Process.Start(new ProcessStartInfo("schtasks.exe", arguments)
+            {
+                UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true,
+            });
+        }
+        catch (System.ComponentModel.Win32Exception ex) { return (-1, "Could not start schtasks.exe: " + ex.Message); }
+        if (started is null) return (-1, "Could not start schtasks.exe.");
+        using var p = started;
+        // read both pipes in the background: ReadToEnd here would wait for the process, and the 15 seconds below would never apply
+        var stdout = p.StandardOutput.ReadToEndAsync();
+        var stderr = p.StandardError.ReadToEndAsync();
+        if (!p.WaitForExit(15000))
+        {
+            try { p.Kill(entireProcessTree: true); } catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception) { }
+            return (-1, "Windows Task Scheduler did not answer within 15 seconds.");
+        }
+        return (p.ExitCode, stdout.Result + stderr.Result);
     }
 }

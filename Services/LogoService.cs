@@ -65,6 +65,8 @@ public static class LogoService
         brand.Key.Length == 0 || Folder.Length == 0 ? Task.FromResult<ImageSource?>(null)
         : Cache.GetOrAdd(brand.Key + (pageIcon is null ? "" : "|" + pageIcon), _ => LoadAsync(brand, pageIcon));
 
+    private const int MaxIconBytes = 400_000;
+
     private static async Task<ImageSource?> LoadAsync(BrandInfo brand, string? pageIcon)
     {
         var domain = brand.Key;
@@ -73,7 +75,11 @@ public static class LogoService
         var none = Path.Combine(Folder, safe + ".none");
         try
         {
-            if (File.Exists(file)) return Decode(await File.ReadAllBytesAsync(file));
+            if (File.Exists(file))
+            {
+                if (Decode(await File.ReadAllBytesAsync(file)) is { } cached) return cached;
+                File.Delete(file); // a damaged cache file: fetch it again
+            }
             bool knownNone = File.Exists(none) && DateTime.Now - File.GetLastWriteTime(none) < TimeSpan.FromDays(30);
             if (knownNone && pageIcon is null) return null;
             string[] urls = knownNone ? [pageIcon!] : pageIcon is null ? brand.IconUrls : [.. brand.IconUrls, pageIcon];
@@ -81,19 +87,31 @@ public static class LogoService
             await Gate.WaitAsync();
             try
             {
+                bool definite = true; // every service said "no such icon", rather than "busy" or "try later"
                 foreach (var url in urls)
                 {
+                    if (!Http.IsPublicWebUrl(url)) continue; // the page's own icon link is whatever the page says
                     using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(12));
-                    using var resp = await Http.Client.GetAsync(url, cts.Token);
-                    if (!resp.IsSuccessStatusCode) continue;
-                    var bytes = await resp.Content.ReadAsByteArrayAsync(cts.Token);
-                    if (bytes.Length is < 100 or > 400_000 || Decode(bytes) is not { } image) continue;
+                    using var resp = await Http.Client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cts.Token);
+                    if (!resp.IsSuccessStatusCode) { definite &= (int)resp.StatusCode is 404 or 410 or 400; continue; }
+                    if (resp.Content.Headers.ContentLength > MaxIconBytes) continue;
+                    // read with a ceiling: the link could point at anything
+                    await using var stream = await resp.Content.ReadAsStreamAsync(cts.Token);
+                    using var ms = new MemoryStream();
+                    var buffer = new byte[16384];
+                    int read;
+                    while (ms.Length <= MaxIconBytes && (read = await stream.ReadAsync(buffer, cts.Token)) > 0) ms.Write(buffer, 0, read);
+                    var bytes = ms.ToArray();
+                    if (bytes.Length is < 100 or > MaxIconBytes || Decode(bytes) is not { } image) continue;
                     Directory.CreateDirectory(Folder);
                     await File.WriteAllBytesAsync(file, bytes);
                     return image;
                 }
-                Directory.CreateDirectory(Folder);
-                await File.WriteAllBytesAsync(none, []);
+                if (definite)
+                {
+                    Directory.CreateDirectory(Folder);
+                    await File.WriteAllBytesAsync(none, []);
+                }
                 return null;
             }
             finally { Gate.Release(); }

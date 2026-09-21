@@ -86,6 +86,7 @@ public sealed class Settings
     public string AutoRescan { get; set; } = "Weekly";
     /// <summary>Fetch provider favicons through a public icon service (only the domain name is sent).</summary>
     public bool ShowLogos { get; set; } = true;
+    public bool ShowDashboard { get; set; } = true;
     /// <summary>A Windows scheduled task re-scans (Daily/Weekly, as AutoRescan says) even when ApiScout is closed.</summary>
     public bool BackgroundScan { get; set; }
     public Dictionary<string, bool> Sources { get; set; } = [];

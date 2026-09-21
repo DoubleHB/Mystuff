@@ -10,6 +10,7 @@ public static class LinkChecker
     public static async Task<LinkStatus> CheckAsync(string url, CancellationToken ct)
     {
         var sw = Stopwatch.StartNew();
+        if (!Http.IsPublicWebUrl(url)) return new("Down", null, 0); // not a public web address: nothing to check (and nothing on the local network to poke)
         try
         {
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -20,6 +21,6 @@ public static class LinkChecker
             return new(label, code, (int)sw.ElapsedMilliseconds);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested) { return new("Timeout", null, (int)sw.ElapsedMilliseconds); }
-        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or UriFormatException) { return new("Down", null, (int)sw.ElapsedMilliseconds); }
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or UriFormatException or NotSupportedException or IOException) { return new("Down", null, (int)sw.ElapsedMilliseconds); }
     }
 }

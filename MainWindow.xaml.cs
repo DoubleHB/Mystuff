@@ -24,13 +24,53 @@ public partial class MainWindow : Window
 
         _vm.ScrollToSelected += () => Dispatcher.BeginInvoke(() => { if (ResultsGrid.SelectedItem is { } item) ResultsGrid.ScrollIntoView(item); }, System.Windows.Threading.DispatcherPriority.Background);
         _vm.ShowTestCard += () => Dispatcher.BeginInvoke(() => TestCard.BringIntoView(), System.Windows.Threading.DispatcherPriority.Background);
-        InputBindings.Add(new KeyBinding(new ActionCommand(() => { SearchBox.Focus(); SearchBox.SelectAll(); }), Key.F, ModifierKeys.Control));
+        InputBindings.Add(new KeyBinding(new ActionCommand(() => { _vm.ShowShortlist = false; SearchBox.Focus(); SearchBox.SelectAll(); }), Key.F, ModifierKeys.Control));
+        InputBindings.Add(new KeyBinding(new ActionCommand(() => _vm.ShowShortlist = !_vm.ShowShortlist), Key.L, ModifierKeys.Control));
+        InputBindings.Add(new KeyBinding(new ActionCommand(() => { if (!_vm.ShowShortlist) Compare_Click(this, new RoutedEventArgs()); }), Key.M, ModifierKeys.Control));
+        InputBindings.Add(new KeyBinding(new ActionCommand(() => { if (!_vm.ShowShortlist) TagSelected_Click(this, new RoutedEventArgs()); }), Key.G, ModifierKeys.Control));
+        InputBindings.Add(new KeyBinding(new ActionCommand(() => About_Click(this, new RoutedEventArgs())), Key.F1, ModifierKeys.None));
+        _vm.PropertyChanged += (_, e) =>
+        {
+            // the keyboard follows the page: onto the selected card, or back onto the selected grid row
+            if (e.PropertyName is nameof(MainViewModel.ShowShortlist) or nameof(MainViewModel.ShortlistRows)) Dispatcher.BeginInvoke(FocusCurrentPage, System.Windows.Threading.DispatcherPriority.Input);
+        };
         Closing += (_, _) =>
         {
             s.Maximised = WindowState == WindowState.Maximized;
             if (WindowState == WindowState.Normal) { s.Width = Width; s.Height = Height; }
             _vm.SaveSourceSettings();
         };
+    }
+
+    private void FocusCurrentPage()
+    {
+        if (_vm.ShowShortlist)
+        {
+            ShortlistBox.UpdateLayout();
+            if (ShortlistBox.SelectedItem is { } card && ShortlistBox.ItemContainerGenerator.ContainerFromItem(card) is ListBoxItem item) { item.BringIntoView(); item.Focus(); }
+            else ShortlistBox.Focus();
+        }
+        else if (ResultsGrid.SelectedItem is { } row && ResultsGrid.ItemContainerGenerator.ContainerFromItem(row) is DataGridRow gridRow)
+            gridRow.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
+        else ResultsGrid.Focus();
+    }
+
+    /// <summary>Single keys on a shortlist card. A focused button inside the card keeps Enter and Space for itself.</summary>
+    private void Shortlist_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (Keyboard.Modifiers != ModifierKeys.None || _vm.ShortlistSelected is not { } row) return;
+        if (e.OriginalSource is System.Windows.Controls.Primitives.ButtonBase && e.Key is Key.Enter or Key.Space) return;
+        switch (e.Key)
+        {
+            case Key.Enter: _vm.ShowRowCommand.Execute(row); break;
+            case Key.T: _vm.TestRowCommand.Execute(row); break;
+            case Key.K: _vm.CopyRowKeyCommand.Execute(row); break;
+            case Key.O: _vm.OpenRowCommand.Execute(row); break;
+            case Key.U: _vm.CopyCommand.Execute("url"); break;
+            case Key.D: _vm.ToggleRowFavouriteCommand.Execute(row); break;
+            default: return;
+        }
+        e.Handled = true;
     }
 
     private void ThemeButton_Click(object sender, RoutedEventArgs e)

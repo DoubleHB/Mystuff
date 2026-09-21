@@ -206,6 +206,9 @@ public sealed partial class ApiRow : ObservableObject
     /// <summary>The last real response as received - what "C# classes" is generated from.</summary>
     public string TestRaw { get; set; } = "";
     [ObservableProperty] private string _testClasses = "";
+    /// <summary>What the code box under the response holds: the classes for one response, or a whole client.</summary>
+    [ObservableProperty] private string _testCodeTitle = ClassesTitle;
+    public const string ClassesTitle = "C# CLASSES  (System.Text.Json)", ClientTitle = "C# CLIENT  (HttpClient + System.Text.Json, one method per request that worked)";
     [ObservableProperty] private bool _isTesting;
     [ObservableProperty] private bool _testOk;
     [ObservableProperty] private string _testSummary = "";

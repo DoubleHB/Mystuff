@@ -10,6 +10,7 @@
             <ui:TextToVisibilityConverter x:Key="TextToVis" />
             <ui:EmptyTextToVisibilityConverter x:Key="EmptyTextToVis" />
             <ui:StarConverter x:Key="Star" />
+            <ui:NullToCollapsedConverter x:Key="NullToCollapsed" />
             <ui:BadgeBrushConverter x:Key="BadgeBrush" />
             <ui:BadgeSoftBrushConverter x:Key="BadgeSoftBrush" />
             <ui:StatusBrushConverter x:Key="StatusBrush" />

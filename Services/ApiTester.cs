@@ -41,28 +41,55 @@ public static class ApiTester
         {
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             cts.CancelAfter(TimeSpan.FromSeconds(30));
-            using var req = new HttpRequestMessage(new HttpMethod(method), uri);
-            req.Headers.Accept.Clear();
-            req.Headers.Accept.ParseAdd("application/json, text/plain;q=0.8, */*;q=0.5");
-
-            if (HasBody(method))
+            // Redirects are followed here rather than by HttpClient, which would hand custom headers (X-Api-Key: …) to any
+            // host a redirect names. Another host gets a plain request; one that wants the method and body kept is shown as it is.
+            HttpRequestMessage? req = null;
+            HttpResponseMessage? resp = null;
+            var target = uri;
+            string? redirectNote = null;
+            string sendMethod = method;
+            bool own = true; // still on the host the user typed, so their headers and body go along
+            for (int hop = 0; ; hop++)
             {
-                // Content-Type: the user's header wins, otherwise judged from the body
-                var bodyType = headers.FirstOrDefault(h => h.Name.Equals("Content-Type", StringComparison.OrdinalIgnoreCase)).Value ?? GuessContentType(request.Body);
-                req.Content = new StringContent(request.Body, System.Text.Encoding.UTF8);
-                req.Content.Headers.ContentType = System.Net.Http.Headers.MediaTypeHeaderValue.TryParse(bodyType, out var parsed) ? parsed : new("text/plain");
-                req.Content.Headers.ContentType.CharSet ??= "utf-8";
-            }
-            foreach (var (name, value) in headers)
-            {
-                if (name.Equals("Content-Type", StringComparison.OrdinalIgnoreCase)) continue;
-                bool added = name.StartsWith("Content-", StringComparison.OrdinalIgnoreCase)
-                    ? req.Content?.Headers.TryAddWithoutValidation(name, value) ?? true
-                    : req.Headers.TryAddWithoutValidation(name, value);
-                if (!added) return new(false, false, $"The header '{name}' could not be added.", "");
-            }
+                req = new HttpRequestMessage(new HttpMethod(sendMethod), target);
+                req.Headers.Accept.Clear();
+                if (!own || !headers.Any(h => h.Name.Equals("Accept", StringComparison.OrdinalIgnoreCase)))
+                    req.Headers.Accept.ParseAdd("application/json, text/plain;q=0.8, */*;q=0.5");
 
-            using var resp = await Http.Client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cts.Token);
+                if (own && HasBody(sendMethod))
+                {
+                    // Content-Type: the user's header wins, otherwise judged from the body
+                    var bodyType = headers.FirstOrDefault(h => h.Name.Equals("Content-Type", StringComparison.OrdinalIgnoreCase)).Value ?? GuessContentType(request.Body);
+                    req.Content = new StringContent(request.Body, System.Text.Encoding.UTF8);
+                    req.Content.Headers.ContentType = System.Net.Http.Headers.MediaTypeHeaderValue.TryParse(bodyType, out var parsed) ? parsed : new("text/plain");
+                    req.Content.Headers.ContentType.CharSet ??= "utf-8";
+                }
+                foreach (var (name, value) in own ? headers : [])
+                {
+                    if (name.Equals("Content-Type", StringComparison.OrdinalIgnoreCase)) continue;
+                    bool added = name.StartsWith("Content-", StringComparison.OrdinalIgnoreCase)
+                        ? req.Content?.Headers.TryAddWithoutValidation(name, value) ?? true
+                        : req.Headers.TryAddWithoutValidation(name, value);
+                    if (!added) { req.Dispose(); return new(false, false, $"The header '{name}' could not be added.", ""); }
+                }
+
+                resp = await Http.NoRedirects.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cts.Token);
+                int code = (int)resp.StatusCode;
+                if (code is not (301 or 302 or 303 or 307 or 308) || hop >= 6 || resp.Headers.Location is not { } location) break;
+                var next = location.IsAbsoluteUri ? location : new Uri(target, location);
+                if (next.Scheme is not ("http" or "https") || (target.Scheme == "https" && next.Scheme == "http")) break;
+                bool sameHost = own && next.Host.Equals(uri.Host, StringComparison.OrdinalIgnoreCase);
+                bool keepsMethod = code is 307 or 308;
+                if (!sameHost && keepsMethod && sendMethod != "GET") break; // would mean re-posting the body elsewhere: show the redirect instead
+                if (!keepsMethod && sendMethod != "GET") sendMethod = "GET";
+                if (!sameHost && own && headers.Count > 0) redirectNote = $"Redirected to {next.Host} - your headers were not sent there.";
+                own = sameHost;
+                redirectNote ??= $"Redirected to {next.GetLeftPart(UriPartial.Path)}";
+                target = next;
+                resp.Dispose(); req.Dispose();
+            }
+            using var reqOwner = req;
+            using var respOwner = resp;
             await using var stream = await resp.Content.ReadAsStreamAsync(cts.Token);
             using var ms = new MemoryStream();
             var buffer = new byte[81920];
@@ -70,11 +97,17 @@ public static class ApiTester
             while (ms.Length < MaxBytes && (read = await stream.ReadAsync(buffer, cts.Token)) > 0) ms.Write(buffer, 0, read);
             sw.Stop();
 
-            var raw = System.Text.Encoding.UTF8.GetString(ms.GetBuffer(), 0, (int)ms.Length);
+            var encoding = System.Text.Encoding.UTF8;
+            if (resp.Content.Headers.ContentType?.CharSet?.Trim('"') is { Length: > 0 } charset)
+                try { encoding = System.Text.Encoding.GetEncoding(charset); } catch (ArgumentException) { }
+            var raw = encoding.GetString(ms.GetBuffer(), 0, (int)ms.Length);
             var type = resp.Content.Headers.ContentType?.MediaType ?? "unknown type";
             var (body, isJson) = Format(raw);
             var summary = $"{(int)resp.StatusCode} {resp.ReasonPhrase} · {sw.ElapsedMilliseconds:N0} ms · {type} · {Size(ms.Length)}{(ms.Length >= MaxBytes ? "+ (cut off)" : "")}";
-            if (!isJson && type.Contains("html"))
+            if (redirectNote is not null) summary += "\n" + redirectNote;
+            if ((int)resp.StatusCode is >= 300 and < 400 && resp.Headers.Location is { } goesTo)
+                summary += $"\nThe API redirects to {goesTo} - not followed automatically (it would re-send the request to another host, or too many hops). Test that URL directly if it is right.";
+            else if (!isJson && type.Contains("html"))
                 summary += "\nThis is a web page, not JSON - probably the docs. Paste an endpoint URL from the docs above and send again.";
             else if ((int)resp.StatusCode is 401 or 403)
                 summary += "\nThe API wants a key. Add it to the URL or a header - {key} inserts the key saved under 'My key'.";
@@ -90,7 +123,7 @@ public static class ApiTester
             return new(resp.IsSuccessStatusCode, isJson, summary, body, raw, rate);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested) { return new(false, false, "No answer within 30 seconds.", ""); }
-        catch (HttpRequestException ex) { return new(false, false, "Request failed: " + (ex.InnerException?.Message ?? ex.Message), ""); }
+        catch (Exception ex) when (ex is HttpRequestException or IOException or NotSupportedException) { return new(false, false, "Request failed: " + (ex.InnerException?.Message ?? ex.Message), ""); }
     }
 
     public static string When(DateTime t) =>
@@ -107,9 +140,12 @@ public static class ApiTester
             reset = int.TryParse(retry.Trim(), out var secs) ? now.AddSeconds(secs)
                   : DateTimeOffset.TryParse(retry, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal, out var date) ? date.LocalDateTime : null;
         if (reset is null && First("X-RateLimit-Reset", "RateLimit-Reset", "X-Rate-Limit-Reset") is { } r && long.TryParse(r.Trim().Split('.', ';')[0], out var n) && n > 0)
+        {
+            while (n > 100_000_000_000_000) n /= 1000;                                                 // epoch in micro- or nanoseconds
             reset = n > 100_000_000_000 ? DateTimeOffset.FromUnixTimeMilliseconds(n).LocalDateTime   // epoch ms
                   : n > 1_000_000_000 ? DateTimeOffset.FromUnixTimeSeconds(n).LocalDateTime          // epoch s
                   : now.AddSeconds(n);                                                                // seconds from now
+        }
         var remaining = LeadingInt(First("X-RateLimit-Remaining", "RateLimit-Remaining", "X-Rate-Limit-Remaining"));
         var limit = LeadingInt(First("X-RateLimit-Limit", "RateLimit-Limit", "X-Rate-Limit-Limit"));
 

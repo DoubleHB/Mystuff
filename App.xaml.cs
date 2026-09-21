@@ -13,13 +13,21 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
-        Store = new Store();
+        // a safety net under every regex that reads downloaded text: a match that runs this long is a hostile or broken page
+        AppDomain.CurrentDomain.SetData("REGEX_DEFAULT_MATCH_TIMEOUT", TimeSpan.FromSeconds(5));
         DispatcherUnhandledException += (_, args) =>
         {
-            Store.Log("Unhandled: " + args.Exception);
+            Store?.Log("Unhandled: " + args.Exception);
             MessageBox.Show(args.Exception.Message, "ApiScout hit a problem", MessageBoxButton.OK, MessageBoxImage.Warning);
             args.Handled = true;
         };
+        try { Store = new Store(); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            MessageBox.Show("ApiScout cannot use its data folder:\n" + ex.Message, "ApiScout", MessageBoxButton.OK, MessageBoxImage.Error);
+            Shutdown(2);
+            return;
+        }
         if (e.Args.FirstOrDefault(x => x.StartsWith("--background-scan=", StringComparison.OrdinalIgnoreCase)) is { } sw)
         {
             // ApiScout.exe --background-scan=weekly|daily|off : same as the tick box in Sources, for scripts
@@ -37,14 +45,44 @@ public partial class App : Application
         }
         if (e.Args.Contains("--scan", StringComparer.OrdinalIgnoreCase))
         {
-            // headless re-scan for Task Scheduler: ApiScout.exe --scan
+            // headless re-scan for Task Scheduler: ApiScout.exe --scan. An open window re-scans by itself, and two writers would trip over catalog.json.
+            _windowOpen = WindowMutex(Store.Folder);
+            if (!TryTakeWindowMutex()) { Store.Log("Headless scan skipped: ApiScout is open."); Shutdown(0); return; }
+            _windowOpen.ReleaseMutex();
             _ = HeadlessScanAsync();
             return;
         }
+        _windowOpen = WindowMutex(Store.Folder);
+        _holdsMutex = TryTakeWindowMutex();
         ApplyTheme(Store.Settings.Dark);
         var window = new MainWindow(new MainViewModel(Store));
         MainWindow = window;
         window.Show();
+    }
+
+    // held for as long as a window of this user's data folder is open
+    private Mutex? _windowOpen;
+    private bool _holdsMutex;
+
+    /// <summary>One name per data folder (string.GetHashCode differs between processes, so the hash is spelled out).</summary>
+    private static Mutex WindowMutex(string folder)
+    {
+        uint h = 2166136261;
+        foreach (var c in folder.ToLowerInvariant()) h = (h ^ c) * 16777619;
+        return new Mutex(false, $"ApiScout.Window.{h:x8}");
+    }
+
+    private bool TryTakeWindowMutex()
+    {
+        try { return _windowOpen!.WaitOne(0); }
+        catch (AbandonedMutexException) { return true; } // the last holder crashed; it is ours now
+    }
+
+    protected override void OnExit(ExitEventArgs e)
+    {
+        if (_holdsMutex) _windowOpen?.ReleaseMutex();
+        _windowOpen?.Dispose();
+        base.OnExit(e);
     }
 
     private async Task HeadlessScanAsync()
@@ -54,9 +92,11 @@ public partial class App : Application
         {
             var outcome = await Scanner.RunAsync(MainViewModel.EnabledSources(Store.Settings), new Progress<ScanProgress>(), CancellationToken.None);
             if (outcome.Catalog.Entries.Count == 0) throw new InvalidOperationException("nothing found - " + string.Join("; ", outcome.Notes));
-            var (added, removed) = Scanner.StampFirstSeen(outcome.Catalog, Store.LoadCatalog());
+            var previous = Store.LoadCatalog();
+            int kept = outcome.FailedSources > 0 ? Scanner.KeepUnreadable(outcome.Catalog, previous) : 0;
+            var (added, removed) = Scanner.StampFirstSeen(outcome.Catalog, previous);
             Store.SaveCatalog(outcome.Catalog);
-            Store.Log($"Headless scan: {outcome.Catalog.Entries.Count:N0} APIs, {added:N0} new, {removed:N0} gone");
+            Store.Log($"Headless scan: {outcome.Catalog.Entries.Count:N0} APIs, {added:N0} new, {removed:N0} gone" + (outcome.FailedSources > 0 ? $", {outcome.FailedSources} source(s) failed ({kept:N0} kept): {string.Join("; ", outcome.Notes.Where(n => n.Contains("failed")))}" : ""));
             if (added > 0)
             {
                 var fresh = outcome.Catalog.Entries.Where(x => x.FirstSeen == outcome.Catalog.ScannedAt).Select(x => x.Name).Take(4).ToList();

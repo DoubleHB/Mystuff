@@ -4,14 +4,14 @@ namespace ApiScout.Services;
 
 public sealed record ScanProgress(string Message, int Done, int Total);
 
-public sealed record ScanOutcome(Catalog Catalog, List<string> Notes);
+public sealed record ScanOutcome(Catalog Catalog, List<string> Notes, int FailedSources = 0);
 
 /// <summary>Runs every enabled source in parallel, then merges, de-duplicates and categorises.</summary>
 public static class Scanner
 {
     public static async Task<ScanOutcome> RunAsync(IReadOnlyList<(string Id, string Name)> sources, IProgress<ScanProgress> progress, CancellationToken ct)
     {
-        int done = 0;
+        int done = 0, failed = 0;
         var notes = new List<string>();
         progress.Report(new($"Contacting {sources.Count} sources…", 0, sources.Count));
 
@@ -26,6 +26,7 @@ public static class Scanner
             }
             catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
             {
+                Interlocked.Increment(ref failed);
                 lock (notes) notes.Add($"{s.Name}: failed - {ex.Message}");
                 progress.Report(new($"{s.Name}: failed", Interlocked.Increment(ref done), sources.Count));
                 return [];
@@ -38,7 +39,7 @@ public static class Scanner
 
         // Task.WhenAll keeps source order, so earlier (better described) sources win ties
         var merged = Merge(results.SelectMany(r => r));
-        return new(new Catalog { ScannedAt = DateTime.Now, Entries = merged }, notes);
+        return new(new Catalog { ScannedAt = DateTime.Now, Entries = merged }, notes, failed);
     }
 
     public const int NewForDays = 14;
@@ -67,6 +68,22 @@ public static class Scanner
         return (added, seen.Keys.Count(k => !now.Contains(k)));
     }
 
+    /// <summary>
+    /// For a scan in which a source could not be read: what was only known through an unread source stays in the
+    /// catalogue. Otherwise it would count as gone now and as "new" again once the source is back.
+    /// </summary>
+    public static int KeepUnreadable(Catalog fresh, Catalog? previous)
+    {
+        if (previous is null) return 0;
+        var read = fresh.Entries.SelectMany(e => e.Sources).ToHashSet();
+        var have = fresh.Entries.Select(e => e.Key).ToHashSet();
+        var kept = previous.Entries.Where(e => !have.Contains(e.Key) && e.Sources.Any(s => !read.Contains(s))).ToList();
+        if (kept.Count == 0) return 0;
+        fresh.Entries.AddRange(kept);
+        fresh.Entries.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
+        return kept.Count;
+    }
+
     public static bool IsNew(ApiEntry e, DateTime? baseline, DateTime now) =>
         e.FirstSeen is { } first && baseline is { } b && first > b && now - first < TimeSpan.FromDays(NewForDays);
 
@@ -75,7 +92,7 @@ public static class Scanner
         var byKey = new Dictionary<string, ApiEntry>(StringComparer.Ordinal);
         foreach (var e in entries)
         {
-            if (e.Name.Length == 0 || e.Url.Length == 0) continue;
+            if (e.Name.Length == 0 || !Http.IsWebUrl(e.Url)) continue; // ftp:, mailto: and relative links are no use as docs
             if (e.Key.Length == 0) e.Key = MakeKey(e.Url, e.Name);
 
             if (!byKey.TryGetValue(e.Key, out var have))

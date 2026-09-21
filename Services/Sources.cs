@@ -45,7 +45,12 @@ public static class Sources
     {
         using var doc = JsonDocument.Parse(json);
         var list = new List<ApiEntry>();
-        foreach (var e in doc.RootElement.GetProperty("entries").EnumerateArray())
+        // { "entries": [ … ] } as publicapis.dev has it, or just the array
+        var root = doc.RootElement;
+        var entries = root.ValueKind == JsonValueKind.Array ? root
+            : root.ValueKind == JsonValueKind.Object && root.TryGetProperty("entries", out var inner) && inner.ValueKind == JsonValueKind.Array ? inner
+            : throw new InvalidDataException("the JSON has no \"entries\" list (expected the publicapis.dev shape: API, Description, Link, Category, Auth)");
+        foreach (var e in entries.EnumerateArray())
         {
             var auth = Str(e, "Auth");
             var url = Str(e, "Link");
@@ -145,12 +150,13 @@ public static class Sources
     {
         string[] known = ["public-apis/public-apis", "public-api-lists/public-api-lists", "marcelscruz/public-apis", "n0shake/public-apis"];
         var repos = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        int refused = 0;
         foreach (var topic in new[] { "public-apis", "api-list", "free-api" })
         {
             using var req = new HttpRequestMessage(HttpMethod.Get, $"https://api.github.com/search/repositories?q=topic:{topic}&sort=stars&per_page=10");
             req.Headers.Accept.ParseAdd("application/vnd.github+json");
             using var resp = await Http.Client.SendAsync(req, ct);
-            if (!resp.IsSuccessStatusCode) continue; // keyless search allows 10 requests/minute
+            if (!resp.IsSuccessStatusCode) { refused++; continue; } // keyless search allows 10 requests/minute
             using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync(ct));
             foreach (var item in doc.RootElement.GetProperty("items").EnumerateArray())
             {
@@ -159,6 +165,8 @@ public static class Sources
                     repos.TryAdd(full, Str(item, "default_branch"));
             }
         }
+        // counted as a failed source, so the scan keeps what discovery found last time instead of calling it gone
+        if (repos.Count == 0 && refused > 0) throw new HttpRequestException("GitHub search refused the request (it allows 10 a minute without signing in) - try again in a minute");
 
         var list = new List<ApiEntry>();
         foreach (var (repo, branch) in repos.Take(16))
@@ -193,11 +201,15 @@ public static class Sources
     {
         var text = await Http.GetTextAsync(ToRaw(url), ct, maxBytes: 12_000_000);
         var host = Uri.TryCreate(url, UriKind.Absolute, out var u) ? u.Host : "custom";
-        if (text.TrimStart().StartsWith('{'))
+        if (text.TrimStart() is ['{' or '[', ..])
         {
-            var list = ParseMarcel(text);
-            foreach (var e in list) e.Sources = [host];
-            return list;
+            try
+            {
+                var list = ParseMarcel(text);
+                foreach (var e in list) e.Sources = [host];
+                return list;
+            }
+            catch (JsonException) when (text.TrimStart()[0] == '[') { } // a README that opens with a [link] or a badge
         }
         return MarkdownListParser.Parse(text, host, bullets: true);
     }

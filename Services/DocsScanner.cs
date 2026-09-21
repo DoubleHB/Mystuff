@@ -12,9 +12,11 @@ namespace ApiScout.Services;
 /// </summary>
 public static partial class DocsScanner
 {
-    [GeneratedRegex(@"<a\b[^>]*?href\s*=\s*[""']([^""'#][^""']*)[""'][^>]*>(.*?)</a>", RegexOptions.IgnoreCase | RegexOptions.Singleline)]
+    [GeneratedRegex(@"<a\b[^>]*?href\s*=\s*[""']([^""'#][^""']*)[""'][^>]*>(.*?)</a>", RegexOptions.IgnoreCase | RegexOptions.Singleline, PageRegexTimeoutMs)]
     private static partial Regex AnchorRx();
-    [GeneratedRegex(@"<(script|style|noscript|svg)\b.*?</\1>", RegexOptions.IgnoreCase | RegexOptions.Singleline)]
+    // the two lazy .*? patterns go quadratic on a page of unclosed tags, and a running regex cannot be cancelled
+    private const int PageRegexTimeoutMs = 2500;
+    [GeneratedRegex(@"<(script|style|noscript|svg)\b.*?</\1>", RegexOptions.IgnoreCase | RegexOptions.Singleline, PageRegexTimeoutMs)]
     private static partial Regex NoiseRx();
     [GeneratedRegex(@"<[^>]+>")]
     private static partial Regex TagRx();
@@ -51,10 +53,19 @@ public static partial class DocsScanner
     {
         var result = new DocsScanResult { ScannedAt = DateTime.Now, PageUrl = api.Url };
         string? pricingUrl = null;
-        if (!string.IsNullOrEmpty(api.SpecUrl))
+        if (!Http.IsPublicWebUrl(api.Url))
         {
-            try { ReadSpec(await Http.GetTextAsync(api.SpecUrl, ct, maxBytes: 12_000_000, timeoutSeconds: 40), result); }
-            catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException && !ct.IsCancellationRequested) { }
+            result.Error = "Not read: the docs link is not a public web address.";
+            return result;
+        }
+        // a spec or page that cannot be read is simply skipped - the others may still say something
+        static bool Skippable(Exception ex, CancellationToken ct) =>
+            ex is HttpRequestException or JsonException or IOException or InvalidOperationException or NotSupportedException or UriFormatException or RegexMatchTimeoutException
+            || (ex is TaskCanceledException && !ct.IsCancellationRequested);
+        if (Http.IsPublicWebUrl(api.SpecUrl))
+        {
+            try { ReadSpec(await Http.GetTextAsync(api.SpecUrl!, ct, maxBytes: 12_000_000, timeoutSeconds: 40), result); }
+            catch (Exception ex) when (Skippable(ex, ct)) { }
         }
 
         try
@@ -73,11 +84,19 @@ public static partial class DocsScanner
         {
             result.Error = "The docs page took too long to answer.";
         }
+        catch (RegexMatchTimeoutException)
+        {
+            result.Error = "The docs page is too tangled to read automatically. Open it in the browser instead.";
+        }
+        catch (Exception ex) when (ex is IOException or NotSupportedException or UriFormatException)
+        {
+            result.Error = $"Could not read the docs page: {ex.Message}";
+        }
 
         if (pricingUrl is not null)
         {
             try { ReadPricing(await Http.GetTextAsync(pricingUrl, ct, maxBytes: 2_000_000, timeoutSeconds: 20), pricingUrl, result); }
-            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested) { }
+            catch (Exception ex) when (Skippable(ex, ct)) { }
         }
 
         if (result.Items.Count == 0 && result.Error is null)
@@ -286,10 +305,11 @@ public static partial class DocsScanner
     {
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
+        if (root.ValueKind != JsonValueKind.Object) return;
         AddSpecEndpoints(root, result);
         JsonElement schemes;
         if (!(root.TryGetProperty("securityDefinitions", out schemes)
-              || root.TryGetProperty("components", out var comp) && comp.TryGetProperty("securitySchemes", out schemes))
+              || root.TryGetProperty("components", out var comp) && comp.ValueKind == JsonValueKind.Object && comp.TryGetProperty("securitySchemes", out schemes))
             || schemes.ValueKind != JsonValueKind.Object)
         {
             result.Items.Add(new FoundItem { Kind = "Auth scheme", Value = "None declared", Note = "The OpenAPI spec defines no security scheme - the API may be open" });
@@ -319,7 +339,7 @@ public static partial class DocsScanner
         if (root.TryGetProperty("servers", out var servers) && servers.ValueKind == JsonValueKind.Array && servers.GetArrayLength() > 0) baseUrl = S(servers[0], "url");
         else if (S(root, "host") is { Length: > 0 } host)
         {
-            var scheme = root.TryGetProperty("schemes", out var sch) && sch.ValueKind == JsonValueKind.Array && sch.EnumerateArray().Any(x => x.GetString() == "https") ? "https" : "http";
+            var scheme = root.TryGetProperty("schemes", out var sch) && sch.ValueKind == JsonValueKind.Array && sch.EnumerateArray().Any(x => x.ValueKind == JsonValueKind.String && x.GetString() == "https") ? "https" : "http";
             if (!root.TryGetProperty("schemes", out _)) scheme = "https";
             baseUrl = $"{scheme}://{host}{S(root, "basePath")}";
         }

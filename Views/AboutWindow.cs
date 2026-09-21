@@ -49,6 +49,12 @@ public sealed class AboutWindow : Window
         folderRow.Children.Add(open); folderRow.Children.Add(copy); folderRow.Children.Add(folder);
         panel.Children.Add(folderRow);
 
+        panel.Children.Add(Heading("KEYBOARD"));
+        panel.Children.Add(Muted("F5 scan  ·  Esc stop / back  ·  Ctrl+F search  ·  Ctrl+L my shortlist  ·  Ctrl+T test  ·  Ctrl+D favourite  ·  Ctrl+K copy key  ·  Ctrl+U copy docs URL  ·  " +
+                                 "Ctrl+C copy the selected rows  ·  Ctrl+G tag them  ·  Ctrl+M compare 2-4 of them  ·  F1 this box\n" +
+                                 "Shortlist cards: arrows, Enter details, T test, K copy key, O open docs, U copy URL, D favourite.  " +
+                                 "Compare: F5 measure, Ctrl+Shift+C copy as Markdown, Ctrl+1-4 open docs."));
+
         panel.Children.Add(Heading("MOVE MY DATA TO ANOTHER PC"));
         panel.Children.Add(Muted("Export writes your favourites, tags and notes to one file. Saved keys and edited test requests are tied to this Windows " +
                                  "account, so they are only included if you give a passphrase - they are then encrypted with it (AES-256). " +

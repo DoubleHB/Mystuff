@@ -59,15 +59,16 @@ public sealed class Store
         {
             if (Unprotect(File.ReadAllText(path)) is { } json)
                 TestHistory = JsonSerializer.Deserialize<Dictionary<string, List<TestHistoryEntry>>>(json) ?? [];
+            else Log($"Could not decrypt {HistoryFile} (another Windows account, or a damaged file) - starting with an empty history.");
         }
-        catch (Exception ex) when (ex is JsonException or IOException) { Log($"Could not read {HistoryFile}: {ex.Message}"); }
+        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException) { Log($"Could not read {HistoryFile}: {ex.Message}"); }
     }
 
     private void SaveHistory()
     {
         try
         {
-            lock (_gate) File.WriteAllText(Path.Combine(Folder, HistoryFile), Protect(JsonSerializer.Serialize(TestHistory)));
+            lock (_gate) WriteSafely(Path.Combine(Folder, HistoryFile), Protect(JsonSerializer.Serialize(TestHistory)));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Log($"Could not save {HistoryFile}: {ex.Message}"); }
     }
@@ -120,7 +121,7 @@ public sealed class Store
             lock (_gate)
                 File.AppendAllText(Path.Combine(Folder, "apiscout.log"), $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}{Environment.NewLine}");
         }
-        catch (IOException) { }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
     }
 
     private T? Load<T>(string file) where T : class
@@ -128,7 +129,28 @@ public sealed class Store
         var path = Path.Combine(Folder, file);
         if (!File.Exists(path)) return null;
         try { return JsonSerializer.Deserialize<T>(File.ReadAllText(path)); }
-        catch (Exception ex) when (ex is JsonException or IOException) { Log($"Could not read {file}: {ex.Message}"); return null; }
+        catch (JsonException ex)
+        {
+            // the next save would overwrite it with empty data - favourites, notes and saved keys - so keep what is there
+            var aside = $"{path}.unreadable-{DateTime.Now:yyyyMMdd-HHmmss}";
+            try { File.Copy(path, aside, overwrite: true); } catch (Exception copy) when (copy is IOException or UnauthorizedAccessException) { }
+            Log($"Could not read {file}: {ex.Message}. A copy was kept as {Path.GetFileName(aside)}.");
+            return null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Log($"Could not read {file}: {ex.Message}"); return null; }
+    }
+
+    /// <summary>Write to a temp file of our own, flush it to the disk, then swap it in: a crash leaves the old file or the new one, never half of one.</summary>
+    private static void WriteSafely(string path, string text)
+    {
+        var tmp = $"{path}.{Environment.ProcessId}.tmp";
+        using (var stream = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None))
+        {
+            var bytes = Encoding.UTF8.GetBytes(text);
+            stream.Write(bytes);
+            stream.Flush(flushToDisk: true);
+        }
+        File.Move(tmp, path, overwrite: true);
     }
 
     private void Save<T>(string file, T value, bool indented = true)
@@ -137,10 +159,7 @@ public sealed class Store
         {
             lock (_gate)
             {
-                var path = Path.Combine(Folder, file);
-                var tmp = path + ".tmp";
-                File.WriteAllText(tmp, JsonSerializer.Serialize(value, indented ? Json : null));
-                File.Move(tmp, path, overwrite: true);
+                WriteSafely(Path.Combine(Folder, file), JsonSerializer.Serialize(value, indented ? Json : null));
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Log($"Could not save {file}: {ex.Message}"); }

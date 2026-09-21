@@ -1,6 +1,7 @@
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using ApiScout.Services;
 using ApiScout.ViewModels;
@@ -15,7 +16,9 @@ public sealed class CompareWindow : Window
     private readonly List<(string Label, Func<ApiRow, string> Value)> _facts;
     private readonly Dictionary<(string, int), TextBox> _cells = [];
     private readonly string[] _docsLive, _exampleLive;
-    private readonly Button _measure = new() { Content = "⏱  Measure now", Padding = new Thickness(14, 6, 14, 6), Margin = new Thickness(0, 0, 8, 0) };
+    private readonly Button _measure = new() { Content = "⏱  _Measure now", Padding = new Thickness(14, 6, 14, 6), Margin = new Thickness(0, 0, 8, 0), ToolTip = "F5" };
+    private readonly ScrollViewer _scroll = new() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Focusable = false };
+    private readonly CancellationTokenSource _closed = new();
 
     private const string DocsRow = "Docs site right now", ExampleRow = "Live example call";
 
@@ -55,6 +58,38 @@ public sealed class CompareWindow : Window
         SetResourceReference(ForegroundProperty, "TextBrush");
         Content = Build();
         _measure.Click += async (_, _) => await MeasureAsync();
+        PreviewKeyDown += OnKey;
+        Loaded += (_, _) => _measure.Focus();
+        Closed += (_, _) => { _closed.Cancel(); _closed.Dispose(); };
+    }
+
+    /// <summary>F5 measure, Ctrl+Shift+C copy as Markdown, Ctrl+1-4 open that API's docs; the scroll keys work from anywhere but inside a value.</summary>
+    private void OnKey(object sender, KeyEventArgs e)
+    {
+        var mods = Keyboard.Modifiers;
+        var key = e.Key;
+        if (key == Key.F5 && _measure.IsEnabled) { _ = MeasureAsync(); e.Handled = true; }
+        else if (key == Key.C && mods == (ModifierKeys.Control | ModifierKeys.Shift)) { _vm.CopyText(ToMarkdown(), "Comparison"); e.Handled = true; }
+        else if (mods == ModifierKeys.Control && key is >= Key.D1 and <= Key.D4 && key - Key.D1 < _apis.Count)
+        {
+            _vm.OpenUrlCommand.Execute(_apis[key - Key.D1].Url);
+            e.Handled = true;
+        }
+        else if (mods == ModifierKeys.None && e.OriginalSource is not TextBox)
+        {
+            double page = Math.Max(80, _scroll.ViewportHeight - 60);
+            double? to = key switch
+            {
+                Key.Down => _scroll.VerticalOffset + 60,
+                Key.Up => _scroll.VerticalOffset - 60,
+                Key.PageDown => _scroll.VerticalOffset + page,
+                Key.PageUp => _scroll.VerticalOffset - page,
+                Key.Home => 0,
+                Key.End => _scroll.ScrollableHeight,
+                _ => null,
+            };
+            if (to is { } offset) { _scroll.ScrollToVerticalOffset(offset); e.Handled = true; }
+        }
     }
 
     private int IndexOf(ApiRow a) { for (int i = 0; i < _apis.Count; i++) if (ReferenceEquals(_apis[i], a)) return i; return 0; }
@@ -74,7 +109,7 @@ public sealed class CompareWindow : Window
             var tile = new ContentControl { Content = api, ContentTemplate = (DataTemplate)Application.Current.Resources["BrandTile"], Focusable = false, Margin = new Thickness(0, 0, 10, 0), VerticalAlignment = VerticalAlignment.Top };
             DockPanel.SetDock(tile, Dock.Left);
             head.Children.Add(tile);
-            var open = new Button { Content = "Open docs", FontSize = 12, Padding = new Thickness(9, 3, 9, 3), Margin = new Thickness(0, 6, 0, 0), HorizontalAlignment = HorizontalAlignment.Left };
+            var open = new Button { Content = "Open docs", ToolTip = $"Ctrl+{c + 1}", FontSize = 12, Padding = new Thickness(9, 3, 9, 3), Margin = new Thickness(0, 6, 0, 0), HorizontalAlignment = HorizontalAlignment.Left };
             open.Click += (_, _) => _vm.OpenUrlCommand.Execute(api.Url);
             var names = new StackPanel();
             names.Children.Add(new TextBlock { Text = api.Name, FontSize = 17, FontWeight = FontWeights.Bold, TextWrapping = TextWrapping.Wrap });
@@ -109,6 +144,7 @@ public sealed class CompareWindow : Window
                 {
                     Text = value(_apis[c]), IsReadOnly = true, TextWrapping = TextWrapping.Wrap, BorderThickness = new Thickness(0), Background = Brushes.Transparent,
                     Margin = new Thickness(4, 4, 8, 4), FontSize = 12.5, VerticalAlignment = VerticalAlignment.Top, MaxHeight = 150, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                    IsTabStop = false, // 60-odd values would bury the buttons for Tab; a click still selects and copies
                 };
                 cell.SetResourceReference(ForegroundProperty, "TextBrush");
                 _cells[(label, c)] = cell;
@@ -117,11 +153,11 @@ public sealed class CompareWindow : Window
             }
         }
 
-        var copy = new Button { Content = "Copy as Markdown", Padding = new Thickness(14, 6, 14, 6), Margin = new Thickness(0, 0, 8, 0) };
+        var copy = new Button { Content = "_Copy as Markdown", ToolTip = "Ctrl+Shift+C", Padding = new Thickness(14, 6, 14, 6), Margin = new Thickness(0, 0, 8, 0) };
         copy.Click += (_, _) => _vm.CopyText(ToMarkdown(), "Comparison");
         var close = new Button { Content = "Close", Padding = new Thickness(14, 6, 14, 6), IsCancel = true };
         close.Click += (_, _) => Close();
-        var hint = new TextBlock { Text = "Measure now checks each docs site and sends each known example request once.", VerticalAlignment = VerticalAlignment.Center, FontSize = 12 };
+        var hint = new TextBlock { Text = "Measure now (F5) checks each docs site and sends each known example request once.  ·  Ctrl+1-4 opens docs  ·  ↑ ↓ PgUp PgDn scroll  ·  Esc closes", VerticalAlignment = VerticalAlignment.Center, FontSize = 12, TextWrapping = TextWrapping.Wrap };
         hint.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
         var buttons = new DockPanel { Margin = new Thickness(18, 8, 18, 14), LastChildFill = true };
         foreach (var b in new UIElement[] { close, copy, _measure }) { DockPanel.SetDock(b, Dock.Right); buttons.Children.Add(b); }
@@ -130,7 +166,8 @@ public sealed class CompareWindow : Window
         var root = new DockPanel();
         DockPanel.SetDock(buttons, Dock.Bottom);
         root.Children.Add(buttons);
-        root.Children.Add(new ScrollViewer { Content = grid, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
+        _scroll.Content = grid;
+        root.Children.Add(_scroll);
         return root;
     }
 
@@ -138,23 +175,30 @@ public sealed class CompareWindow : Window
     {
         _measure.IsEnabled = false;
         _measure.Content = "Measuring…";
+        var ct = _closed.Token;
         try
         {
             await Task.WhenAll(_apis.Select(async (api, i) =>
             {
-                var link = await Task.Run(() => LinkChecker.CheckAsync(api.Url, CancellationToken.None));
-                api.LatencyMs = link.LatencyMs;
-                api.Status = link.Label;
-                _docsLive[i] = api.StatusLabel;
-                _cells[(DocsRow, i)].Text = _docsLive[i];
-                if (!api.HasExample) return;
-                var test = await Task.Run(() => ApiTester.SendAsync(api.DefaultTestUrl, api.DefaultTestHeader, CancellationToken.None));
-                _vm.RecordOutcome(api, test);
-                _exampleLive[i] = test.Summary.Split('\n')[0] + (api.IsLimited ? $"\n{api.LimitLabel}" : "");
-                _cells[(ExampleRow, i)].Text = _exampleLive[i];
+                // each column stands alone: one API failing must not leave the others unmeasured
+                try
+                {
+                    var link = await Task.Run(() => LinkChecker.CheckAsync(api.Url, ct), ct);
+                    api.LatencyMs = link.LatencyMs;
+                    api.Status = link.Label;
+                    _docsLive[i] = api.StatusLabel;
+                    _cells[(DocsRow, i)].Text = _docsLive[i];
+                    if (!api.HasExample) return;
+                    var test = await Task.Run(() => ApiTester.SendAsync(api.DefaultTestUrl, api.DefaultTestHeader, ct), ct);
+                    _vm.RecordOutcome(api, test);
+                    _exampleLive[i] = test.Summary.Split('\n')[0] + (api.IsLimited ? $"\n{api.LimitLabel}" : "");
+                    _cells[(ExampleRow, i)].Text = _exampleLive[i];
+                }
+                catch (OperationCanceledException) { } // the window was closed
+                catch (Exception ex) { _cells[(api.HasExample && _docsLive[i] != "not measured" ? ExampleRow : DocsRow, i)].Text = "failed: " + ex.Message; }
             }));
         }
-        finally { _measure.Content = "⏱  Measure again"; _measure.IsEnabled = true; }
+        finally { if (!ct.IsCancellationRequested) { _measure.Content = "⏱  _Measure again"; _measure.IsEnabled = true; } }
     }
 
     public string ToMarkdown() => ToMarkdown(_apis, _facts);

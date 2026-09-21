@@ -40,17 +40,17 @@ public static class Exporter
 
     public static string Curl(ApiRow r) =>
         r.Example is { Length: > 0 } ex
-            ? $"curl \"{ex}\"" + (r.KeyUsage?.StartsWith("Header: ") == true ? $" -H \"{r.KeyUsage[8..]}\"" : "")
-            : $"curl -i \"{r.Url}\"";
+            ? $"curl \"{Esc(ex)}\"" + (r.KeyUsage?.StartsWith("Header: ") == true ? $" -H \"{Esc(r.KeyUsage[8..])}\"" : "")
+            : $"curl -i \"{Esc(r.Url)}\"";
 
     public static string CSharp(ApiRow r)
     {
         var url = r.Example is { Length: > 0 } ex ? ex : r.Url;
         var header = r.KeyUsage?.StartsWith("Header: ") == true && r.KeyUsage[8..].Split(": ", 2) is [var n, var v]
-            ? $"http.DefaultRequestHeaders.Add(\"{n}\", \"{v}\");\n" : "";
+            ? $"http.DefaultRequestHeaders.Add(\"{Esc(n)}\", \"{Esc(v)}\");\n" : "";
         return "using var http = new HttpClient();\n" +
                "http.DefaultRequestHeaders.UserAgent.ParseAdd(\"MyApp/1.0\");\n" + header +
-               $"var json = await http.GetStringAsync(\"{url}\");\n" +
+               $"var json = await http.GetStringAsync(\"{Esc(url)}\");\n" +
                "Console.WriteLine(json);";
     }
 
@@ -95,5 +95,20 @@ public static class Exporter
     };
 
     private static string Pipe(string s) => s.Replace("|", "\\|");
-    private static string Quote(string s) => "\"" + s.Replace("\"", "\"\"") + "\"";
+    /// <summary>Inside a double-quoted shell or C# string. URLs and names come from lists anyone can edit.</summary>
+    private static string Esc(string s) => s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "").Replace("\n", " ");
+
+    /// <summary>CSV field. A leading = + - @ would run as a formula when the file is opened in Excel, so it gets a ' in front.</summary>
+    internal static string Quote(string s)
+    {
+        if (s.Length > 0 && s[0] is '=' or '+' or '-' or '@' or '\t' or '\r') s = "'" + s;
+        return "\"" + s.Replace("\"", "\"\"") + "\"";
+    }
+
+    /// <summary>One tab-separated cell (Ctrl+C on several rows): no tabs or line breaks inside, no formulas.</summary>
+    internal static string Cell(string? s)
+    {
+        s = (s ?? "").Replace('\t', ' ').Replace("\r", "").Replace('\n', ' ');
+        return s.Length > 0 && s[0] is '=' or '+' or '-' or '@' ? "'" + s : s;
+    }
 }

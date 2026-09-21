@@ -29,6 +29,12 @@ public sealed class EmptyTextToVisibilityConverter : IValueConverter
     public object ConvertBack(object value, Type t, object p, CultureInfo c) => throw new NotSupportedException();
 }
 
+public sealed class NullToCollapsedConverter : IValueConverter
+{
+    public object Convert(object value, Type t, object p, CultureInfo c) => value is null ? Visibility.Collapsed : Visibility.Visible;
+    public object ConvertBack(object value, Type t, object p, CultureInfo c) => throw new NotSupportedException();
+}
+
 public sealed class StarConverter : IValueConverter
 {
     public object Convert(object value, Type t, object p, CultureInfo c) => value is true ? "★" : "☆";

@@ -53,12 +53,12 @@
                             Visibility="{Binding IsBusy, Converter={StaticResource InvBoolToVis}}" ToolTip="Fetch every ticked source, merge and categorise (F5)" />
                     <Button Content="■  Stop" Command="{Binding CancelCommand}" Padding="16,7" Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}" />
                     <ToggleButton Content="★ My shortlist" IsChecked="{Binding ShowShortlist}" Margin="8,0,0,0" Padding="12,7" AutomationProperties.Name="My shortlist"
-                                  ToolTip="Your favourites and tagged APIs as cards, with their keys and last test result" />
+                                  ToolTip="Your favourites and tagged APIs as cards, with their keys and last test result (Ctrl+L)" />
                     <ToggleButton x:Name="SourcesButton" Content="Sources ▾" Margin="8,0,0,0" Padding="12,7" />
                     <Button Content="Check links" Command="{Binding CheckLinksCommand}" Margin="8,0,0,0" Padding="12,7" IsEnabled="{Binding IsIdle}"
                             ToolTip="Test whether the docs site of every listed API still answers" />
                     <Button x:Name="ThemeButton" Content="Theme" Click="ThemeButton_Click" Margin="8,0,0,0" Padding="12,7" ToolTip="Switch light / dark" />
-                    <Button Content="About" Click="About_Click" Margin="8,0,0,0" Padding="12,7" ToolTip="Version, data folder, export / import your data" />
+                    <Button Content="About" Click="About_Click" Margin="8,0,0,0" Padding="12,7" ToolTip="Version, keyboard shortcuts, data folder, export / import your data (F1)" />
                 </StackPanel>
             </Grid>
         </Border>
@@ -97,6 +97,9 @@
                                        Text="Adds a Windows scheduled task (09:00, daily or Mondays, or as soon as the PC is next on) that re-scans quietly and shows a notification when new APIs appear. Untick to remove it." />
                         </StackPanel>
                     </CheckBox>
+                    <CheckBox IsChecked="{Binding ShowDashboard}" Margin="0,10,0,0" AutomationProperties.Name="Show the dashboard">
+                        <TextBlock Text="Show the dashboard tiles above the list" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold" />
+                    </CheckBox>
                     <CheckBox IsChecked="{Binding ShowLogos}" Margin="0,10,0,0" AutomationProperties.Name="Show brand logos">
                         <StackPanel>
                             <TextBlock Text="Show brand logos" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold" />
@@ -116,9 +119,69 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="430" />
             </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- Dashboard: the whole catalogue at a glance; every tile is a shortcut to its filter -->
+            <ItemsControl Grid.ColumnSpan="3" ItemsSource="{Binding Dashboard}" Margin="0,0,0,12" Focusable="False" AutomationProperties.Name="Dashboard"
+                          Visibility="{Binding ShowDashboard, Converter={StaticResource BoolToVis}}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate><UniformGrid Rows="1" /></ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="{x:Type vm:DashTile}">
+                        <Button Margin="0,0,8,0" HorizontalAlignment="Stretch" Cursor="Hand" CommandParameter="{Binding Id}" ToolTip="{Binding Tip}" AutomationProperties.Name="{Binding Title}" AutomationProperties.HelpText="{Binding Value}"
+                                Command="{Binding DataContext.DashboardTileCommand, RelativeSource={RelativeSource AncestorType=Window}}" HorizontalContentAlignment="Stretch">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="Tile" Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="1" CornerRadius="10" Padding="12,8,12,9">
+                                        <ContentPresenter />
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Tile" Property="Background" Value="{DynamicResource CardAltBrush}" />
+                                        </Trigger>
+                                        <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                            <Setter TargetName="Tile" Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                                            <Setter TargetName="Tile" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                                        </DataTrigger>
+                                        <Trigger Property="IsKeyboardFocused" Value="True">
+                                            <Setter TargetName="Tile" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                            <StackPanel>
+                                <StackPanel.Resources>
+                                    <!-- tile colour -> theme brush, so a theme switch recolours it -->
+                                    <Style x:Key="Tint" TargetType="Control">
+                                        <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Colour}" Value="Up"><Setter Property="Foreground" Value="{DynamicResource UpBrush}" /></DataTrigger>
+                                            <DataTrigger Binding="{Binding Colour}" Value="Accent"><Setter Property="Foreground" Value="{DynamicResource AccentBrush}" /></DataTrigger>
+                                            <DataTrigger Binding="{Binding Colour}" Value="Warn"><Setter Property="Foreground" Value="{DynamicResource WarnBrush}" /></DataTrigger>
+                                            <DataTrigger Binding="{Binding Colour}" Value="Violet"><Setter Property="Foreground" Value="{DynamicResource VioletBrush}" /></DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </StackPanel.Resources>
+                                <TextBlock Text="{Binding Title}" Style="{StaticResource Muted}" FontSize="11.5" TextTrimming="CharacterEllipsis" />
+                                <DockPanel Margin="0,1,0,0">
+                                    <TextBlock DockPanel.Dock="Right" Text="{Binding Sub}" Style="{StaticResource Muted}" FontSize="11.5" VerticalAlignment="Bottom" Margin="6,0,0,3" TextTrimming="CharacterEllipsis" />
+                                    <ContentControl Style="{StaticResource Tint}" Focusable="False" FontSize="20" FontWeight="Bold" Content="{Binding Value}" />
+                                </DockPanel>
+                                <!-- an explicit style drops the Fluent template for the classic flat bar, which takes the tint as its fill -->
+                                <ProgressBar Style="{StaticResource Tint}" Height="3" Margin="0,5,0,0" Minimum="0" Maximum="100" Value="{Binding Percent, Mode=OneWay}" BorderThickness="0"
+                                             Background="{DynamicResource CardBorderBrush}" Focusable="False" Opacity="{Binding BarOpacity}" />
+                            </StackPanel>
+                        </Button>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
 
             <!-- Categories -->
-            <Border Style="{StaticResource Card}" Padding="6" Margin="0,0,12,0">
+            <Border Grid.Row="1" Style="{StaticResource Card}" Padding="6" Margin="0,0,12,0">
                 <DockPanel>
                     <TextBlock DockPanel.Dock="Top" Text="CATEGORIES" Style="{StaticResource Label}" Margin="10,8,0,6" />
                     <ListBox x:Name="CategoryList" ItemsSource="{Binding Categories}" SelectedItem="{Binding SelectedCategory}" Background="Transparent" BorderThickness="0"
@@ -147,7 +210,7 @@
             </Border>
 
             <!-- Results -->
-            <DockPanel Grid.Column="1" Margin="0,0,12,0">
+            <DockPanel Grid.Row="1" Grid.Column="1" Margin="0,0,12,0">
                 <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,6">
                     <WrapPanel.Resources>
                         <Style TargetType="CheckBox" BasedOn="{StaticResource {x:Type CheckBox}}">
@@ -205,8 +268,8 @@
                                 <Separator />
                                 <MenuItem Header="Open docs in browser" Command="{Binding OpenCommand}" CommandParameter="docs" />
                                 <MenuItem Header="Add / remove favourite" Command="{Binding ToggleFavouriteCommand}" InputGestureText="Ctrl+D" />
-                                <MenuItem Header="Tag the selected rows…" Click="TagSelected_Click" />
-                                <MenuItem Header="Compare the selected rows (2-4)" Click="Compare_Click" />
+                                <MenuItem Header="Tag the selected rows…" Click="TagSelected_Click" InputGestureText="Ctrl+G" />
+                                <MenuItem Header="Compare the selected rows (2-4)" Click="Compare_Click" InputGestureText="Ctrl+M" />
                             </ContextMenu>
                         </DataGrid.ContextMenu>
                         <DataGrid.Columns>
@@ -281,7 +344,7 @@
             </DockPanel>
 
             <!-- Details -->
-            <Grid Grid.Column="2">
+            <Grid Grid.Row="1" Grid.Column="2">
                 <TextBlock Text="Select an API to see its key details" Style="{StaticResource Muted}" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center"
                            Visibility="{Binding HasSelection, Converter={StaticResource InvBoolToVis}}" />
                 <ScrollViewer VerticalScrollBarVisibility="Auto" Visibility="{Binding HasSelection, Converter={StaticResource BoolToVis}}" Padding="0,0,6,0">
@@ -465,6 +528,8 @@
                                         <DockPanel Margin="0,8,0,4">
                                             <Button DockPanel.Dock="Right" Content="Copy response" Command="{Binding CopyCommand}" CommandParameter="response" Style="{StaticResource Mini}"
                                                     AutomationProperties.Name="Copy response" />
+                                            <Button DockPanel.Dock="Right" Content="C# client" Command="{Binding GenerateClientCommand}" Style="{StaticResource Mini}"
+                                                    AutomationProperties.Name="Generate C# client" ToolTip="A small typed HttpClient class: one method for every request in the history that worked, with response classes" />
                                             <Button DockPanel.Dock="Right" Content="C# classes" Command="{Binding GenerateClassesCommand}" Style="{StaticResource Mini}"
                                                     AutomationProperties.Name="Generate C# classes" ToolTip="Generate C# classes (System.Text.Json) that fit this JSON" />
                                             <TextBlock Text="RESPONSE" Style="{StaticResource Label}" Margin="0" VerticalAlignment="Center" />
@@ -475,9 +540,9 @@
                                     </StackPanel>
                                     <StackPanel Visibility="{Binding Selected.TestClasses, Converter={StaticResource TextToVis}}">
                                         <DockPanel Margin="0,10,0,4">
-                                            <Button DockPanel.Dock="Right" Content="Copy classes" Command="{Binding CopyCommand}" CommandParameter="classes" Style="{DynamicResource AccentButtonStyle}"
+                                            <Button DockPanel.Dock="Right" Content="Copy code" Command="{Binding CopyCommand}" CommandParameter="classes" Style="{DynamicResource AccentButtonStyle}"
                                                     Padding="10,3" FontSize="12" AutomationProperties.Name="Copy classes" />
-                                            <TextBlock Text="C# CLASSES  (System.Text.Json)" Style="{StaticResource Label}" Margin="0" VerticalAlignment="Center" />
+                                            <TextBlock Text="{Binding Selected.TestCodeTitle}" Style="{StaticResource Label}" Margin="0" VerticalAlignment="Center" TextWrapping="Wrap" />
                                         </DockPanel>
                                         <TextBox Text="{Binding Selected.TestClasses, Mode=OneWay}" IsReadOnly="True" MaxHeight="340" MinHeight="60"
                                                  FontFamily="Cascadia Mono, Consolas" FontSize="12" TextWrapping="NoWrap" AcceptsReturn="True"
@@ -583,15 +648,39 @@
                 <StackPanel DockPanel.Dock="Top" Margin="0,0,0,12">
                     <TextBlock Text="My shortlist" FontSize="22" FontWeight="Bold" />
                     <TextBlock Text="{Binding ShortlistSummary}" Style="{StaticResource Muted}" FontSize="13" TextWrapping="Wrap" AutomationProperties.Name="Shortlist summary" />
+                    <TextBlock Text="Arrow keys move  ·  Enter details  ·  T test  ·  K copy key  ·  O open docs  ·  U copy docs URL  ·  D favourite on / off  ·  Esc back to the list"
+                               Style="{StaticResource Muted}" Margin="0,4,0,0" TextWrapping="Wrap" Visibility="{Binding ShortlistSelected, Converter={StaticResource NullToCollapsed}}" />
                 </StackPanel>
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <ItemsControl ItemsSource="{Binding ShortlistRows}" AutomationProperties.Name="Shortlist">
-                        <ItemsControl.ItemsPanel>
+                    <ListBox x:Name="ShortlistBox" ItemsSource="{Binding ShortlistRows}" SelectedItem="{Binding ShortlistSelected}" AutomationProperties.Name="Shortlist"
+                             Background="Transparent" BorderThickness="0" Padding="0" IsTextSearchEnabled="False" PreviewKeyDown="Shortlist_PreviewKeyDown"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.CanContentScroll="False">
+                        <ListBox.ItemsPanel>
                             <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
+                        </ListBox.ItemsPanel>
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="AutomationProperties.Name" Value="{Binding Name}" />
+                                <Setter Property="Margin" Value="0,0,10,10" />
+                                <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ListBoxItem">
+                                            <Border x:Name="Ring" BorderThickness="2" BorderBrush="Transparent" CornerRadius="12" Background="Transparent">
+                                                <ContentPresenter />
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsSelected" Value="True">
+                                                    <Setter TargetName="Ring" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
                             <DataTemplate DataType="{x:Type vm:ApiRow}">
-                                <Border Style="{StaticResource Card}" Width="400" Margin="0,0,12,12" AutomationProperties.Name="{Binding Name}">
+                                <Border Style="{StaticResource Card}" Width="400" Margin="0">
                                     <StackPanel>
                                         <DockPanel>
                                             <ContentControl DockPanel.Dock="Left" Content="{Binding}" ContentTemplate="{StaticResource BrandTile}" Margin="0,0,10,0" VerticalAlignment="Top" Focusable="False" />
@@ -651,9 +740,8 @@
                                     </StackPanel>
                                 </Border>
                             </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </ScrollViewer>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
             </DockPanel>
         </Grid>
 
@@ -663,7 +751,7 @@
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                     <TextBlock Text="{Binding CountText}" VerticalAlignment="Center" FontWeight="SemiBold" Margin="0,0,14,0" />
                     <Button Content="Compare selected" Click="Compare_Click" Style="{StaticResource Mini}" Margin="0,0,14,0" AutomationProperties.Name="Compare selected"
-                            ToolTip="Select 2 to 4 rows (Ctrl+click) to see them side by side" />
+                            ToolTip="Select 2 to 4 rows (Ctrl+click, or Shift+arrows) to see them side by side (Ctrl+M)" />
                     <TextBlock Text="Copy list as" Style="{StaticResource Muted}" VerticalAlignment="Center" />
                     <Button Content="Markdown" Command="{Binding CopyListCommand}" CommandParameter="markdown" Style="{StaticResource Mini}" />
                     <Button Content="CSV" Command="{Binding CopyListCommand}" CommandParameter="csv" Style="{StaticResource Mini}" />
