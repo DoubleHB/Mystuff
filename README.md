@@ -78,6 +78,19 @@ key when the provider publishes one, or how and where to get a free key when not
 - **Updates** (About): compares the running version with the newest `v*` tag of an update source - a GitHub
   `owner/repo`, a folder holding the git repository (tags are read straight from `.git`), or a `latest.json`
   file / URL. Empty = the repository the build came from. Checked quietly once a day at start-up (⬆ on About).
+- **More about this API** (title card, Ctrl+I): "At a glance" - what the known facts mean for you (key needs, how
+  much is free, HTTPS, CORS, health, spec, working example) - and "In the provider's words": the summary, feature
+  list and section headings read from the docs page, or from the README when the API lives on GitHub. Nothing is
+  invented; a page that builds itself with JavaScript simply yields little. Copy as Markdown.
+- **Request variables** (Try it): `name = value` lines per API; `{name}` in the URL (URL-encoded), headers or body is
+  replaced when the request is sent - by Test, Test all and the API of the day alike. Always available: `{today}`,
+  `{yesterday}`, `{tomorrow}`, `{now}`, `{timestamp}`. A request with an unfilled `{…}` is not sent but says what is
+  missing; endpoints from a docs scan add their `{id}`-style names to the box. In the C# client a path variable
+  becomes a parameter and the others turn into parameter defaults. "Copy as cURL" fills variables, never `{key}`.
+  They are exported with the keys (passphrase only), since a variable may hold something private.
+- **Tray mode** (Sources → "Keep ApiScout in the tray when minimised"): minimising hides the window; the tray icon
+  reopens it and has Scan now, API of the day, My shortlist and Exit. Re-scans keep running and new APIs arrive
+  as a notification (click → the New category). Starting ApiScout again brings the hidden window back.
 - **Update and restart** (About, portable copy only): fetches the portable zip the update check found - from
   `latest.json` (with its sha256), from `..\ApiScout-Dist` when the source is the repo folder, or from the GitHub
   release of the tag (asset `*portable.zip`; a private repository needs a read-only token, stored DPAPI-encrypted
@@ -156,7 +169,7 @@ Data: `%LOCALAPPDATA%\ApiScout` (settings.json, catalog.json, changes.json, user
 ## Build / test / publish
 
 ```
-dotnet run --project C:\Claude\ApiScout.Tests -c Release            # 211 checks (add -- --offline to skip live ones)
+dotnet run --project C:\Claude\ApiScout.Tests -c Release            # 218 checks (add -- --offline to skip live ones)
 powershell -ExecutionPolicy Bypass -File C:\Claude\ApiScout\publish.ps1   # ..\ApiScout-App + the portable zip (-SkipApp: zip only)
 ```
 

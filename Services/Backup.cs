@@ -26,6 +26,8 @@ public sealed class BackupSecrets
 {
     public Dictionary<string, string> MyKeys { get; set; } = [];
     public Dictionary<string, ApiTestRequest> TestRequests { get; set; } = [];
+    /// <summary>Request variables travel with the keys: ApiScout cannot know whether someone put a token in one.</summary>
+    public Dictionary<string, Dictionary<string, string>> Variables { get; set; } = [];
 }
 
 public sealed record ImportSummary(int Favourites, int Tagged, int Notes, int Keys, int TestRequests, int KeptLocal, bool SecretsSkipped)
@@ -67,6 +69,7 @@ public static class Backup
                 if (store.GetMyKey(key) is { Length: > 0 } plain) secrets.MyKeys[key] = plain;
             foreach (var key in store.User.TestRequests.Keys)
                 if (store.GetTestRequest(key) is { } request) secrets.TestRequests[key] = request;
+            secrets.Variables = store.User.Variables.ToDictionary(p => p.Key, p => new Dictionary<string, string>(p.Value));
 
             var salt = RandomNumberGenerator.GetBytes(16);
             file.Salt = Convert.ToBase64String(salt);
@@ -139,6 +142,13 @@ public static class Backup
                 if (store.GetMyKey(key) is { Length: > 0 } local) { if (local != value) kept++; }
                 else { store.SetMyKey(key, value); keys++; }
             }
+            foreach (var (key, map) in secrets.Variables ?? [])
+            {
+                if (map is null) continue;
+                if (!store.User.Variables.TryGetValue(key, out var mine)) store.User.Variables[key] = mine = new(StringComparer.OrdinalIgnoreCase);
+                foreach (var (name, value) in map) mine.TryAdd(name, value ?? ""); // a value already set on this PC stays
+            }
+            store.SaveUser();
             foreach (var (key, request) in secrets.TestRequests)
             {
                 if (store.GetTestRequest(key) is not null) kept++;

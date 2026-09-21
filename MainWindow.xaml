@@ -111,6 +111,13 @@
                                        Text="Adds a Windows scheduled task (09:00, daily or Mondays, or as soon as the PC is next on) that re-scans quietly and shows a notification when new APIs appear. Untick to remove it." />
                         </StackPanel>
                     </CheckBox>
+                    <CheckBox IsChecked="{Binding TrayMode}" Margin="0,10,0,0" AutomationProperties.Name="Tray mode">
+                        <StackPanel>
+                            <TextBlock Text="Keep ApiScout in the tray when minimised" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold" />
+                            <TextBlock Style="{StaticResource Muted}" TextWrapping="Wrap" MaxWidth="390"
+                                       Text="Minimising hides the window; the tray icon opens it again and has Scan now, API of the day and My shortlist. Automatic re-scans keep running and new APIs are announced with a notification." />
+                        </StackPanel>
+                    </CheckBox>
                     <CheckBox IsChecked="{Binding ShowDashboard}" Margin="0,10,0,0" AutomationProperties.Name="Show the dashboard">
                         <TextBlock Text="Show the dashboard tiles above the list" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold" />
                     </CheckBox>
@@ -314,6 +321,7 @@
                                 <MenuItem Header="Copy as cURL" Command="{Binding CopyCommand}" CommandParameter="curl" />
                                 <MenuItem Header="Copy as C#" Command="{Binding CopyCommand}" CommandParameter="csharp" />
                                 <Separator />
+                                <MenuItem Header="More about this API…" Click="Insight_Click" InputGestureText="Ctrl+I" />
                                 <MenuItem Header="Open docs in browser" Command="{Binding OpenCommand}" CommandParameter="docs" />
                                 <MenuItem Header="Add / remove favourite" Command="{Binding ToggleFavouriteCommand}" InputGestureText="Ctrl+D" />
                                 <MenuItem Header="Tag the selected rows…" Click="TagSelected_Click" InputGestureText="Ctrl+G" />
@@ -418,6 +426,8 @@
                                     <Run Text="{Binding Selected.Category, Mode=OneWay}" /><Run Text="  ·  found in " /><Run Text="{Binding Selected.SourcesLabel, Mode=OneWay}" /><Run Text="  ·  " /><Run Text="{Binding Selected.FirstSeenLabel, Mode=OneWay}" />
                                 </TextBlock>
                                 <TextBlock Text="{Binding Selected.Description}" TextWrapping="Wrap" />
+                                <Button Content="More about this API…" Click="Insight_Click" Style="{DynamicResource AccentButtonStyle}" Padding="12,4" FontSize="12.5" HorizontalAlignment="Left" Margin="0,8,0,0"
+                                        AutomationProperties.Name="More about this API" ToolTip="What it offers and what that means for you: the key facts, plus the summary and feature list from the provider's own page (Ctrl+I)" />
 
                                 <TextBlock Text="DOCS" Style="{StaticResource Label}" />
                                 <DockPanel>
@@ -532,6 +542,11 @@
                                 <TextBox Text="{Binding Selected.TestHeader, UpdateSourceTrigger=PropertyChanged}" FontFamily="Cascadia Mono, Consolas" FontSize="12.5"
                                          AcceptsReturn="True" TextWrapping="NoWrap" MaxHeight="90" VerticalScrollBarVisibility="Auto" AutomationProperties.Name="Test headers" />
 
+                                <TextBlock Text="VARIABLES  (optional: name = value per line - {name} in the URL, headers or body is replaced)" Style="{StaticResource Label}" TextWrapping="Wrap"
+                                           ToolTip="Always there without a line of their own: {today}, {yesterday}, {tomorrow}, {now}, {timestamp}. Values are URL-encoded in the address. {key} stays your saved key." />
+                                <TextBox Text="{Binding Selected.VariablesText, UpdateSourceTrigger=LostFocus}" FontFamily="Cascadia Mono, Consolas" FontSize="12.5"
+                                         AcceptsReturn="True" TextWrapping="NoWrap" MaxHeight="90" VerticalScrollBarVisibility="Auto" AutomationProperties.Name="Test variables" />
+
                                 <StackPanel Visibility="{Binding Selected.ShowTestBody, Converter={StaticResource BoolToVis}}">
                                     <DockPanel Margin="0,10,0,3">
                                         <Button DockPanel.Dock="Right" Content="Tidy JSON" Command="{Binding TidyBodyCommand}" Style="{StaticResource Mini}" ToolTip="Check and indent the JSON body" />
@@ -545,7 +560,7 @@
                                 <DockPanel Margin="0,8,0,0">
                                     <Button DockPanel.Dock="Right" Content="Reset" Command="{Binding ResetTestCommand}" Style="{StaticResource Mini}" ToolTip="Back to the suggested request" />
                                     <Button DockPanel.Dock="Right" Content="Copy as cURL" Command="{Binding CopyCommand}" CommandParameter="testcurl" Style="{StaticResource Mini}" AutomationProperties.Name="Copy test as cURL" />
-                                    <TextBlock Text="{}{key} in the URL, a header or the body inserts your saved key." Style="{StaticResource Muted}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                                    <TextBlock Text="{}{key} inserts your saved key; {name} a variable from the box above." Style="{StaticResource Muted}" TextWrapping="Wrap" VerticalAlignment="Center" />
                                 </DockPanel>
 
                                 <StackPanel Visibility="{Binding Selected.HasHistory, Converter={StaticResource BoolToVis}}">

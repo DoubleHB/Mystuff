@@ -60,6 +60,8 @@ public partial class App : Application
         if (!_holdsMutex)
         {
             // two windows on one data folder would each rewrite userdata.json with their own idea of it
+            // a window hidden in the tray has no handle to bring forward, so it is asked by name to show itself
+            if (EventWaitHandle.TryOpenExisting(ShowSignalName(Store.Folder), out var ask)) { ask.Set(); ask.Dispose(); }
             foreach (var other in System.Diagnostics.Process.GetProcessesByName("ApiScout"))
                 if (other.Id != Environment.ProcessId && other.MainWindowHandle != IntPtr.Zero) { if (IsIconic(other.MainWindowHandle)) ShowWindow(other.MainWindowHandle, 9); SetForegroundWindow(other.MainWindowHandle); break; }
             Shutdown(0);
@@ -69,6 +71,13 @@ public partial class App : Application
         var window = new MainWindow(new MainViewModel(Store));
         MainWindow = window;
         window.Show();
+
+        _showSignal = new EventWaitHandle(false, EventResetMode.AutoReset, ShowSignalName(Store.Folder));
+        var listener = new Thread(() =>
+        {
+            while (_showSignal.WaitOne()) { if (_exiting) return; Dispatcher.BeginInvoke(window.ShowFromTray); }
+        }) { IsBackground = true, Name = "show-signal" };
+        listener.Start();
     }
 
     // held for as long as a window of this user's data folder is open
@@ -76,6 +85,16 @@ public partial class App : Application
     [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr window, int command); // 9 = restore
 
     [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool IsIconic(IntPtr window);
+
+    private EventWaitHandle? _showSignal;
+    private volatile bool _exiting;
+
+    private static string ShowSignalName(string folder)
+    {
+        uint h = 2166136261;
+        foreach (var c in folder.ToLowerInvariant()) h = (h ^ c) * 16777619;
+        return $"ApiScout.Show.{h:x8}";
+    }
 
     private Mutex? _windowOpen;
     private bool _holdsMutex;
@@ -104,6 +123,8 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        _exiting = true;
+        _showSignal?.Set(); // lets the listener thread end
         if (_holdsMutex) _windowOpen?.ReleaseMutex();
         _windowOpen?.Dispose();
         base.OnExit(e);

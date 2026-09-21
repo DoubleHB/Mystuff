@@ -29,10 +29,26 @@ public partial class MainWindow : Window
         InputBindings.Add(new KeyBinding(new ActionCommand(() => { if (!_vm.ShowShortlist) Compare_Click(this, new RoutedEventArgs()); }), Key.M, ModifierKeys.Control));
         InputBindings.Add(new KeyBinding(new ActionCommand(() => { if (!_vm.ShowShortlist) TagSelected_Click(this, new RoutedEventArgs()); }), Key.G, ModifierKeys.Control));
         InputBindings.Add(new KeyBinding(new ActionCommand(() => About_Click(this, new RoutedEventArgs())), Key.F1, ModifierKeys.None));
+        InputBindings.Add(new KeyBinding(new ActionCommand(() => { if (!_vm.ShowShortlist) Insight_Click(this, new RoutedEventArgs()); }), Key.I, ModifierKeys.Control));
         InputBindings.Add(new KeyBinding(new ActionCommand(() => { if (!_vm.ShowShortlist) AddToCollection_Click(this, new RoutedEventArgs()); }), Key.E, ModifierKeys.Control));
         InputBindings.Add(new KeyBinding(new ActionCommand(() => Changes_Click(this, new RoutedEventArgs())), Key.H, ModifierKeys.Control));
         SizeChanged += (_, _) => ShowTourStop();
         Loaded += (_, _) => { if (!App.Store.Settings.TourSeen && _vm.IsEmpty) Dispatcher.BeginInvoke(StartTour, System.Windows.Threading.DispatcherPriority.ApplicationIdle); };
+        // ---- tray mode
+        if (_vm.TrayMode) _tray = new UI.TrayIcon(this, _vm);
+        StateChanged += (_, _) =>
+        {
+            if (WindowState != WindowState.Minimized) _restoreTo = WindowState;
+            else if (_tray is not null) Hide(); // off the taskbar; the tray icon brings it back
+        };
+        Closed += (_, _) => _tray?.Dispose();
+        _vm.NewApisFound += (added, names) =>
+        {
+            if (_tray is null || (IsVisible && IsActive)) return; // looking at the window: the toast there is enough
+            var text = string.Join(", ", names) + (added > names.Count ? $" and {added - names.Count:N0} more" : "") + ". Click to see them.";
+            _tray.Notify($"{added:N0} new free API{(added == 1 ? "" : "s")} found", text, _vm.ShowNewCategory);
+            _vm.Log($"Tray notification: {added} new - {text}");
+        };
         _vm.CommitEdits += CommitFocusedTextBox;
         // opening the popup leaves the focus on its button, so Esc is caught here rather than inside the popup
         PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape && SourcesPopup.IsOpen) { SourcesButton.IsChecked = false; e.Handled = true; } };
@@ -65,14 +81,31 @@ public partial class MainWindow : Window
         {
             // the keyboard follows the page: onto the selected card, or back onto the selected grid row
             if (e.PropertyName is nameof(MainViewModel.ShowShortlist) or nameof(MainViewModel.ShortlistRows)) Dispatcher.BeginInvoke(FocusCurrentPage, System.Windows.Threading.DispatcherPriority.Input);
+            if (e.PropertyName == nameof(MainViewModel.TrayMode))
+            {
+                if (_vm.TrayMode) _tray ??= new UI.TrayIcon(this, _vm);
+                else { _tray?.Dispose(); _tray = null; if (!IsVisible) ShowFromTray(); }
+            }
         };
         Closing += (_, _) =>
         {
-            s.Maximised = WindowState == WindowState.Maximized;
+            s.Maximised = (WindowState == WindowState.Minimized ? _restoreTo : WindowState) == WindowState.Maximized; // Exit from the tray menu closes a hidden, "minimised" window
             if (WindowState == WindowState.Normal) { s.Width = Width; s.Height = Height; }
             _vm.Flush(); // closing a window does not make the focused box lose focus, so a note or key being typed is committed by hand
             _vm.SaveSourceSettings();
         };
+    }
+
+    private UI.TrayIcon? _tray;
+    private WindowState _restoreTo = WindowState.Normal;
+
+    /// <summary>Back from the tray (icon click, menu, balloon, or a second ApiScout being started).</summary>
+    public void ShowFromTray()
+    {
+        Show();
+        if (WindowState == WindowState.Minimized) WindowState = _restoreTo;
+        Activate();
+        Topmost = true; Topmost = false; // Activate alone may only flash the taskbar button
     }
 
     private List<System.ComponentModel.SortDescription> _sort = [];
@@ -268,6 +301,11 @@ public partial class MainWindow : Window
             case Key.Tab or Key.Enter or Key.Space: return;
         }
         e.Handled = true;
+    }
+
+    private void Insight_Click(object sender, RoutedEventArgs e)
+    {
+        if (_vm.Selected is { } api) new Views.InsightWindow(api, _vm) { Owner = this }.Show();
     }
 
     private Views.ChangesWindow? _changes;

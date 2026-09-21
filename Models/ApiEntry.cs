@@ -115,6 +115,8 @@ public sealed class Settings
     /// <summary>Where "Check for updates" looks: a GitHub owner/repo, a folder with a git repo, or a latest.json path / URL. Empty = the repo this build came from.</summary>
     public string UpdateFeed { get; set; } = "";
     public DateTime? LastUpdateCheck { get; set; }
+    /// <summary>Minimising hides the window into the notification area; the tray icon has a menu and announces new APIs.</summary>
+    public bool TrayMode { get; set; }
     /// <summary>The first-run tour has been shown (or skipped).</summary>
     public bool TourSeen { get; set; }
     /// <summary>"Never", "Daily" or "Weekly": re-scan on start-up / while open once the last scan is that old.</summary>
@@ -145,6 +147,8 @@ public sealed class UserData
     public Dictionary<string, string> Notes { get; set; } = [];
     /// <summary>The user's own labels per API.</summary>
     public Dictionary<string, List<string>> Tags { get; set; } = [];
+    /// <summary>Request variables per API: name → value, filled in wherever a test request says {name}.</summary>
+    public Dictionary<string, Dictionary<string, string>> Variables { get; set; } = [];
     /// <summary>GitHub token for a private update repository, DPAPI-encrypted like the keys. Never exported.</summary>
     public string? UpdateToken { get; set; }
     /// <summary>Named groups of APIs (collection name → API keys, in the order they were added).</summary>

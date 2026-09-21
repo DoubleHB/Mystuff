@@ -195,6 +195,8 @@ public sealed partial class ApiRow : ObservableObject
     [ObservableProperty] private string _testHeader = "";
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(ShowTestBody))] private string _testMethod = "GET";
     [ObservableProperty] private string _testBody = "";
+    /// <summary>"name = value" lines; {name} in the URL, headers or body is replaced by the value when the request is sent.</summary>
+    [ObservableProperty] private string _variablesText = "";
     public bool ShowTestBody => ApiTester.HasBody(TestMethod);
 
     // earlier results for this API, newest first (loaded from the store when the row is first selected)
@@ -246,7 +248,7 @@ public sealed partial class ApiRow : ObservableObject
     public void CopySessionFrom(ApiRow was)
     {
         Status = was.Status; LatencyMs = was.LatencyMs;
-        KeyLoaded = was.KeyLoaded; MyKey = was.MyKey;
+        KeyLoaded = was.KeyLoaded; MyKey = was.MyKey; VariablesText = was.VariablesText;
         if (was.TestUrl.Length > 0)
         {
             TestMethod = was.TestMethod; TestUrl = was.TestUrl; TestHeader = was.TestHeader; TestBody = was.TestBody;

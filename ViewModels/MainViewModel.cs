@@ -128,6 +128,24 @@ public sealed partial class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>Minimise into the notification area; the window reacts by creating or removing the tray icon.</summary>
+    public bool TrayMode
+    {
+        get => _store.Settings.TrayMode;
+        set { _store.Settings.TrayMode = value; _store.SaveSettings(); OnPropertyChanged(); }
+    }
+
+    /// <summary>A scan that found new APIs: how many, and the first few names (for the tray balloon).</summary>
+    public event Action<int, IReadOnlyList<string>>? NewApisFound;
+
+    public void ShowNewCategory()
+    {
+        ShowShortlist = false;
+        SelectedCategory = Categories.FirstOrDefault(c => c.Name == NewCategory) ?? SelectedCategory;
+    }
+
+    public void Log(string message) => _store.Log(message);
+
     public bool ShowDashboard
     {
         get => _store.Settings.ShowDashboard;
@@ -367,10 +385,24 @@ public sealed partial class MainViewModel : ObservableObject
         if (ShowShortlist) RefreshShortlist();
     }
 
+    private void SaveVariables(ApiRow row)
+    {
+        var map = RequestVariables.Parse(row.VariablesText);
+        if (map.Count == 0) _store.User.Variables.Remove(row.Key); else _store.User.Variables[row.Key] = map;
+        _store.SaveUser();
+    }
+
+    private IReadOnlyDictionary<string, string>? VariablesOf(ApiRow row) => _store.User.Variables.GetValueOrDefault(row.Key);
+
     /// <summary>Pulls a row's saved key, test request and history out of the store the first time they are needed.</summary>
     private void EnsureRowLoaded(ApiRow row)
     {
-        if (!row.KeyLoaded) { row.KeyLoaded = true; if (row.MyKey.Length == 0) row.MyKey = _store.GetMyKey(row.Key) ?? ""; }
+        if (!row.KeyLoaded)
+        {
+            row.KeyLoaded = true;
+            if (row.MyKey.Length == 0) row.MyKey = _store.GetMyKey(row.Key) ?? "";
+            if (_store.User.Variables.TryGetValue(row.Key, out var saved)) row.VariablesText = RequestVariables.ToText(saved);
+        }
         if (row.TestUrl.Length == 0)
         {
             var saved = _store.GetTestRequest(row.Key);
@@ -423,6 +455,7 @@ public sealed partial class MainViewModel : ObservableObject
             _store.SaveUser();
         }
         else if (e.PropertyName == nameof(ApiRow.TagsText)) SaveTags(row);
+        else if (e.PropertyName == nameof(ApiRow.VariablesText)) SaveVariables(row);
         else if (e.PropertyName == nameof(ApiRow.SelectedHistory) && !_showingHistory && row.SelectedHistory is { } entry)
         {
             // the user picked an earlier result: show it in the response box
@@ -610,7 +643,7 @@ public sealed partial class MainViewModel : ObservableObject
 
     /// <summary>One file with a client per API on the page that has a successful test, plus a facade. Null when none has.</summary>
     public string? BuildPageClient() =>
-        ClientGenerator.GenerateMany(ShortlistTitle, ShortlistRows.Select(r => (r.Name, (IEnumerable<TestHistoryEntry>)(_store.TestHistory.GetValueOrDefault(r.Key) ?? []), r.DemoKey)));
+        ClientGenerator.GenerateMany(ShortlistTitle, ShortlistRows.Select(r => (r.Name, (IEnumerable<TestHistoryEntry>)(_store.TestHistory.GetValueOrDefault(r.Key) ?? []), r.DemoKey, VariablesOf(r))));
 
     [RelayCommand]
     private void CopyPageClient()
@@ -843,6 +876,7 @@ public sealed partial class MainViewModel : ObservableObject
             StatusText = $"{(auto ? "Automatic re-scan" : "Scan")} finished: {_all.Count:N0} unique APIs in {Categories.Count - SpecialCategories} categories" +
                          (before > 0 ? $" - {added:N0} new, {removed:N0} gone, {report?.Changed.Count ?? 0:N0} changed since the last scan{(report is { IsEmpty: false } ? " (see What changed, Ctrl+H)" : "")}" : "") +
                          (failed.Count > 0 ? $". {failed.Count} source(s) failed{(kept > 0 ? $" ({kept:N0} APIs kept from the last scan)" : "")}: {string.Join("; ", failed)}" : ".");
+            if (before > 0 && added > 0) NewApisFound?.Invoke(added, [.. report?.Added.Take(4).Select(c => c.Name) ?? []]);
             if (before > 0 && added > 0) ShowToast($"🆕 {added:N0} new API{(added == 1 ? "" : "s")} since the last scan");
         }
         catch (OperationCanceledException) { StatusText = "Scan cancelled."; }
@@ -993,7 +1027,8 @@ public sealed partial class MainViewModel : ObservableObject
             "mykey" => (r.MyKey, "Your key"),
             "response" => (r.TestResponse, "Response"),
             "classes" => (r.TestClasses, "C# code"),
-            "testcurl" => (ApiTester.ToCurl(new ApiTestRequest(r.TestMethod, r.TestUrl, r.TestHeader, r.TestBody)), "cURL command"),
+            // variables are filled in, {key} is not: a copied command never carries the saved key
+            "testcurl" => (ApiTester.ToCurl(new ApiTestRequest(r.TestMethod, RequestVariables.Fill(r.TestUrl, VariablesOf(r), escape: true), RequestVariables.Fill(r.TestHeader, VariablesOf(r), false), RequestVariables.Fill(r.TestBody, VariablesOf(r), false))), "cURL command"),
             "markdown" => (Exporter.Markdown(r), "Markdown"),
             "json" => (Exporter.JsonOne(r), "JSON"),
             "curl" => (Exporter.Curl(r), "cURL command"),
@@ -1133,7 +1168,13 @@ public sealed partial class MainViewModel : ObservableObject
 
     /// <summary>"Test this API": sends the request in the box; {key} stands for the key saved under My key.</summary>
     [RelayCommand(AllowConcurrentExecutions = true)]
-    private Task TestApiAsync() => ShowShortlist ? TestRowAsync(ShortlistSelected) : Selected is { } r ? RunTestAsync(r) : Task.CompletedTask;
+    private Task TestApiAsync()
+    {
+        CommitEdits?.Invoke(); // a variable being typed counts
+        return TestSelectedAsync();
+    }
+
+    private Task TestSelectedAsync() => ShowShortlist ? TestRowAsync(ShortlistSelected) : Selected is { } r ? RunTestAsync(r) : Task.CompletedTask;
 
     private async Task RunTestAsync(ApiRow r)
     {
@@ -1143,8 +1184,16 @@ public sealed partial class MainViewModel : ObservableObject
         r.TestSummary = "Sending…";
         try
         {
-            string Fill(string s) => s.Replace("{key}", r.MyKey.Trim(), StringComparison.OrdinalIgnoreCase);
+            var variables = VariablesOf(r);
+            string Fill(string s, bool url = false) => RequestVariables.Fill(s, variables, escape: url).Replace("{key}", r.MyKey.Trim(), StringComparison.OrdinalIgnoreCase);
             var body = r.ShowTestBody ? r.TestBody : "";
+            if (RequestVariables.Missing(r.TestUrl + "\n" + r.TestHeader, variables) is { Count: > 0 } missing)
+            {
+                r.TestOk = false; r.TestResponse = "";
+                r.LastTestOk = false; r.LastTestLabel = $"Needs a value for {{{string.Join("}, {", missing)}}} - see Variables in Try it";
+                r.TestSummary = $"The request still says {{{string.Join("}, {", missing)}}}. Give {(missing.Count == 1 ? "it a value" : "them values")} under Variables (a line like \"{missing[0]} = …\"), then send again.";
+                return;
+            }
             if ((r.TestUrl + r.TestHeader + body).Contains("{key}", StringComparison.OrdinalIgnoreCase) && r.MyKey.Trim().Length == 0)
             {
                 r.TestOk = false; r.TestResponse = "";
@@ -1155,7 +1204,7 @@ public sealed partial class MainViewModel : ObservableObject
             if (r.TestUrl.Trim() != r.DefaultTestUrl || r.TestHeader.Trim() != r.DefaultTestHeader || r.TestMethod != "GET" || r.TestBody.Trim().Length > 0)
                 _store.SetTestRequest(r.Key, new ApiTestRequest(r.TestMethod, r.TestUrl.Trim(), r.TestHeader.Trim(), r.TestBody.Trim()));
             else if (_store.User.TestRequests.Remove(r.Key)) _store.SaveUser(); // back to the suggested request by hand: forget the saved one
-            var request = new ApiTestRequest(r.TestMethod, Fill(r.TestUrl), Fill(r.TestHeader), Fill(body));
+            var request = new ApiTestRequest(r.TestMethod, Fill(r.TestUrl, url: true), Fill(r.TestHeader), Fill(body));
             var result = await Task.Run(() => ApiTester.SendAsync(request, CancellationToken.None));
             r.TestOk = result.Ok;
             r.TestSummary = result.Summary;
@@ -1206,9 +1255,13 @@ public sealed partial class MainViewModel : ObservableObject
         r.TestMethod = ApiTester.Methods.Contains(item.Method) ? item.Method : "GET";
         r.TestUrl = item.Value;
         r.TestBody = "";
+        // {id}, {city}… in the endpoint: a line each under Variables, ready for a value
+        var known = RequestVariables.Parse(r.VariablesText);
+        var fresh = RequestVariables.Names(item.Value).Where(n => !known.ContainsKey(n)).ToList();
+        if (fresh.Count > 0) r.VariablesText = string.Join(Environment.NewLine, new[] { r.VariablesText.TrimEnd() }.Where(s => s.Length > 0).Concat(fresh.Select(n => n + " = ")));
         ShowTestCard?.Invoke();
         if (ApiTester.HasBody(r.TestMethod)) ShowToast($"{r.TestMethod} request loaded - add a body, then press Test this API");
-        else if (item.Value.Contains('{') && !item.Value.Contains("{key}", StringComparison.OrdinalIgnoreCase)) ShowToast("Request loaded - fill in the {…} parts, then press Test this API");
+        else if (RequestVariables.Missing(item.Value, VariablesOf(r)) is { Count: > 0 } open) ShowToast($"Request loaded - give {{{string.Join("}, {", open)}}} a value under Variables, then press Test this API");
         else await TestApiAsync();
     }
 
@@ -1254,7 +1307,7 @@ public sealed partial class MainViewModel : ObservableObject
         IReadOnlyList<TestHistoryEntry>? picked = usable;
         if (usable.Count > 1 && PickClientRequests is not null) picked = PickClientRequests(r.Name, usable, ClientGenerator.NewestOfEach(usable));
         if (picked is null || picked.Count == 0) return;
-        var code = ClientGenerator.Generate(r.Name, picked, r.DemoKey);
+        var code = ClientGenerator.Generate(r.Name, picked, r.DemoKey, VariablesOf(r));
         if (code is null) return;
         r.TestCodeTitle = ApiRow.ClientTitle;
         r.TestCodeFile = ClientGenerator.ClassNameFor(r.Name) + ".cs";
