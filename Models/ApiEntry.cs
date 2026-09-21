@@ -33,6 +33,8 @@ public sealed class DocsScanResult
     public DateTime ScannedAt { get; set; }
     public string PageUrl { get; set; } = "";
     public string? Error { get; set; }
+    /// <summary>The icon the docs page declares for itself (apple-touch-icon / rel=icon), when it is a format WPF can show.</summary>
+    public string? IconUrl { get; set; }
     public List<FoundItem> Items { get; set; } = [];
 }
 
@@ -72,6 +74,8 @@ public sealed class Catalog
     public DateTime ScannedAt { get; set; }
     /// <summary>The first scan ever: everything found then is the starting point, not "new".</summary>
     public DateTime? BaselineAt { get; set; }
+    /// <summary>How many APIs this scan found that the one before it did not have.</summary>
+    public int LastAdded { get; set; }
     public List<ApiEntry> Entries { get; set; } = [];
 }
 
@@ -82,6 +86,8 @@ public sealed class Settings
     public string AutoRescan { get; set; } = "Weekly";
     /// <summary>Fetch provider favicons through a public icon service (only the domain name is sent).</summary>
     public bool ShowLogos { get; set; } = true;
+    /// <summary>A Windows scheduled task re-scans (Daily/Weekly, as AutoRescan says) even when ApiScout is closed.</summary>
+    public bool BackgroundScan { get; set; }
     public Dictionary<string, bool> Sources { get; set; } = [];
     public List<string> CustomSources { get; set; } = [];
     public double Width { get; set; } = 1500;
@@ -95,6 +101,8 @@ public sealed class UserData
     /// <summary>The user's own keys, DPAPI-encrypted (current Windows user), base64.</summary>
     public Dictionary<string, string> MyKeys { get; set; } = [];
     public Dictionary<string, string> Notes { get; set; } = [];
+    /// <summary>The user's own labels per API.</summary>
+    public Dictionary<string, List<string>> Tags { get; set; } = [];
     /// <summary>Edited "Test this API" requests (URL + header), DPAPI-encrypted because they may hold a key.</summary>
     public Dictionary<string, string> TestRequests { get; set; } = [];
 }

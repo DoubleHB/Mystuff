@@ -63,6 +63,7 @@ public static class Scanner
             if (seen.TryGetValue(e.Key, out var first)) e.FirstSeen = first;
             else { e.FirstSeen = fresh.ScannedAt; added++; }
         }
+        fresh.LastAdded = added;
         return (added, seen.Keys.Count(k => !now.Contains(k)));
     }
 

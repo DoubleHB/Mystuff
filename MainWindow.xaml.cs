@@ -46,6 +46,21 @@ public partial class MainWindow : Window
     private void Grid_Copy(object sender, ExecutedRoutedEventArgs e) =>
         _vm.CopyRows([.. ResultsGrid.SelectedItems.OfType<ApiRow>()]);
 
+    private void TagSelected_Click(object sender, RoutedEventArgs e)
+    {
+        var rows = ResultsGrid.SelectedItems.OfType<ApiRow>().ToList();
+        if (rows.Count == 0) return;
+        var dialog = new Views.InputDialog("Tag the selected rows", $"Add one tag to the {rows.Count} selected API{(rows.Count == 1 ? "" : "s")}:", _vm.TagFilters.Skip(1)) { Owner = this };
+        if (dialog.ShowDialog() == true) _vm.AddTag(rows, dialog.Value);
+    }
+
+    private void Compare_Click(object sender, RoutedEventArgs e)
+    {
+        var rows = ResultsGrid.SelectedItems.OfType<ApiRow>().ToList();
+        if (rows.Count is < 2 or > 4) { _vm.Notify("Select 2 to 4 rows first (Ctrl+click), then Compare"); return; }
+        new Views.CompareWindow(rows, _vm) { Owner = this }.Show();
+    }
+
     private void Grid_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
         if (e.OriginalSource is DependencyObject d && ItemsControl.ContainerFromElement(ResultsGrid, d) is DataGridRow)

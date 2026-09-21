@@ -28,6 +28,8 @@ public static partial class DocsScanner
     private static partial Regex FreeTierRx();
     [GeneratedRegex(@"(?i)^(your|my|the)?[_\-\.]*(api)?[_\-\.]*(key|token|id|secret|apikey|appid|access|value|here|xxx+|x+|\.\.\.|key_here|token_here|string|text|true|false|null|undefined)+[_\-\.0-9]*$")]
     private static partial Regex PlaceholderRx();
+    [GeneratedRegex(@"<link\b[^>]*>", RegexOptions.IgnoreCase)]
+    private static partial Regex LinkTagRx();
     [GeneratedRegex(@"https?://[^\s""'<>\)\]\\|`]+")]
     private static partial Regex UrlRx();
     [GeneratedRegex(@"(?<![\w/.@:-])(?:[a-z0-9-]+\.)+[a-z]{2,}/[^\s""'<>\)\]\\|`]+", RegexOptions.IgnoreCase)]
@@ -86,6 +88,7 @@ public static partial class DocsScanner
     internal static void ReadPage(string html, string pageUrl, DocsScanResult result)
     {
         Uri.TryCreate(pageUrl, UriKind.Absolute, out var baseUri);
+        result.IconUrl = FindPageIcon(html, baseUri);
 
         // 1. sign-up style links
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -202,6 +205,23 @@ public static partial class DocsScanner
             return p;
         });
         return u.GetLeftPart(UriPartial.Path) + "?" + string.Join('&', parts);
+    }
+
+    /// <summary>The page's own icon: apple-touch-icon first (bigger), then rel=icon. SVG is skipped - WPF cannot decode it.</summary>
+    internal static string? FindPageIcon(string html, Uri? baseUri)
+    {
+        if (baseUri is null) return null;
+        string? best = null;
+        foreach (Match m in LinkTagRx().Matches(html))
+        {
+            var rel = Regex.Match(m.Value, @"(?i)\brel\s*=\s*[""']([^""']*)[""']").Groups[1].Value.ToLowerInvariant();
+            var href = WebUtility.HtmlDecode(Regex.Match(m.Value, @"(?i)\bhref\s*=\s*[""']([^""']+)[""']").Groups[1].Value.Trim());
+            if (!rel.Contains("icon") || rel.Contains("mask") || href.Length == 0 || href.StartsWith("data:", StringComparison.OrdinalIgnoreCase)) continue;
+            if (!Uri.TryCreate(baseUri, href, out var abs) || abs.Scheme is not ("http" or "https") || abs.AbsolutePath.EndsWith(".svg", StringComparison.OrdinalIgnoreCase)) continue;
+            if (rel.Contains("apple-touch-icon")) return abs.ToString();
+            best ??= abs.ToString();
+        }
+        return best;
     }
 
     /// <summary>A "Pricing" / "Plans" link on the docs page that stays on the provider's own site.</summary>

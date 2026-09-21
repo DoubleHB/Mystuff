@@ -87,6 +87,13 @@
                         <TextBlock Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="10,0,0,0" VerticalAlignment="Center"
                                    Text="When the last scan is that old, ApiScout re-scans on start-up (or while open) and marks what is NEW." />
                     </DockPanel>
+                    <CheckBox IsChecked="{Binding BackgroundScan}" Margin="0,8,0,0" AutomationProperties.Name="Background scan">
+                        <StackPanel>
+                            <TextBlock Text="Also when ApiScout is closed" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold" />
+                            <TextBlock Style="{StaticResource Muted}" TextWrapping="Wrap" MaxWidth="390"
+                                       Text="Adds a Windows scheduled task (09:00, daily or Mondays, or as soon as the PC is next on) that re-scans quietly and shows a notification when new APIs appear. Untick to remove it." />
+                        </StackPanel>
+                    </CheckBox>
                     <CheckBox IsChecked="{Binding ShowLogos}" Margin="0,10,0,0" AutomationProperties.Name="Show brand logos">
                         <StackPanel>
                             <TextBlock Text="Show brand logos" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold" />
@@ -149,6 +156,8 @@
                     <ComboBox ItemsSource="{Binding AuthFilters}" SelectedItem="{Binding AuthFilter}" MinWidth="170" Margin="0,0,0,4" AutomationProperties.Name="Auth filter" ToolTip="What you need before you can call it" />
                     <ComboBox ItemsSource="{Binding AccessFilters}" SelectedItem="{Binding AccessFilter}" MinWidth="176" Margin="8,0,0,4" AutomationProperties.Name="Free access filter"
                               ToolTip="How much is free: everything, a limited free plan, or only a demo / trial" />
+                    <ComboBox ItemsSource="{Binding TagFilters}" SelectedItem="{Binding TagFilter}" MinWidth="120" Margin="8,0,0,4" AutomationProperties.Name="Tag filter"
+                              ToolTip="Your own tags" Visibility="{Binding HasAnyTags, Converter={StaticResource BoolToVis}}" />
                     <CheckBox Content="HTTPS only" IsChecked="{Binding HttpsOnly}" />
                     <CheckBox Content="CORS" IsChecked="{Binding CorsOnly}" ToolTip="Callable straight from browser JavaScript" />
                     <CheckBox Content="Online only" IsChecked="{Binding OnlineOnly}" ToolTip="Only APIs that passed 'Check links'" />
@@ -193,6 +202,8 @@
                                 <Separator />
                                 <MenuItem Header="Open docs in browser" Command="{Binding OpenCommand}" CommandParameter="docs" />
                                 <MenuItem Header="Add / remove favourite" Command="{Binding ToggleFavouriteCommand}" InputGestureText="Ctrl+D" />
+                                <MenuItem Header="Tag the selected rows…" Click="TagSelected_Click" />
+                                <MenuItem Header="Compare the selected rows (2-4)" Click="Compare_Click" />
                             </ContextMenu>
                         </DataGrid.ContextMenu>
                         <DataGrid.Columns>
@@ -215,6 +226,8 @@
                                                         Visibility="{Binding IsNew, Converter={StaticResource BoolToVis}}" ToolTip="{Binding FirstSeenLabel}">
                                                     <TextBlock Text="NEW" FontSize="10" FontWeight="Bold" Foreground="White" />
                                                 </Border>
+                                                <TextBlock Text="{Binding TagsLabel}" FontSize="11" Margin="10,0,0,0" VerticalAlignment="Center" Foreground="{DynamicResource VioletBrush}"
+                                                           Visibility="{Binding HasTags, Converter={StaticResource BoolToVis}}" />
                                             </DockPanel>
                                             <TextBlock Text="{Binding Description}" Style="{StaticResource Muted}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Description}" />
                                           </StackPanel>
@@ -530,6 +543,8 @@
                                         </Border>
                                     </Grid>
                                 </DockPanel>
+                                <TextBlock Text="TAGS  (your own labels, comma separated - filter by them above the list)" Style="{StaticResource Label}" TextWrapping="Wrap" />
+                                <TextBox Text="{Binding Selected.TagsText, UpdateSourceTrigger=LostFocus}" AutomationProperties.Name="Tags" />
                                 <TextBlock Text="NOTES" Style="{StaticResource Label}" />
                                 <TextBox Text="{Binding Selected.Note, UpdateSourceTrigger=LostFocus}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="54" AutomationProperties.Name="Notes" />
                             </StackPanel>
@@ -558,6 +573,8 @@
             <DockPanel>
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                     <TextBlock Text="{Binding CountText}" VerticalAlignment="Center" FontWeight="SemiBold" Margin="0,0,14,0" />
+                    <Button Content="Compare selected" Click="Compare_Click" Style="{StaticResource Mini}" Margin="0,0,14,0" AutomationProperties.Name="Compare selected"
+                            ToolTip="Select 2 to 4 rows (Ctrl+click) to see them side by side" />
                     <TextBlock Text="Copy list as" Style="{StaticResource Muted}" VerticalAlignment="Center" />
                     <Button Content="Markdown" Command="{Binding CopyListCommand}" CommandParameter="markdown" Style="{StaticResource Mini}" />
                     <Button Content="CSV" Command="{Binding CopyListCommand}" CommandParameter="csv" Style="{StaticResource Mini}" />

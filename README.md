@@ -50,8 +50,21 @@ key when the provider publishes one, or how and where to get a free key when not
   new ones get a NEW pill for 14 days and a "🆕 New (last 14 days)" category. The very first scan is the baseline.
   **Re-scan automatically** (Sources popup): Never / Daily / Weekly (default) - checked on start-up and every 30
   minutes while open. `ApiScout.exe --scan` does a headless re-scan (for Task Scheduler) and logs the result.
+- **Also when ApiScout is closed** (Sources popup): registers the per-user Windows scheduled task "ApiScout
+  background scan" (09:00 daily or Mondays, catches up after a missed start, no admin rights) that runs
+  `ApiScout.exe --scan` and shows a Windows notification naming the new APIs - click it to open ApiScout.
+  `ApiScout.exe --background-scan=weekly|daily|off` does the same from a script. Test copies (APISCOUT_DATA) refuse.
 - **Brand logos**: provider site icons in the grid and detail header (Google s2, then DuckDuckGo; only the domain is
-  sent; cached in `logos\`; coloured initial when there is none). Toggle in the Sources popup.
+  sent; cached in `logos\`; coloured initial when there is none). Toggle in the Sources popup. APIs hosted on
+  GitHub / GitHub Pages show the repo owner's avatar and "github.com/owner"; RapidAPI publishes no provider logo,
+  so those keep RapidAPI's icon with the label "RapidAPI · by provider". A docs scan also picks up the docs page's
+  own icon (apple-touch-icon / rel=icon) for sites the icon services do not know.
+- **Tags**: your own comma-separated labels per API (My key & notes card), shown as a 🏷 chip in the grid, searchable,
+  with a tag filter beside the other filters; right-click → "Tag the selected rows…" labels a multi-selection.
+  Included in the text / CSV / JSON copies.
+- **Compare**: select 2-4 rows (Ctrl+click) → "Compare selected" (status bar or right-click) for a side-by-side
+  window: what each needs, what is free, demo key, how to get a key, HTTPS/CORS, health, example, sources, tags,
+  notes. "Measure now" checks each docs site and sends each known example once; "Copy as Markdown" exports it.
 - **Check links**: tests whether every listed docs site still answers (Online / Restricted / Down + latency);
   "Online only" filter afterwards.
 - **Copy everywhere**: Copy buttons beside every value; Ctrl+C (selected rows - multi-select pastes into Excel),
@@ -72,6 +85,7 @@ ApiScout never looks for leaked or private keys - the docs scan only reads the p
 - `Services/Scanner.cs` - parallel run, merge, de-dupe key; `Categoriser.cs` - category rules + keyword classifier
 - `Services/KeyKnowledge.cs` - demo keys, sign-up links, generic how-to per auth type
 - `Services/DocsScanner.cs`, `ApiTester.cs`, `JsonToCSharp.cs`, `LineDiff.cs`, `LogoService.cs`, `LinkChecker.cs`, `Exporter.cs`, `Store.cs`
+- `Services/ScheduledScan.cs` - the Windows scheduled task; `Views/CompareWindow.cs` - compare window + tag prompt (code only)
 - `ViewModels/MainViewModel.cs`, `ApiRow.cs`; `MainWindow.xaml`
 
 Data: `%LOCALAPPDATA%\ApiScout` (settings.json, catalog.json, userdata.json, docs-scans.json, test-history.dat, logos\, apiscout.log).
@@ -80,7 +94,7 @@ Data: `%LOCALAPPDATA%\ApiScout` (settings.json, catalog.json, userdata.json, doc
 ## Build / test / publish
 
 ```
-dotnet run --project C:\Claude\ApiScout.Tests -c Release            # 130 checks (add -- --offline to skip live ones)
+dotnet run --project C:\Claude\ApiScout.Tests -c Release            # 142 checks (add -- --offline to skip live ones)
 dotnet publish C:\Claude\ApiScout\ApiScout.csproj -c Release -o C:\Claude\ApiScout-App
 ```
 

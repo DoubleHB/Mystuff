@@ -23,6 +23,7 @@ public static class Exporter
         if (r.HasDemoKey) sb.AppendLine($"Demo key: {r.DemoKey}  ({r.KeyUsage})");
         if (r.SignupUrl is { Length: > 0 }) sb.AppendLine($"Get a key: {r.SignupUrl}");
         if (r.Example is { Length: > 0 }) sb.AppendLine($"Example: {r.Example}");
+        if (r.HasTags) sb.AppendLine($"Tags: {string.Join(", ", r.Tags)}");
         return sb.ToString().TrimEnd();
     }
 
@@ -63,9 +64,9 @@ public static class Exporter
 
     public static string Csv(IEnumerable<ApiRow> rows)
     {
-        var sb = new StringBuilder("Name,Category,Auth,Free access,HTTPS,CORS,Demo key,Get a key,Docs URL,Description,Sources\r\n");
+        var sb = new StringBuilder("Name,Category,Auth,Free access,HTTPS,CORS,Demo key,Get a key,Docs URL,Description,Sources,Tags\r\n");
         foreach (var r in rows)
-            sb.Append(string.Join(',', new[] { r.Name, r.Category, r.AuthLabel, r.AccessLabel, r.HttpsLabel, r.Cors, r.DemoKey ?? "", r.SignupUrl ?? "", r.Url, r.Description, r.SourcesLabel }.Select(Quote))).Append("\r\n");
+            sb.Append(string.Join(',', new[] { r.Name, r.Category, r.AuthLabel, r.AccessLabel, r.HttpsLabel, r.Cors, r.DemoKey ?? "", r.SignupUrl ?? "", r.Url, r.Description, r.SourcesLabel, string.Join(", ", r.Tags) }.Select(Quote))).Append("\r\n");
         return sb.ToString();
     }
 
@@ -90,6 +91,7 @@ public static class Exporter
         getKeyUrl = r.SignupUrl,
         example = r.Example,
         sources = r.Entry.Sources,
+        tags = r.Tags,
     };
 
     private static string Pipe(string s) => s.Replace("|", "\\|");

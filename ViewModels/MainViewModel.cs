@@ -58,7 +58,8 @@ public sealed partial class MainViewModel : ObservableObject
         if (store.LoadCatalog() is { Entries.Count: > 0 } cached)
         {
             Load(cached);
-            StatusText = $"Loaded {cached.Entries.Count:N0} APIs from the last scan ({cached.ScannedAt:d MMM yyyy HH:mm}). Press Scan to refresh.";
+            StatusText = $"Loaded {cached.Entries.Count:N0} APIs from the last scan ({cached.ScannedAt:d MMM yyyy HH:mm})" +
+                         (cached.LastAdded > 0 ? $" - it found {cached.LastAdded:N0} new, see \"{NewCategory}\"." : ". Press Scan to refresh.");
         }
         else StatusText = "Press Scan the internet to find free APIs.";
 
@@ -85,7 +86,29 @@ public sealed partial class MainViewModel : ObservableObject
     public string AutoRescan
     {
         get => _store.Settings.AutoRescan;
-        set { _store.Settings.AutoRescan = value; _store.SaveSettings(); OnPropertyChanged(); AutoRescanIfDue(); }
+        set
+        {
+            _store.Settings.AutoRescan = value;
+            _store.SaveSettings();
+            OnPropertyChanged();
+            if (BackgroundScan) BackgroundScan = value != "Never"; // keep the Windows task in step (or remove it)
+            AutoRescanIfDue();
+        }
+    }
+
+    /// <summary>Tick box "also when ApiScout is closed": registers / removes the Windows scheduled task.</summary>
+    public bool BackgroundScan
+    {
+        get => _store.Settings.BackgroundScan;
+        set
+        {
+            var (ok, message) = value && AutoRescan == "Never" ? (false, "Choose Daily or Weekly first.")
+                : value ? ScheduledScan.Register(AutoRescan == "Daily") : ScheduledScan.Unregister();
+            _store.Settings.BackgroundScan = value && ok;
+            _store.SaveSettings();
+            StatusText = message;
+            OnPropertyChanged();
+        }
     }
 
     public static bool RescanDue(string setting, DateTime? lastScan, DateTime now) => lastScan is { } at && setting switch
@@ -115,6 +138,12 @@ public sealed partial class MainViewModel : ObservableObject
 
     public ObservableCollection<SourceToggle> SourceToggles { get; } = [];
     public ObservableCollection<CategoryItem> Categories { get; } = [];
+    public const string AnyTag = "Any tag";
+    public ObservableCollection<string> TagFilters { get; } = [AnyTag];
+    [ObservableProperty] private string? _tagFilter = AnyTag;
+    [ObservableProperty] private bool _hasAnyTags;
+    partial void OnTagFilterChanged(string? value) => ApplyFilter();
+
     public string[] AccessFilters { get; } = ["Any free access", "Full free access", "Free tier (limited)", "Demo / trial only", "Not stated"];
     public string[] TestMethods => ApiTester.Methods;
     public string[] AuthFilters { get; } = ["Any auth", "No key needed", "Demo key included", "Key optional or none", "API key", "OAuth", "Unknown"];
@@ -180,6 +209,7 @@ public sealed partial class MainViewModel : ObservableObject
             if (row.Note.Length == 0) _store.User.Notes.Remove(row.Key); else _store.User.Notes[row.Key] = row.Note;
             _store.SaveUser();
         }
+        else if (e.PropertyName == nameof(ApiRow.TagsText)) SaveTags(row);
         else if (e.PropertyName == nameof(ApiRow.SelectedHistory) && !_showingHistory && row.SelectedHistory is { } entry)
         {
             // the user picked an earlier result: show it in the response box
@@ -188,6 +218,55 @@ public sealed partial class MainViewModel : ObservableObject
             row.TestResponse = row.TestRaw = entry.Response;
             row.TestClasses = "";
         }
+    }
+
+    // ---------------------------------------------------------------- tags
+
+    private void SaveTags(ApiRow row)
+    {
+        var tags = ApiRow.ParseTags(row.TagsText);
+        var tidy = string.Join(", ", tags);
+        if (tidy != row.TagsText) { row.TagsText = tidy; return; } // comes straight back here with the tidy text
+        if (tags.Count == 0) _store.User.Tags.Remove(row.Key); else _store.User.Tags[row.Key] = tags;
+        _store.SaveUser();
+        RefreshTagFilters();
+        if (TagFilter is not (null or AnyTag)) ApplyFilter();
+    }
+
+    /// <summary>Adds one tag to every given row (the grid's multi-selection).</summary>
+    public void AddTag(IReadOnlyList<ApiRow> rows, string tag)
+    {
+        tag = tag.Trim().Trim(',', ';');
+        if (tag.Length == 0 || rows.Count == 0) return;
+        foreach (var r in rows)
+        {
+            var tags = ApiRow.ParseTags(r.TagsText + ", " + tag);
+            if (r != Selected) { _store.User.Tags[r.Key] = tags; }
+            r.TagsText = string.Join(", ", tags); // the selected row saves itself through SelectedRowChanged
+        }
+        _store.SaveUser();
+        RefreshTagFilters();
+        ShowToast($"🏷 {tag} added to {rows.Count} API{(rows.Count == 1 ? "" : "s")}");
+    }
+
+    private void RefreshTagFilters()
+    {
+        var wanted = _store.User.Tags.Values.SelectMany(t => t).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(t => t, StringComparer.OrdinalIgnoreCase).ToList();
+        // edit in place so the ComboBox keeps its selection
+        for (int i = TagFilters.Count - 1; i >= 1; i--)
+            if (!wanted.Contains(TagFilters[i], StringComparer.OrdinalIgnoreCase))
+            {
+                if (TagFilter == TagFilters[i]) TagFilter = AnyTag;
+                TagFilters.RemoveAt(i);
+            }
+        foreach (var t in wanted)
+            if (!TagFilters.Contains(t, StringComparer.OrdinalIgnoreCase))
+            {
+                int at = 1;
+                while (at < TagFilters.Count && string.Compare(TagFilters[at], t, StringComparison.OrdinalIgnoreCase) < 0) at++;
+                TagFilters.Insert(at, t);
+            }
+        HasAnyTags = TagFilters.Count > 1;
     }
 
     // ---------------------------------------------------------------- scanning
@@ -248,6 +327,7 @@ public sealed partial class MainViewModel : ObservableObject
         {
             r.IsFavourite = _store.User.Favourites.Contains(r.Key);
             if (_store.User.Notes.TryGetValue(r.Key, out var note)) r.Note = note;
+            if (_store.User.Tags.TryGetValue(r.Key, out var tags)) r.TagsText = string.Join(", ", tags);
             if (_store.DocsScans.TryGetValue(r.Key, out var scan)) r.DocsScan = scan;
             if (old.TryGetValue(r.Key, out var was)) { r.Status = was.Status; r.LatencyMs = was.LatencyMs; }
         }
@@ -261,6 +341,7 @@ public sealed partial class MainViewModel : ObservableObject
         foreach (var name in _all.Select(r => r.Category).Distinct().OrderBy(n => n == "Other").ThenBy(n => n, StringComparer.OrdinalIgnoreCase))
             Categories.Add(new CategoryItem(name));
         SelectedCategory = Categories.FirstOrDefault(c => c.Name == selectedName) ?? Categories[0];
+        RefreshTagFilters();
         OnPropertyChanged(nameof(IsEmpty));
         ApplyFilter();
         if (keep is not null) Selected = Rows.FirstOrDefault(r => r.Key == keep);
@@ -277,7 +358,8 @@ public sealed partial class MainViewModel : ObservableObject
             (!OnlineOnly || r.Status == "Online") &&
             MatchesAuth(r) &&
             (AccessFilter == "Any free access" || r.AccessLabel == AccessFilter) &&
-            words.All(w => r.SearchText.Contains(w))).ToList();
+            (TagFilter is null or AnyTag || r.Tags.Contains(TagFilter, StringComparer.OrdinalIgnoreCase)) &&
+            words.All(w => r.SearchText.Contains(w) || r.TagsText.Contains(w, StringComparison.OrdinalIgnoreCase))).ToList();
 
         if (countCategories)
         {
@@ -321,7 +403,7 @@ public sealed partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void ClearFilters()
     {
-        SearchText = ""; AuthFilter = "Any auth"; AccessFilter = "Any free access"; HttpsOnly = CorsOnly = OnlineOnly = false;
+        SearchText = ""; AuthFilter = "Any auth"; AccessFilter = "Any free access"; TagFilter = AnyTag; HttpsOnly = CorsOnly = OnlineOnly = false;
         SelectedCategory = Categories.FirstOrDefault();
     }
 
@@ -393,6 +475,8 @@ public sealed partial class MainViewModel : ObservableObject
         }
         ShowToast($"✓ {label} copied");
     }
+
+    public void Notify(string message) => ShowToast(message);
 
     private void ShowToast(string message)
     {

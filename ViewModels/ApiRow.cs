@@ -16,7 +16,7 @@ public sealed partial class ApiRow : ObservableObject
     {
         Entry = entry;
         IsNew = Scanner.IsNew(entry, baseline, DateTime.Now);
-        BrandDomain = LogoService.BrandDomain(entry.Url);
+        _brand = LogoService.Brand(entry.Url);
         _hint = KeyKnowledge.Find(entry);
         SearchText = $"{entry.Name} {entry.Description} {entry.Category} {entry.RawCategory} {entry.Url}".ToLowerInvariant();
     }
@@ -33,9 +33,11 @@ public sealed partial class ApiRow : ObservableObject
     private static readonly Brush[] AvatarBrushes = [.. new[] { "#4F8CFF", "#3DDCB4", "#B48CFF", "#F5B83D", "#FF7A59", "#2BB5D9", "#E0609A", "#6FBF4A" }
         .Select(h => { var b = new SolidColorBrush((Color)ColorConverter.ConvertFromString(h)); b.Freeze(); return (Brush)b; })];
 
-    public string BrandDomain { get; }
+    private readonly BrandInfo _brand;
+    /// <summary>Who is behind the API: a domain, "github.com/owner" or "RapidAPI · by provider".</summary>
+    public string BrandDomain => _brand.Label;
     public string Initial => Entry.Name.FirstOrDefault(char.IsLetterOrDigit) is var c and not '\0' ? char.ToUpperInvariant(c).ToString() : "?";
-    public Brush AvatarBrush => AvatarBrushes[(int)((uint)StableHash(BrandDomain.Length > 0 ? BrandDomain : Entry.Name) % AvatarBrushes.Length)];
+    public Brush AvatarBrush => AvatarBrushes[(int)((uint)StableHash(_brand.Key.Length > 0 ? _brand.Key : Entry.Name) % AvatarBrushes.Length)];
 
     private ImageSource? _logo;
     private bool _logoRequested;
@@ -53,9 +55,15 @@ public sealed partial class ApiRow : ObservableObject
 
     public void RefreshLogo() => OnPropertyChanged(nameof(Logo));
 
+    // a docs scan may have found the page's own icon: give a still-missing logo another go
+    partial void OnDocsScanChanged(DocsScanResult? value)
+    {
+        if (_logo is null && _logoRequested && value?.IconUrl is not null) { _logoRequested = false; RefreshLogo(); }
+    }
+
     private async Task LoadLogoAsync()
     {
-        if (await LogoService.GetAsync(BrandDomain) is { } image) { _logo = image; OnPropertyChanged(nameof(Logo)); }
+        if (await LogoService.GetAsync(_brand, DocsScan?.IconUrl) is { } image) { _logo = image; OnPropertyChanged(nameof(Logo)); }
     }
 
     private static int StableHash(string s) { unchecked { int h = 23; foreach (var ch in s) h = h * 31 + ch; return h; } }
@@ -168,6 +176,17 @@ public sealed partial class ApiRow : ObservableObject
     [ObservableProperty] private int? _latencyMs;
     [ObservableProperty] private string _myKey = "";
     [ObservableProperty] private string _note = "";
+
+    /// <summary>The user's labels, comma separated ("work, maps").</summary>
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(Tags), nameof(HasTags), nameof(TagsLabel))] private string _tagsText = "";
+    public IReadOnlyList<string> Tags => ParseTags(TagsText);
+    public bool HasTags => TagsText.Trim().Length > 0;
+    public string TagsLabel => HasTags ? "🏷 " + string.Join(", ", Tags) : "";
+
+    /// <summary>Split on , or ; - trimmed, no duplicates (ignoring case), at most 8 tags of 24 characters.</summary>
+    public static List<string> ParseTags(string text) =>
+        [.. text.Split([" , ", ",", ";"], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(t => t.Length > 24 ? t[..24].Trim() : t).Where(t => t.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).Take(8)];
     [ObservableProperty] private bool _isScanningDocs;
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasDocsScan), nameof(DocsScanSummary), nameof(Access), nameof(AccessLabel), nameof(AccessNote))] private DocsScanResult? _docsScan;
 
