@@ -31,6 +31,8 @@ public partial class MainWindow : Window
         InputBindings.Add(new KeyBinding(new ActionCommand(() => About_Click(this, new RoutedEventArgs())), Key.F1, ModifierKeys.None));
         InputBindings.Add(new KeyBinding(new ActionCommand(() => { if (!_vm.ShowShortlist) AddToCollection_Click(this, new RoutedEventArgs()); }), Key.E, ModifierKeys.Control));
         InputBindings.Add(new KeyBinding(new ActionCommand(() => Changes_Click(this, new RoutedEventArgs())), Key.H, ModifierKeys.Control));
+        SizeChanged += (_, _) => ShowTourStop();
+        Loaded += (_, _) => { if (!App.Store.Settings.TourSeen && _vm.IsEmpty) Dispatcher.BeginInvoke(StartTour, System.Windows.Threading.DispatcherPriority.ApplicationIdle); };
         _vm.CommitEdits += CommitFocusedTextBox;
         // opening the popup leaves the focus on its button, so Esc is caught here rather than inside the popup
         PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape && SourcesPopup.IsOpen) { SourcesButton.IsChecked = false; e.Handled = true; } };
@@ -102,9 +104,53 @@ public partial class MainWindow : Window
         else ResultsGrid.Focus();
     }
 
+    // ---- drag a collection card onto another to reorder
+    private Point _dragFrom;
+    private ApiRow? _dragRow;
+
+    private static ApiRow? CardAt(object source) => (source as FrameworkElement)?.DataContext as ApiRow ?? ((source as FrameworkContentElement)?.Parent as FrameworkElement)?.DataContext as ApiRow;
+
+    private void Shortlist_MouseDown(object sender, MouseButtonEventArgs e)
+    {
+        // a press on one of the card's buttons is a click, never the start of a drag
+        bool onButton = false;
+        for (var d = e.OriginalSource as DependencyObject; d is not null and not ListBoxItem; d = d is System.Windows.Media.Visual ? System.Windows.Media.VisualTreeHelper.GetParent(d) : LogicalTreeHelper.GetParent(d))
+            if (d is System.Windows.Controls.Primitives.ButtonBase) { onButton = true; break; }
+        _dragRow = _vm.IsCollectionPage && !onButton ? CardAt(e.OriginalSource) : null;
+        _dragFrom = e.GetPosition(null);
+    }
+
+    private void Shortlist_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (_dragRow is null || e.LeftButton != MouseButtonState.Pressed) return;
+        var moved = e.GetPosition(null) - _dragFrom;
+        if (Math.Abs(moved.X) < SystemParameters.MinimumHorizontalDragDistance && Math.Abs(moved.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+        var row = _dragRow;
+        _dragRow = null;
+        DragDrop.DoDragDrop(ShortlistBox, new DataObject(typeof(ApiRow), row), DragDropEffects.Move);
+    }
+
+    private void Shortlist_DragOver(object sender, DragEventArgs e)
+    {
+        e.Effects = e.Data.GetDataPresent(typeof(ApiRow)) && CardAt(e.OriginalSource) is not null ? DragDropEffects.Move : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private void Shortlist_Drop(object sender, DragEventArgs e)
+    {
+        if (e.Data.GetData(typeof(ApiRow)) is ApiRow row && CardAt(e.OriginalSource) is { } target) _vm.MoveInCollection(row, target);
+        e.Handled = true;
+    }
+
     /// <summary>Single keys on a shortlist card. A focused button inside the card keeps Enter and Space for itself.</summary>
     private void Shortlist_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (Keyboard.Modifiers == ModifierKeys.Control && e.Key is Key.Left or Key.Right or Key.Up or Key.Down)
+        {
+            // Ctrl+arrow carries the card along (up / down behave like left / right: the order is one line that wraps)
+            e.Handled = _vm.MoveSelectedInCollection(e.Key is Key.Left or Key.Up ? -1 : 1) || _vm.IsCollectionPage;
+            return;
+        }
         // the card the key was pressed on (a button inside another card may have the focus), else the selected one
         if (Keyboard.Modifiers != ModifierKeys.None || ((e.OriginalSource as FrameworkElement)?.DataContext as ApiRow ?? _vm.ShortlistSelected) is not { } row) return;
         if (e.OriginalSource is System.Windows.Controls.Primitives.ButtonBase && e.Key is Key.Enter or Key.Space) return;
@@ -138,6 +184,91 @@ public partial class MainWindow : Window
         _vm.CopyRows([.. ResultsGrid.SelectedItems.OfType<ApiRow>()]);
 
     private void About_Click(object sender, RoutedEventArgs e) => new Views.AboutWindow(_vm, App.Store) { Owner = this }.ShowDialog();
+
+    // ---- first-run tour
+
+    private sealed record TourStop(Func<FrameworkElement> Target, string Title, string Text);
+    private TourStop[] _tour = [];
+    private int _tourAt;
+
+    /// <summary>Shown by itself on the very first start (no catalogue yet); About can show it again.</summary>
+    public void StartTour()
+    {
+        _vm.ShowShortlist = false;
+        _tour =
+        [
+            new(() => ScanButton, "Start here: Scan the internet",
+                "ApiScout reads the big public API directories, merges them and sorts a few thousand free APIs into categories. It takes about ten seconds (F5). Under Sources you choose where it looks and how often it re-scans by itself."),
+            new(() => DashboardPanel, "The dashboard",
+                "How many APIs are completely free, have a free tier, or only a trial; what is new this week; what is rate limited. Every tile is a shortcut - click to filter, click again to clear. On the right, an API of the day you can test with one click."),
+            new(() => DetailArea, "Keys, and Try it",
+                "Select an API and this side shows whether it needs a key, a demo key if the provider publishes one, or how to get your own. \"Try it\" sends a real request and shows the JSON - and can turn what worked into C# classes or a small typed client."),
+            new(() => ShortlistButton, "My shortlist and collections",
+                "Star an API (Ctrl+D), tag it, or put it in a collection: it appears here as a card with its key and last test result. \"Test all\" checks a whole page at once. That is the tour - F1 lists every shortcut."),
+        ];
+        _tour = [.. _tour.Where(s => s.Target() is { IsVisible: true, ActualWidth: > 0 })];
+        if (_tour.Length == 0) return;
+        _tourAt = 0;
+        TourLayer.Visibility = Visibility.Visible;
+        ShowTourStop();
+        TourLayer.Focus();
+    }
+
+    private void ShowTourStop()
+    {
+        if (TourLayer.Visibility != Visibility.Visible || _tour.Length == 0) return;
+        var stop = _tour[_tourAt];
+        var target = stop.Target();
+        var root = (FrameworkElement)Content;
+        var box = target.TransformToAncestor(root).TransformBounds(new Rect(0, 0, target.ActualWidth, target.ActualHeight));
+        box.Inflate(6, 6);
+        box.Intersect(new Rect(2, 2, root.ActualWidth - 4, root.ActualHeight - 4));
+
+        TourDim.Data = new System.Windows.Media.CombinedGeometry(System.Windows.Media.GeometryCombineMode.Exclude,
+            new System.Windows.Media.RectangleGeometry(new Rect(0, 0, root.ActualWidth, root.ActualHeight)), new System.Windows.Media.RectangleGeometry(box, 10, 10));
+        Canvas.SetLeft(TourRing, box.Left); Canvas.SetTop(TourRing, box.Top);
+        TourRing.Width = box.Width; TourRing.Height = box.Height;
+
+        TourStep.Text = $"Tour  ·  {_tourAt + 1} of {_tour.Length}";
+        TourTitle.Text = stop.Title;
+        TourText.Text = stop.Text;
+        TourBack.Visibility = _tourAt == 0 ? Visibility.Collapsed : Visibility.Visible;
+        TourNext.Content = _tourAt == _tour.Length - 1 ? "Done" : "Next";
+
+        // below the target if there is room, else above; beside it when the target is as tall as the window
+        TourCallout.Measure(new Size(TourCallout.Width, double.PositiveInfinity));
+        double h = TourCallout.DesiredSize.Height, w = TourCallout.Width;
+        double left = Math.Clamp(box.Left + box.Width / 2 - w / 2, 12, Math.Max(12, root.ActualWidth - w - 12));
+        double top = box.Bottom + 12;
+        if (top + h > root.ActualHeight - 12) top = box.Top - h - 12;
+        if (top < 12) { top = Math.Clamp(box.Top + 40, 12, Math.Max(12, root.ActualHeight - h - 12)); left = box.Left - w - 16 > 12 ? box.Left - w - 16 : Math.Min(box.Right + 16, root.ActualWidth - w - 12); }
+        Canvas.SetLeft(TourCallout, left); Canvas.SetTop(TourCallout, top);
+    }
+
+    private void EndTour()
+    {
+        TourLayer.Visibility = Visibility.Collapsed;
+        App.Store.Settings.TourSeen = true;
+        App.Store.SaveSettings();
+        ScanButton.Focus();
+    }
+
+    private void TourNext_Click(object sender, RoutedEventArgs e) { if (_tourAt >= _tour.Length - 1) EndTour(); else { _tourAt++; ShowTourStop(); } }
+    private void TourBack_Click(object sender, RoutedEventArgs e) { if (_tourAt > 0) { _tourAt--; ShowTourStop(); } }
+    private void TourSkip_Click(object sender, RoutedEventArgs e) => EndTour();
+
+    private void Tour_KeyDown(object sender, KeyEventArgs e)
+    {
+        // the tour owns the keyboard while it is up, so F5 or Ctrl+L cannot act on the dimmed window behind it
+        switch (e.Key)
+        {
+            case Key.Escape: EndTour(); break;
+            case Key.Right or Key.Enter or Key.Space when e.OriginalSource is not Button: TourNext_Click(sender, e); break;
+            case Key.Left: TourBack_Click(sender, e); break;
+            case Key.Tab or Key.Enter or Key.Space: return;
+        }
+        e.Handled = true;
+    }
 
     private Views.ChangesWindow? _changes;
 

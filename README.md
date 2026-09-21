@@ -78,6 +78,16 @@ key when the provider publishes one, or how and where to get a free key when not
 - **Updates** (About): compares the running version with the newest `v*` tag of an update source - a GitHub
   `owner/repo`, a folder holding the git repository (tags are read straight from `.git`), or a `latest.json`
   file / URL. Empty = the repository the build came from. Checked quietly once a day at start-up (⬆ on About).
+- **Update and restart** (About, portable copy only): fetches the portable zip the update check found - from
+  `latest.json` (with its sha256), from `..\ApiScout-Dist` when the source is the repo folder, or from the GitHub
+  release of the tag (asset `*portable.zip`; a private repository needs a read-only token, stored DPAPI-encrypted
+  and only ever sent to api.github.com). The running exe is renamed to `ApiScout.exe.old`, the new one put in its
+  place, the app restarts and deletes the old one. The ordinary multi-file build is updated by `publish.ps1`.
+- **Test all** (My shortlist and every collection page): sends each card's saved or suggested request, three at a
+  time, then one line: passed, failed (names), skipped because rate limited or because there is no request yet.
+- **Reorder** collection cards by dragging one onto another, or Ctrl+← / Ctrl+→ on the selected card.
+- **Tour**: four callouts (Scan, dashboard, Keys and Try it, My shortlist) on the very first start; Esc skips,
+  About → "Show the tour" brings it back.
 - **Docs scan card**: "Open in browser" under the scan result, for the pages that block automated readers.
 - **What changed** (status bar, Ctrl+H): for each of the last 12 scans - manual, automatic or background - the APIs
   that are new, gone, or have a different auth / free-access level (`changes.json`, `Services/ChangeLog.cs`).
@@ -146,7 +156,7 @@ Data: `%LOCALAPPDATA%\ApiScout` (settings.json, catalog.json, changes.json, user
 ## Build / test / publish
 
 ```
-dotnet run --project C:\Claude\ApiScout.Tests -c Release            # 206 checks (add -- --offline to skip live ones)
+dotnet run --project C:\Claude\ApiScout.Tests -c Release            # 211 checks (add -- --offline to skip live ones)
 powershell -ExecutionPolicy Bypass -File C:\Claude\ApiScout\publish.ps1   # ..\ApiScout-App + the portable zip (-SkipApp: zip only)
 ```
 

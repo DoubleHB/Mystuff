@@ -25,13 +25,42 @@ public sealed class AboutWindow : Window
     {
         _store.Settings.UpdateFeed = _feed.Text.Trim();
         _updateResult.Text = "Checking…";
-        var info = await UpdateChecker.CheckAsync(_store.Settings.UpdateFeed, UpdateChecker.Current, CancellationToken.None);
+        if (_token.Password.Length > 0) { _store.SetUpdateToken(_token.Password); _token.Password = ""; ShowTokenState(); }
+        var info = await UpdateChecker.CheckAsync(_store.Settings.UpdateFeed, UpdateChecker.Current, CancellationToken.None, _store.GetUpdateToken());
         _store.Settings.LastUpdateCheck = DateTime.Now;
         _store.SaveSettings();
-        _updateResult.Text = info.Message;
+        _found = info.Newer ? info : null;
+        _updateResult.Text = info.Message + (info.Newer && info.Package is not null && !Updater.IsSingleFile
+            ? "\nThis copy is the ordinary build (a folder of files), which publish.ps1 replaces as a whole - 'Update and restart' is for the portable single-file ApiScout.exe. Open shows the new zip." : "");
         _updateResult.SetResourceReference(TextBlock.ForegroundProperty, !info.Ok ? "DownBrush" : info.Newer ? "WarnBrush" : "UpBrush");
         _download = info.Newer ? info.Download : null;
         _openUpdate.Visibility = _download is null ? Visibility.Collapsed : Visibility.Visible;
+        _install.Visibility = info.Newer && info.Package is not null && Updater.IsSingleFile ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private UpdateInfo? _found;
+    private readonly PasswordBox _token = new() { FontSize = 12.5, VerticalAlignment = VerticalAlignment.Center, Width = 150 };
+    private readonly TextBlock _tokenState = new() { FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0) };
+    private readonly Button _install = new() { Content = "Update and restart", Padding = new Thickness(14, 6, 14, 6), Margin = new Thickness(0, 8, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, Visibility = Visibility.Collapsed };
+    private readonly ProgressBar _progress = new() { Height = 6, Margin = new Thickness(0, 8, 0, 0), Maximum = 100, Visibility = Visibility.Collapsed };
+
+    private void ShowTokenState() => _tokenState.Text = _store.User.UpdateToken is null ? "none saved" : "saved, encrypted";
+
+    private async Task InstallAsync()
+    {
+        if (_found is null) return;
+        _install.IsEnabled = false;
+        _progress.Value = 0;
+        _progress.Visibility = Visibility.Visible;
+        _updateResult.Text = $"Fetching version {_found.Latest}…";
+        _vm.Flush();
+        var (ok, message) = await Updater.InstallAsync(_found, _store.GetUpdateToken(), new Progress<double>(p => _progress.Value = p), CancellationToken.None);
+        _progress.Visibility = Visibility.Collapsed;
+        _updateResult.Text = message + (ok ? " Restarting…" : "");
+        _updateResult.SetResourceReference(TextBlock.ForegroundProperty, ok ? "UpBrush" : "DownBrush");
+        if (!ok) { _install.IsEnabled = true; return; }
+        await Task.Delay(700);
+        ((App)Application.Current).RestartInto(Updater.ExePath!);
     }
 
     private void OpenDownload()
@@ -91,6 +120,20 @@ public sealed class AboutWindow : Window
                              "; or type a GitHub owner/repo, a folder, or a latest.json. Checked once a day at start-up." + (store.IsPortable ? "  ·  This is a portable copy: its data sits in the data folder beside the exe." : "");
         _updateResult.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
         panel.Children.Add(_updateResult);
+        _install.SetResourceReference(StyleProperty, "AccentButtonStyle");
+        _install.Click += (_, _) => _ = InstallAsync();
+        panel.Children.Add(_install);
+        panel.Children.Add(_progress);
+        var tokenRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
+        var tokenLabel = Muted("GitHub token (private repository only)  ");
+        tokenLabel.VerticalAlignment = VerticalAlignment.Center;
+        AutomationProperties.SetName(_token, "GitHub token");
+        _token.ToolTip = "Paste a fine-grained token with read access to the repository, then press Check now. Stored encrypted; only ever sent to api.github.com.";
+        var forget = Small("Forget", () => { _store.SetUpdateToken(null); ShowTokenState(); });
+        _tokenState.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
+        ShowTokenState();
+        tokenRow.Children.Add(tokenLabel); tokenRow.Children.Add(_token); tokenRow.Children.Add(forget); tokenRow.Children.Add(_tokenState);
+        panel.Children.Add(tokenRow);
 
         panel.Children.Add(Heading("KEYBOARD"));
         panel.Children.Add(Muted("F5 scan  ·  Esc stop / back  ·  Ctrl+F search  ·  Ctrl+L my shortlist  ·  Ctrl+T test  ·  Ctrl+D favourite  ·  Ctrl+K copy key (yours, else the demo key)  ·  Ctrl+U copy docs URL  ·  " +
@@ -111,7 +154,11 @@ public sealed class AboutWindow : Window
         var close = new Button { Content = "Close", IsCancel = true, IsDefault = true, Padding = new Thickness(18, 6, 18, 6), HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 16, 0, 0) };
         close.Click += (_, _) => Close();
         panel.Children.Add(close);
-        Content = panel;
+        var tour = Small("Show the tour", () => { Close(); (Owner as MainWindow)?.StartTour(); });
+        tour.Margin = new Thickness(0, 10, 0, 0); tour.HorizontalAlignment = HorizontalAlignment.Left;
+        panel.Children.Insert(2, tour);
+        MaxHeight = SystemParameters.WorkArea.Height - 40;
+        Content = new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Focusable = false };
     }
 
     private void Export()

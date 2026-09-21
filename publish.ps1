@@ -46,6 +46,6 @@ folder: use About > Export my data (with a passphrase) and Import on the other P
 
 if (Test-Path -LiteralPath $zip) { [IO.File]::Delete($zip) }
 Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -CompressionLevel Optimal
-[pscustomobject]@{ version = "$version"; tag = "v$version"; download = (Split-Path $zip -Leaf); built = (Get-Date -Format s) } |
+[pscustomobject]@{ version = "$version"; tag = "v$version"; download = (Split-Path $zip -Leaf); sha256 = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash; built = (Get-Date -Format s) } |
     ConvertTo-Json | Out-File (Join-Path $dist 'latest.json') -Encoding utf8
 '{0}  ({1:N1} MB)' -f $zip, ((Get-Item $zip).Length / 1MB)

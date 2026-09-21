@@ -52,8 +52,11 @@ public partial class App : Application
             _ = HeadlessScanAsync();
             return;
         }
+        Updater.CleanUp(); // the exe an update replaced
         _windowOpen = WindowMutex(Store.Folder);
         _holdsMutex = TryTakeWindowMutex();
+        // started by "Update and restart": the old instance may need a moment to let go
+        for (int i = 0; !_holdsMutex && e.Args.Contains("--after-update") && i < 40; i++) { Thread.Sleep(250); _holdsMutex = TryTakeWindowMutex(); }
         if (!_holdsMutex)
         {
             // two windows on one data folder would each rewrite userdata.json with their own idea of it
@@ -89,6 +92,14 @@ public partial class App : Application
     {
         try { return _windowOpen!.WaitOne(0); }
         catch (AbandonedMutexException) { return true; } // the last holder crashed; it is ours now
+    }
+
+    /// <summary>After an update: hand the data folder over to the new exe and leave.</summary>
+    public void RestartInto(string exe)
+    {
+        if (_holdsMutex) { _windowOpen?.ReleaseMutex(); _holdsMutex = false; }
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(exe, "--after-update") { UseShellExecute = true, WorkingDirectory = Path.GetDirectoryName(exe) ?? "" });
+        Shutdown(0);
     }
 
     protected override void OnExit(ExitEventArgs e)

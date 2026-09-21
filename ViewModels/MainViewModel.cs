@@ -106,7 +106,7 @@ public sealed partial class MainViewModel : ObservableObject
     private async Task CheckForUpdateQuietlyAsync()
     {
         if (_store.Settings.LastUpdateCheck is { } last && DateTime.Now - last < TimeSpan.FromDays(1)) return;
-        var info = await UpdateChecker.CheckAsync(_store.Settings.UpdateFeed, UpdateChecker.Current, CancellationToken.None);
+        var info = await UpdateChecker.CheckAsync(_store.Settings.UpdateFeed, UpdateChecker.Current, CancellationToken.None, _store.GetUpdateToken());
         _store.Settings.LastUpdateCheck = DateTime.Now;
         _store.SaveSettings();
         if (info.Newer) { UpdateNote = $"ApiScout {info.Latest} is available"; ShowToast($"⬆ {UpdateNote} - see About (F1)"); }
@@ -458,6 +458,7 @@ public sealed partial class MainViewModel : ObservableObject
 
     partial void OnShortlistPageChanged(string value)
     {
+        PageTestSummary = "";
         if (value is null) { ShortlistPage = ShortlistPageName; return; } // the page list was rebuilt under the combo box
         if (ShowShortlist) RefreshShortlist();
     }
@@ -501,6 +502,78 @@ public sealed partial class MainViewModel : ObservableObject
         _store.SaveUser();
         RefreshCollections();
         RefreshShortlist();
+    }
+
+    /// <summary>Drag and drop, or Ctrl+arrow: puts <paramref name="row"/> where <paramref name="target"/> is. Only collections have an order of their own.</summary>
+    public bool MoveInCollection(ApiRow row, ApiRow target)
+    {
+        if (!IsCollectionPage || ReferenceEquals(row, target) || !_store.User.Collections.TryGetValue(ShortlistPage, out var list)) return false;
+        int from = list.IndexOf(row.Key), to = list.IndexOf(target.Key);
+        if (from < 0 || to < 0) return false;
+        list.RemoveAt(from);
+        list.Insert(to, row.Key);
+        _store.SaveUser();
+        ShortlistSelected = row;
+        RefreshShortlist();
+        return true;
+    }
+
+    /// <summary>Ctrl+Left / Ctrl+Right on a collection card.</summary>
+    public bool MoveSelectedInCollection(int by)
+    {
+        if (ShortlistSelected is not { } row) return false;
+        int at = ShortlistRows.ToList().IndexOf(row) + by;
+        return at >= 0 && at < ShortlistRows.Count && MoveInCollection(row, ShortlistRows[at]);
+    }
+
+    // ---- "Test all": every card's request once, three at a time, then a pass / fail line
+
+    [ObservableProperty] private string _pageTestSummary = "";
+    [ObservableProperty] private bool _pageTestOk;
+    [ObservableProperty] [NotifyPropertyChangedFor(nameof(CanTestPage))] private bool _isTestingPage;
+    public bool CanTestPage => !IsTestingPage;
+
+    [RelayCommand]
+    private async Task TestPageAsync()
+    {
+        if (IsTestingPage || ShortlistRows.Count == 0) return;
+        IsTestingPage = true;
+        var rows = ShortlistRows.ToList();
+        // a card with neither a saved request nor a known example would only fetch its docs page - "200 OK" there proves nothing
+        var noRequest = rows.Where(r => !r.HasExample && _store.GetTestRequest(r.Key) is null).ToList();
+        var limited = rows.Except(noRequest).Where(r => r.IsLimited).ToList();
+        var run = rows.Except(noRequest).Except(limited).ToList();
+        int done = 0;
+        try
+        {
+            PageTestOk = true;
+            PageTestSummary = $"Testing {run.Count} API{(run.Count == 1 ? "" : "s")}…";
+            using var gate = new SemaphoreSlim(3);
+            await Task.WhenAll(run.Select(async row =>
+            {
+                await gate.WaitAsync();
+                try
+                {
+                    row.LastTestLabel = "Testing…";
+                    await RunTestAsync(row);
+                    PageTestSummary = $"Testing… {++done} of {run.Count}";
+                }
+                finally { gate.Release(); }
+            }));
+            var failed = run.Where(r => !r.LastTestOk).ToList();
+            PageTestOk = failed.Count == 0 && run.Count > 0;
+            PageTestSummary = PageTestLine(run.Count - failed.Count, failed.Select(r => r.Name).ToList(), limited.Count, noRequest.Count);
+        }
+        finally { IsTestingPage = false; }
+    }
+
+    internal static string PageTestLine(int passed, IReadOnlyList<string> failed, int limited, int noRequest)
+    {
+        var parts = new List<string> { $"{passed} passed" };
+        if (failed.Count > 0) parts.Add($"{failed.Count} failed ({string.Join(", ", failed.Take(4))}{(failed.Count > 4 ? "…" : "")})");
+        if (limited > 0) parts.Add($"{limited} skipped - still rate limited");
+        if (noRequest > 0) parts.Add($"{noRequest} skipped - no request to send yet (open Details and try an endpoint)");
+        return $"Tested {passed + failed.Count} at {DateTime.Now:HH:mm}: " + string.Join("  ·  ", parts);
     }
 
     /// <summary>False when the name is empty or taken.</summary>

@@ -103,6 +103,14 @@ public sealed class Store
         SaveUser();
     }
 
+    public string? GetUpdateToken() => Unprotect(User.UpdateToken);
+
+    public void SetUpdateToken(string? value)
+    {
+        User.UpdateToken = string.IsNullOrWhiteSpace(value) ? null : Protect(value.Trim());
+        SaveUser();
+    }
+
     public ApiTestRequest? GetTestRequest(string apiKey)
     {
         var plain = Unprotect(User.TestRequests.GetValueOrDefault(apiKey));

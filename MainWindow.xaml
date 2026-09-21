@@ -59,7 +59,7 @@
                     <Button x:Name="ScanButton" Content="⟳  Scan the internet" Command="{Binding ScanCommand}" Style="{DynamicResource AccentButtonStyle}" Padding="16,7" FontWeight="SemiBold"
                             Visibility="{Binding IsBusy, Converter={StaticResource InvBoolToVis}}" ToolTip="Fetch every ticked source, merge and categorise (F5)" />
                     <Button Content="■  Stop" Command="{Binding CancelCommand}" Padding="16,7" Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}" />
-                    <ToggleButton Content="★ My shortlist" IsChecked="{Binding ShowShortlist}" Margin="8,0,0,0" Padding="12,7" AutomationProperties.Name="My shortlist"
+                    <ToggleButton x:Name="ShortlistButton" Content="★ My shortlist" IsChecked="{Binding ShowShortlist}" Margin="8,0,0,0" Padding="12,7" AutomationProperties.Name="My shortlist"
                                   ToolTip="Your favourites and tagged APIs as cards, with their keys and last test result (Ctrl+L)" />
                     <!-- not clickable while its popup is open: the click that closes the popup would otherwise open it again -->
                     <ToggleButton x:Name="SourcesButton" Content="Sources ▾" Margin="8,0,0,0" Padding="12,7" IsHitTestVisible="{Binding IsOpen, ElementName=SourcesPopup, Converter={StaticResource InvBool}}" />
@@ -140,7 +140,7 @@
             </Grid.RowDefinitions>
 
             <!-- Dashboard: the whole catalogue at a glance; every tile is a shortcut to its filter -->
-            <DockPanel Grid.ColumnSpan="3" Margin="0,0,0,12" Visibility="{Binding ShowDashboard, Converter={StaticResource BoolToVis}}">
+            <DockPanel x:Name="DashboardPanel" Grid.ColumnSpan="3" Margin="0,0,0,12" Visibility="{Binding ShowDashboard, Converter={StaticResource BoolToVis}}">
             <!-- API of the day: keyless or demo-key, with an example request that is known to work -->
             <Border DockPanel.Dock="Right" Style="{StaticResource Card}" Margin="0" Padding="10,6,8,6" Width="410" AutomationProperties.Name="API of the day"
                     Visibility="{Binding ApiOfTheDay, Converter={StaticResource NullToCollapsed}}">
@@ -393,7 +393,7 @@
             </DockPanel>
 
             <!-- Details -->
-            <Grid Grid.Row="1" Grid.Column="2">
+            <Grid x:Name="DetailArea" Grid.Row="1" Grid.Column="2">
                 <TextBlock Text="Select an API to see its key details" Style="{StaticResource Muted}" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center"
                            Visibility="{Binding HasSelection, Converter={StaticResource InvBoolToVis}}" />
                 <ScrollViewer VerticalScrollBarVisibility="Auto" Visibility="{Binding HasSelection, Converter={StaticResource BoolToVis}}" Padding="0,0,6,0">
@@ -728,16 +728,31 @@
                     <TextBlock Text="Arrow keys move  ·  Enter details  ·  T test  ·  K copy key  ·  O open docs  ·  U copy docs URL  ·  D favourite on / off  ·  R remove from the collection  ·  Esc back to the list"
                                Style="{StaticResource Muted}" Margin="0,4,0,0" TextWrapping="Wrap" Visibility="{Binding ShortlistSelected, Converter={StaticResource NullToCollapsed}}" />
                     <WrapPanel Margin="0,10,0,0">
+                        <Button Content="▶ Test all" Command="{Binding TestPageCommand}" IsEnabled="{Binding CanTestPage}" Style="{DynamicResource AccentButtonStyle}" Padding="12,3" FontSize="12" MinHeight="26" Margin="0,0,14,4"
+                                AutomationProperties.Name="Test all" ToolTip="Send every card's saved or suggested request, three at a time, and sum up what passed" />
                         <Button Content="Copy page as Markdown" Command="{Binding CopyCollectionMarkdownCommand}" Style="{StaticResource Mini}" Margin="0,0,6,4" />
                         <Button Content="Copy C# client" Command="{Binding CopyPageClientCommand}" Style="{StaticResource Mini}" Margin="0,0,6,4" AutomationProperties.Name="Copy page C# client"
                                 ToolTip="One file: a typed client for every API on this page that has a test that worked, and a class that builds them all from one HttpClient" />
                         <Button Content="Save C# client…" Command="{Binding SavePageClientCommand}" Style="{StaticResource Mini}" Margin="0,0,18,4" />
                         <Button Content="Rename collection…" Click="RenameCollection_Click" Style="{StaticResource Mini}" Margin="0,0,6,4" Visibility="{Binding IsCollectionPage, Converter={StaticResource BoolToVis}}" />
                         <Button Content="Delete collection" Click="DeleteCollection_Click" Style="{StaticResource Mini}" Margin="0,0,6,4" Visibility="{Binding IsCollectionPage, Converter={StaticResource BoolToVis}}" />
+                        <TextBlock Text="Drag cards to reorder (or Ctrl+← / Ctrl+→)" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="10,0,0,4" Visibility="{Binding IsCollectionPage, Converter={StaticResource BoolToVis}}" />
                     </WrapPanel>
+                    <TextBlock Text="{Binding PageTestSummary}" FontSize="12.5" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,6,0,0" AutomationProperties.Name="Test all result"
+                               Visibility="{Binding PageTestSummary, Converter={StaticResource TextToVis}}">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Foreground" Value="{DynamicResource WarnBrush}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding PageTestOk}" Value="True"><Setter Property="Foreground" Value="{DynamicResource UpBrush}" /></DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
                 </StackPanel>
                     <ListBox x:Name="ShortlistBox" ItemsSource="{Binding ShortlistRows}" SelectedItem="{Binding ShortlistSelected}" AutomationProperties.Name="Shortlist"
                              Background="Transparent" BorderThickness="0" Padding="0" IsTextSearchEnabled="False" PreviewKeyDown="Shortlist_PreviewKeyDown"
+                             AllowDrop="True" PreviewMouseLeftButtonDown="Shortlist_MouseDown" PreviewMouseMove="Shortlist_MouseMove" DragOver="Shortlist_DragOver" Drop="Shortlist_Drop"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.CanContentScroll="False">
                         <ListBox.ItemsPanel>
                             <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
@@ -854,6 +869,28 @@
                 <TextBlock Text="{Binding StatusText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Foreground="{DynamicResource MutedBrush}" ToolTip="{Binding StatusText}" />
             </DockPanel>
         </Border>
+
+        <!-- First-run tour: the window dimmed except for the thing being explained, and a callout beside it -->
+        <Canvas x:Name="TourLayer" Grid.RowSpan="3" Visibility="Collapsed" Background="Transparent" Focusable="True" FocusVisualStyle="{x:Null}" PreviewKeyDown="Tour_KeyDown"
+                AutomationProperties.Name="Tour">
+            <Path x:Name="TourDim" Fill="#B0000000" />
+            <Border x:Name="TourRing" BorderBrush="{DynamicResource AccentBrush}" BorderThickness="2" CornerRadius="10" IsHitTestVisible="False" />
+            <Border x:Name="TourCallout" Width="380" Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource AccentBrush}" BorderThickness="1" CornerRadius="12" Padding="18,14">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="24" ShadowDepth="3" Opacity="0.5" />
+                </Border.Effect>
+                <StackPanel>
+                    <TextBlock x:Name="TourStep" Style="{StaticResource Muted}" />
+                    <TextBlock x:Name="TourTitle" FontSize="17" FontWeight="Bold" Margin="0,2,0,6" TextWrapping="Wrap" />
+                    <TextBlock x:Name="TourText" TextWrapping="Wrap" LineHeight="20" />
+                    <DockPanel Margin="0,14,0,0" LastChildFill="False">
+                        <Button x:Name="TourNext" DockPanel.Dock="Right" Content="Next" Click="TourNext_Click" Style="{DynamicResource AccentButtonStyle}" Padding="16,5" AutomationProperties.Name="Tour next" />
+                        <Button x:Name="TourBack" DockPanel.Dock="Right" Content="Back" Click="TourBack_Click" Padding="12,5" Margin="0,0,8,0" AutomationProperties.Name="Tour back" />
+                        <Button Content="Skip the tour" Click="TourSkip_Click" Padding="12,5" AutomationProperties.Name="Skip the tour" ToolTip="Esc - About has it again whenever you like" />
+                    </DockPanel>
+                </StackPanel>
+            </Border>
+        </Canvas>
 
         <!-- Toast -->
         <Border Grid.Row="1" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,26" CornerRadius="18" Padding="18,9"
