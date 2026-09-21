@@ -1,0 +1,28 @@
+{
+  "App": "ApiScout",
+  "Version": 1,
+  "ExportedAt": "2026-09-21T22:42:06.3161662+01:00",
+  "Favourites": [
+    "url:api.nasa.gov",
+    "url:catfact.ninja"
+  ],
+  "Tags": {
+    "url:api.nasa.gov": [
+      "space",
+      "Side Project"
+    ]
+  },
+  "Notes": {
+    "url:api.nasa.gov": "APOD is the easy one \u2014 \u201Ccurly quotes\u201D and \u00FCn\u00EFc\u00F6d\u00E9 survive"
+  },
+  "Collections": {
+    "Weather stuff": [
+      "url:open-meteo.com",
+      "url:api.nasa.gov"
+    ]
+  },
+  "Secrets": "z2yLzyPJfnT8biknJJoHvauhtzIBUQxRQ/OwvWQ41ClbUfkgsESGpjZnYYUu4EfaYTyAS2MVf4j3eZoTETvjHOLl7X\u002BpKdc2CSJwskr491PiDPJKWtWiEYM0dA/Y/qAvMLCk6Jcj3ysF3PUSAwwYBBHGO\u002BVF4j4rVKSDoGfhemQU2ef64/qTX9cZ7s6mV\u002BdO1KEYNsOVVuwD87eHNq7PNXF9xa7J38lylOxk//ePGlCntGunH\u002Bqh/ZiugH/xD/Eyze1J",
+  "Salt": "GBwHUnEY4l0e60fsTZWb3A==",
+  "Iterations": 310000,
+  "SecretCount": 2
+}

@@ -74,7 +74,9 @@ class ApiTile extends StatelessWidget {
   final bool favourite;
   final VoidCallback onTap;
   final VoidCallback onFavourite;
-  const ApiTile({super.key, required this.view, required this.favourite, required this.onTap, required this.onFavourite});
+  final List<String> tags;
+  final bool hasKey;
+  const ApiTile({super.key, required this.view, required this.favourite, required this.onTap, required this.onFavourite, this.tags = const [], this.hasKey = false});
 
   @override
   Widget build(BuildContext context) {
@@ -96,7 +98,13 @@ class ApiTile extends StatelessWidget {
                 BadgeChip(view.keyBadge),
                 const SizedBox(width: 8),
                 Flexible(child: Text(view.accessLabel, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11.5, color: badgeColor(context, view.accessLabel)))),
+                if (hasKey) ...[const SizedBox(width: 8), Tooltip(message: 'Your key is saved', child: Icon(Icons.key, size: 14, color: badgeColor(context, 'Open')))],
               ]),
+              if (tags.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 3),
+                  child: Text(tags.map((t) => '#$t').join('  '), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11.5, color: Theme.of(context).colorScheme.primary)),
+                ),
             ]),
           ),
           IconButton(

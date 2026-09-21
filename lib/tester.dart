@@ -16,6 +16,13 @@ bool methodHasBody(String m) => m == 'POST' || m == 'PUT' || m == 'PATCH';
 
 const _maxChars = 120000;
 
+final _keyPlaceholderRx = RegExp(r'\{key\}', caseSensitive: false);
+
+/// {key} stands for the user's own saved key. It is filled in only at the moment of sending:
+/// the request as typed, and a copied cURL command, never carry the key itself.
+bool usesKeyPlaceholder(String text) => _keyPlaceholderRx.hasMatch(text);
+String fillKey(String text, String key, {bool escape = false}) => text.replaceAll(_keyPlaceholderRx, escape ? Uri.encodeComponent(key) : key);
+
 /// Zero or more "Name: value" lines. Returns the first malformed line through [bad].
 Map<String, String>? parseHeaders(String text, void Function(String bad) bad) {
   final headers = <String, String>{};
@@ -90,7 +97,7 @@ Future<TestResult> sendTest(String method, String url, String headerText, String
     } else if (!isJson && type.contains('html')) {
       summary += '\nThis is a web page, not JSON - probably the docs. Paste an endpoint URL from the docs and send again.';
     } else if (code == 401 || code == 403) {
-      summary += '\nThe API wants a key. Add it to the URL or a header.';
+      summary += '\nThe API wants a key. Add it to the URL or a header - {key} inserts the key saved under \'My key\'.';
     } else if (code == 405) {
       summary += '\nThis endpoint does not accept $method - check the docs for the right method.';
     } else if (code == 429) {
