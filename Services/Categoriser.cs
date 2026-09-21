@@ -98,6 +98,10 @@ public static class Categoriser
 
     private static readonly HashSet<string> Canonical = [.. CategoryRules.Select(r => r.Category)];
 
+    /// <summary>The finished patterns, for the knowledge file the Android app is built with (tools: --export-knowledge).</summary>
+    internal static (IEnumerable<(string Pattern, string Category)> ByCategory, IEnumerable<(string Pattern, string Category)> ByKeyword) Export() =>
+        (CategoryRules.Select(r => (r.Rx.ToString(), r.Category)), KeywordRules.Select(r => (r.Rx.ToString(), r.Category)));
+
     /// <summary>Source categories that only hold a handful of APIs are folded into the canonical set.</summary>
     public static void FoldSmall(List<ApiEntry> entries, int minimum = 8)
     {

@@ -120,6 +120,8 @@ public static class KeyKnowledge
     ];
     private static readonly HashSet<string> TrialOnlyHosts = ["haveibeenpwned.com"];
 
+    internal static (IEnumerable<string> FullFree, IEnumerable<string> TrialOnly) ExportAccessHosts() => (FullFreeHosts.Order(), TrialOnlyHosts.Order());
+
     public static AccessLevel AccessFor(KeyHint hint) =>
         FullFreeHosts.Contains(hint.Hosts[0]) ? AccessLevel.FullFree :
         TrialOnlyHosts.Contains(hint.Hosts[0]) ? AccessLevel.TrialOnly : AccessLevel.FreeTier;
