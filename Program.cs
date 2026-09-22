@@ -1,4 +1,4 @@
-// API Scout self-check. `--offline` skips the live checks.
+// API Free self-check. `--offline` skips the live checks.
 using System.IO;
 using ApiScout.Models;
 using ApiScout.Services;
@@ -12,7 +12,7 @@ if (args.SkipWhile(a => a != "--export-knowledge").Skip(1).FirstOrDefault() is {
     var (fullFree, trialOnly) = KeyKnowledge.ExportAccessHosts();
     var knowledge = new
     {
-        exportedFrom = "API Scout " + ApiScout.Views.AboutWindow.VersionText,
+        exportedFrom = "API Free " + ApiScout.Views.AboutWindow.VersionText,
         categoryRules = byCategory.Select(r => new { pattern = r.Pattern, category = r.Category }),
         keywordRules = byKeyword.Select(r => new { pattern = r.Pattern, category = r.Category }),
         hints = KeyKnowledge.Hints.Select(h => new { hosts = h.Hosts, howTo = h.HowTo, signupUrl = h.SignupUrl, demoKey = h.DemoKey, keyUsage = h.KeyUsage, example = h.Example, keylessWorks = h.KeylessWorks }),
@@ -485,7 +485,7 @@ Check("updates: latest.json (with a byte-order mark)", fromJson is { Newer: true
 // but a subfolder of the combined repository on a CI checkout - then these two checks have nothing to read and are skipped
 var repoDir = UpdateChecker.DefaultFeed.TrimEnd('\\');
 var repoTags = UpdateChecker.GitTags(repoDir);
-Check("updates: the default source is the API Scout project folder", repoDir.EndsWith("ApiScout", StringComparison.OrdinalIgnoreCase) && Directory.Exists(repoDir), repoDir);
+Check("updates: the default source is the API Free project folder", repoDir.EndsWith("ApiScout", StringComparison.OrdinalIgnoreCase) && Directory.Exists(repoDir), repoDir);
 if (repoTags is not null)
 {
     Check("updates: tags read straight from .git", repoTags.Contains("v1.1.0") && UpdateChecker.GitTags(Path.GetTempPath()) is null, string.Join(", ", repoTags));
