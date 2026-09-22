@@ -69,7 +69,7 @@ class ApiEntry {
       );
 }
 
-/// What ApiScout knows about getting a key for one provider (from the desktop app's KeyKnowledge).
+/// What API Scout knows about getting a key for one provider (from the desktop app's KeyKnowledge).
 class KeyHint {
   final List<String> hosts;
   final String howTo;
