@@ -347,7 +347,7 @@ Check("403 with nothing left counts as limited; plain 200 says nothing", Rate(40
 var limitedRow = new ApiRow(new ApiEntry { Name = "L", Url = "https://l.example/" }) { LimitEstimated = true, LimitedUntil = DateTime.Now.AddMinutes(30) };
 Check("row shows the wait, and stops once it is over", limitedRow.IsLimited && limitedRow.LimitLabel.Contains("should work again around") && limitedRow.LimitLabel.Contains("estimate") && limitedRow.LimitShort.StartsWith("⏳ until ")
     && !new ApiRow(new ApiEntry { Name = "L", Url = "https://l.example/" }) { LimitedUntil = DateTime.Now.AddMinutes(-1) }.IsLimited);
-Check("version is 1.6", ApiScout.Views.AboutWindow.VersionText == "1.6.0", ApiScout.Views.AboutWindow.VersionText);
+Check("version is 1.6.1", ApiScout.Views.AboutWindow.VersionText == "1.6.1", ApiScout.Views.AboutWindow.VersionText);
 
 Console.WriteLine("== Pricing page ==");
 const string docsHtml = "<a href=\"https://twitter.com/foo/pricing\">Pricing</a> <a href=\"/docs\">Docs</a> <a href=\"https://www.foo.example/pricing?utm=1#top\">See our plans</a>";
@@ -475,12 +475,24 @@ Check("what changed: kept on disk, newest first, capped", reportsAgain.Count == 
 // ---- collections, API of the day, updates
 Check("updates: newest version tag wins, other tags ignored", UpdateChecker.FromTags(["v1.2.0", "v1.10.0", "v1.9", "nightly", "V2.0.0-beta"], new Version(1, 4, 0), "test") is { Ok: true, Newer: true, Latest: { Major: 1, Minor: 10 } }
     && UpdateChecker.FromTags(["v1.4"], new Version(1, 4, 0), "test") is { Ok: true, Newer: false } && UpdateChecker.FromTags(["nightly"], new Version(1, 0), "test") is { Ok: false });
+// the combined GitHub repository holds both apps: desktop-v… tags count, mobile-v… tags do not
+Check("updates: desktop-v tags of the combined repository count, mobile-v tags are ignored",
+    UpdateChecker.FromTags(["desktop-v1.11.0", "mobile-v9.0.0", "v1.10.0"], new Version(1, 4, 0), "test") is { Newer: true, Latest: { Major: 1, Minor: 11 } }
+    && UpdateChecker.FromTags(["mobile-v9.0.0"], new Version(1, 4, 0), "test") is { Ok: false });
 var fromJson = UpdateChecker.FromLatestJson("\uFEFF{\"version\":\"1.5.0\",\"download\":\"https://example.com/a.zip\"}", new Version(1, 4, 0), "test");
 Check("updates: latest.json (with a byte-order mark)", fromJson is { Newer: true, Download: "https://example.com/a.zip" } && fromJson.Message.Contains("1.5.0 is available") && UpdateChecker.FromLatestJson("{}", new Version(1, 0), "t") is { Ok: false });
-var repoTags = UpdateChecker.GitTags(@"C:\Claude\ApiScout");
-Check("updates: tags read straight from .git", repoTags is not null && repoTags.Contains("v1.1.0") && UpdateChecker.GitTags(Path.GetTempPath()) is null, repoTags is null ? "no repo" : string.Join(", ", repoTags));
-var viaFolder = await UpdateChecker.CheckAsync(@"C:\Claude\ApiScout", new Version(1, 0, 0), CancellationToken.None);
-Check("updates: a repo folder as the source; the default source is this repo", viaFolder is { Ok: true, Newer: true } && UpdateChecker.DefaultFeed.TrimEnd('\\') == @"C:\Claude\ApiScout" && (await UpdateChecker.CheckAsync(@"Z:\nowhere\at-all", new Version(1, 0), CancellationToken.None)) is { Ok: false }, viaFolder.Message);
+// the default update source is the folder this build came from; it is a git repository of its own on the dev PC,
+// but a subfolder of the combined repository on a CI checkout - then these two checks have nothing to read and are skipped
+var repoDir = UpdateChecker.DefaultFeed.TrimEnd('\\');
+var repoTags = UpdateChecker.GitTags(repoDir);
+Check("updates: the default source is the ApiScout project folder", repoDir.EndsWith("ApiScout", StringComparison.OrdinalIgnoreCase) && Directory.Exists(repoDir), repoDir);
+if (repoTags is not null)
+{
+    Check("updates: tags read straight from .git", repoTags.Contains("v1.1.0") && UpdateChecker.GitTags(Path.GetTempPath()) is null, string.Join(", ", repoTags));
+    var viaFolder = await UpdateChecker.CheckAsync(repoDir, new Version(1, 0, 0), CancellationToken.None);
+    Check("updates: a repo folder as the source", viaFolder is { Ok: true, Newer: true } && (await UpdateChecker.CheckAsync(@"Z:\nowhere\at-all", new Version(1, 0), CancellationToken.None)) is { Ok: false }, viaFolder.Message);
+}
+else Console.WriteLine($"  (skipped: {repoDir} is not a git repository of its own - a CI checkout of the combined repository)");
 
 // ---- self-update
 var updDir = Path.Combine(Path.GetTempPath(), "apiscout-upd-" + Guid.NewGuid().ToString("N"));
