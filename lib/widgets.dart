@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'knowledge.dart';
 
@@ -131,6 +132,49 @@ class ApiTile extends StatelessWidget {
           ),
         ]),
       ),
+    );
+  }
+}
+
+/// Swipe a row right to star it, left to file it in a collection. The row always slides back: nothing is dismissed.
+class SwipeActions extends StatelessWidget {
+  final Key rowKey;
+  final Widget child;
+  final bool favourite;
+  final VoidCallback onStar;
+  final VoidCallback onCollect;
+  const SwipeActions({super.key, required this.rowKey, required this.child, required this.favourite, required this.onStar, required this.onCollect});
+
+  Widget _pane(BuildContext context, {required Color color, required Color ink, required IconData icon, required String label, required Alignment align}) => Container(
+        color: color,
+        alignment: align,
+        padding: const EdgeInsets.symmetric(horizontal: 22),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, color: ink, size: 22),
+          const SizedBox(height: 2),
+          Text(label, style: TextStyle(color: ink, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 0.6)),
+        ]),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Dismissible(
+      key: rowKey,
+      direction: DismissDirection.horizontal,
+      dismissThresholds: const {DismissDirection.startToEnd: 0.3, DismissDirection.endToStart: 0.3},
+      confirmDismiss: (dir) async {
+        HapticFeedback.lightImpact();
+        if (dir == DismissDirection.startToEnd) {
+          onStar();
+        } else {
+          onCollect();
+        }
+        return false;
+      },
+      background: _pane(context, color: const Color(0xFFF5B83D), ink: const Color(0xFF111418), icon: favourite ? Icons.star_border : Icons.star, label: favourite ? 'UNSTAR' : 'STAR', align: Alignment.centerLeft),
+      secondaryBackground: _pane(context, color: scheme.onSurface, ink: scheme.surface, icon: Icons.create_new_folder_outlined, label: 'COLLECTION', align: Alignment.centerRight),
+      child: child,
     );
   }
 }

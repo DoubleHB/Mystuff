@@ -55,6 +55,10 @@ own published demo key where there is one, or how to get a key.
   five tabs - Overview, Keys, Try it, Docs, Mine - so Try it is one tap away instead of a scroll past Keys and My key.
   "Try" on a found endpoint and "Scan docs" switch tabs; long "how to get a key" text is folded behind "Show the steps".
   `ledgerTheme()` in `main.dart` holds every colour and shape; `widgets.dart` has `mono`, `tonalStyle`, `FoldedText`, `SkeletonRows`.
+- 1.3.1: the filters live in a chip row under the search (category ▾ opens the drawer; Auth ▾ and Free ▾ are menus;
+  HTTPS and CORS toggle; Clear appears while anything is set; the user's #tags follow a divider) - the filter sheet is
+  gone. Swipe a row right to star it, left to file it in a collection (`SwipeActions`, a Dismissible that always
+  slides back).
 
 ## One source of truth
 

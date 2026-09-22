@@ -178,7 +178,7 @@ class _HomePageState extends State<HomePage> {
               if (_list.hasClients && _list.offset > 0) _list.jumpTo(0);
             });
           }
-          final showTags = state.all.isNotEmpty && state.user.tagCounts.isNotEmpty;
+          final showChips = state.all.isNotEmpty;
           return Scaffold(
             drawer: const CategoryDrawer(),
             body: CustomScrollView(
@@ -196,11 +196,6 @@ class _HomePageState extends State<HomePage> {
                     Text(_subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: scheme.onSurfaceVariant)),
                   ]),
                   actions: [
-                    IconButton(
-                      tooltip: 'Filters',
-                      icon: Badge(isLabelVisible: state.activeFilterCount > 0, label: Text('${state.activeFilterCount}'), child: const Icon(Icons.tune)),
-                      onPressed: () => showModalBottomSheet(context: context, showDragHandle: true, isScrollControlled: true, builder: (_) => const FilterSheet()),
-                    ),
                     IconButton(tooltip: 'Scan the internet', icon: const Icon(Icons.refresh), onPressed: state.busy ? null : state.scan),
                     PopupMenuButton<String>(
                       onSelected: (v) {
@@ -226,7 +221,7 @@ class _HomePageState extends State<HomePage> {
                     ),
                   ],
                   bottom: PreferredSize(
-                    preferredSize: Size.fromHeight(54 + (showTags ? 44 : 0) + (state.busy ? 3 : 0)),
+                    preferredSize: Size.fromHeight(54 + (showChips ? 44 : 0) + (state.busy ? 3 : 0)),
                     child: Column(children: [
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -260,23 +255,7 @@ class _HomePageState extends State<HomePage> {
                           ),
                         ),
                       ),
-                      if (showTags)
-                        SizedBox(
-                          height: 44,
-                          child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 12), children: [
-                            for (final (tag, count) in state.user.tagCounts)
-                              Padding(
-                                padding: const EdgeInsets.only(right: 6),
-                                child: FilterChip(
-                                  label: Text('#$tag  $count'),
-                                  visualDensity: VisualDensity.compact,
-                                  showCheckmark: false,
-                                  selected: state.tagFilter?.toLowerCase() == tag.toLowerCase(),
-                                  onSelected: (on) => state.setTagFilter(on ? tag : null),
-                                ),
-                              ),
-                          ]),
-                        ),
+                      if (showChips) SizedBox(height: 44, child: _filterBar(context)),
                       if (state.busy) LinearProgressIndicator(minHeight: 3, value: state.progress == 0 ? null : state.progress),
                     ]),
                   ),
@@ -308,13 +287,19 @@ class _HomePageState extends State<HomePage> {
                         i--;
                       }
                       final v = state.rows[i];
-                      return ApiTile(
-                        view: v,
+                      return SwipeActions(
+                        rowKey: ValueKey('row:${v.entry.key}'),
                         favourite: state.isFavourite(v),
-                        tags: state.tagsOf(v),
-                        hasKey: state.hasKey(v),
-                        onTap: () => openDetail(context, v),
-                        onFavourite: () => state.toggleFavourite(v),
+                        onStar: () => state.toggleFavourite(v),
+                        onCollect: () => addToCollectionFor(context, v),
+                        child: ApiTile(
+                          view: v,
+                          favourite: state.isFavourite(v),
+                          tags: state.tagsOf(v),
+                          hasKey: state.hasKey(v),
+                          onTap: () => openDetail(context, v),
+                          onFavourite: () => state.toggleFavourite(v),
+                        ),
                       );
                     },
                   ),
@@ -324,6 +309,87 @@ class _HomePageState extends State<HomePage> {
           );
         },
       );
+}
+
+extension on _HomePageState {
+  /// The filters, always in view: category, auth, how much is free, HTTPS, CORS - then the user's tags.
+  Widget _filterBar(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final filtered = state.activeFilterCount > 0 || state.category != allCategory || state.tagFilter != null;
+    return ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 12), children: [
+      // its own Builder: the drawer belongs to the Scaffold below the outer builder's context
+      Builder(builder: (ctx) => FilterPill('${plainCategory(state.category)} ▾', selected: state.category != allCategory, onTap: () => Scaffold.of(ctx).openDrawer())),
+      _menuPill(context, 'Auth', authFilters, state.authFilter, (v) => state.setFilters(auth: v)),
+      _menuPill(context, 'Free', accessFilters, state.accessFilter, (v) => state.setFilters(access: v)),
+      FilterPill('HTTPS', selected: state.httpsOnly, onTap: () => state.setFilters(https: !state.httpsOnly)),
+      FilterPill('CORS', selected: state.corsOnly, onTap: () => state.setFilters(cors: !state.corsOnly)),
+      if (filtered)
+        FilterPill('Clear', icon: Icons.close, onTap: () {
+          // the search stays: only the choices in this row are cleared
+          state.setFilters(auth: authFilters.first, access: accessFilters.first, https: false, cors: false);
+          state.setCategory(allCategory);
+          state.setTagFilter(null);
+        }),
+      if (state.user.tagCounts.isNotEmpty) ...[
+        Padding(padding: const EdgeInsets.fromLTRB(4, 10, 10, 10), child: VerticalDivider(width: 1, color: scheme.outlineVariant)),
+        for (final (tag, count) in state.user.tagCounts)
+          FilterPill('#$tag  $count', selected: state.tagFilter?.toLowerCase() == tag.toLowerCase(), onTap: () => state.setTagFilter(state.tagFilter?.toLowerCase() == tag.toLowerCase() ? null : tag)),
+      ],
+    ]);
+  }
+
+  /// A pill that opens a menu of choices; the pill shows the choice while one is made.
+  Widget _menuPill(BuildContext context, String name, List<String> choices, String current, void Function(String) pick) {
+    final active = current != choices.first;
+    return PopupMenuButton<String>(
+      tooltip: name,
+      onSelected: pick,
+      itemBuilder: (_) => [for (final c in choices) CheckedPopupMenuItem(value: c, checked: c == current, child: Text(c))],
+      child: FilterPill('${active ? current : name} ▾', selected: active),
+    );
+  }
+}
+
+/// One filter chip in the ledger style: a hairline pill, ink-filled while it is on. Without [onTap] the parent handles the tap.
+class FilterPill extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final IconData? icon;
+  final VoidCallback? onTap;
+  const FilterPill(this.label, {super.key, this.selected = false, this.icon, this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(right: 6, top: 6, bottom: 8),
+      child: Material(
+        color: selected ? scheme.onSurface : Colors.transparent,
+        shape: StadiumBorder(side: BorderSide(color: selected ? scheme.onSurface : scheme.outlineVariant)),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              if (icon != null) Padding(padding: const EdgeInsets.only(right: 4), child: Icon(icon, size: 14, color: selected ? scheme.surface : scheme.onSurface)),
+              Text(label, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: selected ? scheme.surface : scheme.onSurface)),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Swipe left on a row → pick a collection for it (the same dialog as the detail page).
+Future<void> addToCollectionFor(BuildContext context, ApiView v) async {
+  final name = await showDialog<String>(context: context, builder: (_) => CollectionDialog(already: state.collectionsOf(v)));
+  if (name == null || name.trim().isEmpty || !context.mounted) return;
+  final used = state.addToCollection(v, name);
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text('✓ ${v.name} added to "$used" - it is in the category menu')));
 }
 
 class EmptyState extends StatelessWidget {
@@ -571,56 +637,10 @@ Future<void> exportToFile(BuildContext context) async {
   }
 }
 
-class FilterSheet extends StatelessWidget {
-  const FilterSheet({super.key});
-
-  @override
-  Widget build(BuildContext context) => ListenableBuilder(
-        listenable: state,
-        builder: (context, _) => SafeArea(
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(20, 0, 20, 16 + MediaQuery.of(context).viewInsets.bottom),
-            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('Filters', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, letterSpacing: -0.4)),
-              const SizedBox(height: 14),
-              DropdownButtonFormField<String>(
-                initialValue: state.authFilter,
-                decoration: const InputDecoration(labelText: 'What you need before you can call it'),
-                items: [for (final f in authFilters) DropdownMenuItem(value: f, child: Text(f))],
-                onChanged: (v) => state.setFilters(auth: v),
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                initialValue: state.accessFilter,
-                decoration: const InputDecoration(labelText: 'How much is free'),
-                items: [for (final f in accessFilters) DropdownMenuItem(value: f, child: Text(f))],
-                onChanged: (v) => state.setFilters(access: v),
-              ),
-              SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('HTTPS only'), value: state.httpsOnly, onChanged: (v) => state.setFilters(https: v)),
-              SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('CORS enabled'),
-                  subtitle: const Text('Callable straight from browser JavaScript'),
-                  value: state.corsOnly,
-                  onChanged: (v) => state.setFilters(cors: v)),
-              const SizedBox(height: 8),
-              Row(children: [
-                Text('${state.rows.length} APIs match', style: const TextStyle(fontWeight: FontWeight.w700)),
-                const Spacer(),
-                TextButton(onPressed: () => state.setFilters(auth: authFilters.first, access: accessFilters.first, https: false, cors: false), child: const Text('Clear')),
-                const SizedBox(width: 8),
-                FilledButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Show')),
-              ]),
-            ]),
-          ),
-        ),
-      );
-}
-
 void showAbout(BuildContext context) => showAboutDialog(
       context: context,
       applicationName: 'ApiScout',
-      applicationVersion: '1.3.0 (Android)',
+      applicationVersion: '1.3.1 (Android)',
       applicationLegalese: 'Free API finder. Rules and key knowledge: ${state.knowledge.exportedFrom}. Typefaces Manrope and JetBrains Mono, SIL Open Font License.',
       children: const [
         SizedBox(height: 12),
