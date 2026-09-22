@@ -20,7 +20,7 @@ public sealed class TrayIcon : IDisposable
     {
         _window = window;
         _vm = vm;
-        var open = new Forms.ToolStripMenuItem("Open API Scout", null, (_, _) => _window.ShowFromTray());
+        var open = new Forms.ToolStripMenuItem("Open API Free", null, (_, _) => _window.ShowFromTray());
         open.Font = new System.Drawing.Font(open.Font, System.Drawing.FontStyle.Bold);
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add(open);
@@ -39,7 +39,7 @@ public sealed class TrayIcon : IDisposable
         _icon = new Forms.NotifyIcon
         {
             Icon = Environment.ProcessPath is { } exe ? System.Drawing.Icon.ExtractAssociatedIcon(exe) : System.Drawing.SystemIcons.Application,
-            Text = "API Scout - free API finder",
+            Text = "API Free - free API finder",
             ContextMenuStrip = menu,
             Visible = true,
         };
@@ -49,7 +49,7 @@ public sealed class TrayIcon : IDisposable
 
     private void Scan()
     {
-        if (_vm.IsBusy) { Notify("API Scout is already busy", "A scan or link check is running.", null); return; }
+        if (_vm.IsBusy) { Notify("API Free is already busy", "A scan or link check is running.", null); return; }
         _vm.ScanCommand.Execute(null); // the result arrives as a balloon (new APIs) or stays quiet (nothing new)
     }
 

@@ -18,13 +18,13 @@ public partial class App : Application
         DispatcherUnhandledException += (_, args) =>
         {
             Store?.Log("Unhandled: " + args.Exception);
-            MessageBox.Show(args.Exception.Message, "API Scout hit a problem", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(args.Exception.Message, "API Free hit a problem", MessageBoxButton.OK, MessageBoxImage.Warning);
             args.Handled = true;
         };
         try { Store = new Store(); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
-            MessageBox.Show("API Scout cannot use its data folder:\n" + ex.Message, "API Scout", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show("API Free cannot use its data folder:\n" + ex.Message, "API Free", MessageBoxButton.OK, MessageBoxImage.Error);
             Shutdown(2);
             return;
         }
@@ -47,7 +47,7 @@ public partial class App : Application
         {
             // headless re-scan for Task Scheduler: ApiScout.exe --scan. An open window re-scans by itself, and two writers would trip over catalog.json.
             _windowOpen = WindowMutex(Store.Folder);
-            if (!TryTakeWindowMutex()) { Store.Log("Headless scan skipped: API Scout is open."); Shutdown(0); return; }
+            if (!TryTakeWindowMutex()) { Store.Log("Headless scan skipped: API Free is open."); Shutdown(0); return; }
             _windowOpen.ReleaseMutex();
             _ = HeadlessScanAsync();
             return;
@@ -147,20 +147,20 @@ public partial class App : Application
             {
                 var fresh = outcome.Catalog.Entries.Where(x => x.FirstSeen == outcome.Catalog.ScannedAt).Select(x => x.Name).Take(4).ToList();
                 await NotifyAsync($"{added:N0} new free API{(added == 1 ? "" : "s")} found",
-                    string.Join(", ", fresh) + (added > fresh.Count ? $" and {added - fresh.Count:N0} more" : "") + ". Click to open API Scout.");
+                    string.Join(", ", fresh) + (added > fresh.Count ? $" and {added - fresh.Count:N0} more" : "") + ". Click to open API Free.");
             }
         }
         catch (Exception ex) { Store.Log("Headless scan failed: " + ex.Message); code = 1; }
         Shutdown(code);
     }
 
-    /// <summary>Tray notification from the headless scan; clicking it opens API Scout. Stays up to 12 seconds.</summary>
+    /// <summary>Tray notification from the headless scan; clicking it opens API Free. Stays up to 12 seconds.</summary>
     private static async Task NotifyAsync(string title, string text)
     {
         using var icon = new System.Windows.Forms.NotifyIcon
         {
             Icon = Environment.ProcessPath is { } exe ? System.Drawing.Icon.ExtractAssociatedIcon(exe) : System.Drawing.SystemIcons.Information,
-            Text = "API Scout", Visible = true,
+            Text = "API Free", Visible = true,
         };
         var clicked = new TaskCompletionSource();
         icon.BalloonTipClicked += (_, _) => clicked.TrySetResult();

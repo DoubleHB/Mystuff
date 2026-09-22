@@ -5,7 +5,7 @@ using System.Text;
 namespace ApiScout.Services;
 
 /// <summary>
-/// The "also when API Scout is closed" option: a per-user Windows scheduled task that runs "ApiScout.exe --scan".
+/// The "also when API Free is closed" option: a per-user Windows scheduled task that runs "ApiScout.exe --scan".
 /// No admin rights needed; it only runs while the user is signed in, so the notification can be shown.
 /// </summary>
 public static class ScheduledScan
@@ -45,7 +45,7 @@ public static class ScheduledScan
         <?xml version="1.0" encoding="UTF-16"?>
         <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
           <RegistrationInfo>
-            <Description>Re-scans the free API directories for API Scout and shows a notification when new APIs appear. Turn it off in API Scout (Sources).</Description>
+            <Description>Re-scans the free API directories for API Free and shows a notification when new APIs appear. Turn it off in API Free (Sources).</Description>
           </RegistrationInfo>
           <Triggers>
             <CalendarTrigger>

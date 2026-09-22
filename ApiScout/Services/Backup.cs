@@ -26,7 +26,7 @@ public sealed class BackupSecrets
 {
     public Dictionary<string, string> MyKeys { get; set; } = [];
     public Dictionary<string, ApiTestRequest> TestRequests { get; set; } = [];
-    /// <summary>Request variables travel with the keys: API Scout cannot know whether someone put a token in one.</summary>
+    /// <summary>Request variables travel with the keys: API Free cannot know whether someone put a token in one.</summary>
     public Dictionary<string, Dictionary<string, string>> Variables { get; set; } = [];
 }
 
@@ -85,14 +85,14 @@ public static class Backup
         BackupFile? file;
         try { file = JsonSerializer.Deserialize<BackupFile>(json); }
         catch (JsonException) { file = null; }
-        if (file is null || file.App != "ApiScout") throw new InvalidDataException("This is not an API Scout export file.");
+        if (file is null || file.App != "ApiScout") throw new InvalidDataException("This is not an API Free export file.");
         // a hand-edited file may say null where a list belongs
         file.Favourites = [.. (file.Favourites ?? []).Where(f => !string.IsNullOrEmpty(f))];
         file.Tags = (file.Tags ?? []).Where(p => p.Value is not null).ToDictionary(p => p.Key, p => p.Value.Where(t => !string.IsNullOrWhiteSpace(t)).ToList());
         file.Notes = (file.Notes ?? []).Where(p => p.Value is not null).ToDictionary(p => p.Key, p => p.Value);
         file.Collections = (file.Collections ?? []).Where(p => p.Value is not null && p.Key.Trim().Length > 0).ToDictionary(p => p.Key, p => p.Value.Where(k => !string.IsNullOrEmpty(k)).ToList());
         // the count comes from the file: refuse one that would keep PBKDF2 busy for hours
-        if (file.Secrets is not null && file.Iterations is < 0 or > MaxIterations) throw new InvalidDataException("The export file asks for an unreasonable amount of key stretching - it is damaged or not from API Scout.");
+        if (file.Secrets is not null && file.Iterations is < 0 or > MaxIterations) throw new InvalidDataException("The export file asks for an unreasonable amount of key stretching - it is damaged or not from API Free.");
         return file;
     }
 
@@ -109,7 +109,7 @@ public static class Backup
             // decrypt first, so a wrong passphrase changes nothing
             var plain = Open(Convert.FromBase64String(file.Secrets), passphrase, Convert.FromBase64String(file.Salt ?? ""), file.Iterations > 0 ? file.Iterations : DefaultIterations);
             try { secrets = JsonSerializer.Deserialize<BackupSecrets>(plain) ?? new(); }
-            catch (JsonException) { throw new InvalidDataException("The encrypted part of the file opened, but what is inside is not API Scout data."); }
+            catch (JsonException) { throw new InvalidDataException("The encrypted part of the file opened, but what is inside is not API Free data."); }
             secrets.MyKeys = (secrets.MyKeys ?? []).Where(p => !string.IsNullOrEmpty(p.Value)).ToDictionary(p => p.Key, p => p.Value);
             secrets.TestRequests = (secrets.TestRequests ?? []).Where(p => p.Value?.Url is not null).ToDictionary(p => p.Key, p => p.Value);
         }

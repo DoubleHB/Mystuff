@@ -1,4 +1,4 @@
-# Puts API Scout on GitHub: a PRIVATE repository, all commits and version tags, and the portable zip as a release.
+# Puts API Free on GitHub: a PRIVATE repository, all commits and version tags, and the portable zip as a release.
 # You run this yourself, once you are signed in - it never asks for or stores a password:
 #   1. install the GitHub CLI:   winget install GitHub.cli
 #   2. sign in (opens a browser): gh auth login
@@ -19,7 +19,7 @@ $zip = Join-Path (Split-Path $root -Parent) "ApiScout-Dist\ApiScout-$version-por
 
 if (-not (git remote)) {
     $visibility = if ($Public) { '--public' } else { '--private' }
-    gh repo create $Name $visibility --source . --remote origin --description 'API Scout - free API finder (WPF)'
+    gh repo create $Name $visibility --source . --remote origin --description 'API Free - free API finder (WPF)'
     if ($LASTEXITCODE -ne 0) { throw 'gh repo create failed' }
 }
 git push -u origin HEAD
@@ -29,7 +29,7 @@ if ($LASTEXITCODE -ne 0) { throw 'git push failed' }
 if (Test-Path -LiteralPath $zip) {
     gh release view "v$version" *> $null
     if ($LASTEXITCODE -eq 0) { gh release upload "v$version" $zip --clobber }
-    else { gh release create "v$version" $zip --title "API Scout $version" --notes "Portable build: unzip and run ApiScout.exe (no .NET install needed)." }
+    else { gh release create "v$version" $zip --title "API Free $version" --notes "Portable build: unzip and run ApiScout.exe (no .NET install needed)." }
 } else { Write-Warning "No portable zip for $version yet - run .\publish.ps1 first, then this script again." }
 
 $repo = gh repo view --json nameWithOwner --jq .nameWithOwner

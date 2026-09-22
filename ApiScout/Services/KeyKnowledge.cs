@@ -2,7 +2,7 @@ using ApiScout.Models;
 
 namespace ApiScout.Services;
 
-/// <summary>What API Scout knows about getting a key for a particular provider.</summary>
+/// <summary>What API Free knows about getting a key for a particular provider.</summary>
 public sealed record KeyHint(
     string[] Hosts,
     string HowTo,
@@ -164,7 +164,7 @@ public static class KeyKnowledge
                 : "Check the docs for what to send. Press 'Scan docs for key info' for a quick look."),
         _ =>
             "The directory that listed this API does not say whether a key is needed.\n\n" +
-            "Press 'Scan docs for key info' - API Scout reads the docs page (and the OpenAPI spec when there is one) " +
+            "Press 'Scan docs for key info' - API Free reads the docs page (and the OpenAPI spec when there is one) " +
             "and reports the auth scheme, sign-up links, free-tier notes and any sample key it finds.",
     };
 }
