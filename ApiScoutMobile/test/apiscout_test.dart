@@ -1,4 +1,4 @@
-// API Scout Mobile self-check:  flutter test            (offline)
+// API Free Mobile self-check:  flutter test            (offline)
 //                              flutter test --dart-define=LIVE=true   (also scans the real directories)
 import 'dart:convert';
 import 'dart:io';
@@ -31,7 +31,7 @@ void main() {
     expect(k.categoryRules.length, greaterThan(35));
     expect(k.keywordRules.length, greaterThan(30));
     expect(k.hints.length, greaterThan(60));
-    expect(k.exportedFrom, startsWith('API Scout '));
+    expect(k.exportedFrom, startsWith('API Free '));
   });
 
   test('categories: source names fold into the canonical set, stems stay strict', () {

@@ -1,4 +1,4 @@
-# API Scout Mobile: refresh the shared rules from the desktop app, test, build the APK.
+# API Free Mobile: refresh the shared rules from the desktop app, test, build the APK.
 #   .\build-apk.ps1            knowledge + tests (offline) + release APK  ->  .\ApiScout.apk
 #   .\build-apk.ps1 -Live      also runs the live scan test
 #   .\build-apk.ps1 -Bundle    also builds the Play app bundle       ->  .\ApiScout.aab

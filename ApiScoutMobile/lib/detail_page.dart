@@ -68,7 +68,7 @@ class _DetailPageState extends State<DetailPage> with SingleTickerProviderStateM
 
   String get _defaultUrl => v.example ?? v.url;
 
-  /// True while the request is the one API Scout suggested: nothing to remember, nothing to reset.
+  /// True while the request is the one API Free suggested: nothing to remember, nothing to reset.
   bool get _isSuggested => _method == 'GET' && _url.text.trim() == _defaultUrl && _headers.text.trim() == _defaultHeader && _body.text.trim().isEmpty;
 
   /// Back to the suggested request; the saved one is forgotten (the desktop's Reset).
@@ -298,8 +298,8 @@ class _DetailPageState extends State<DetailPage> with SingleTickerProviderStateM
   /// published demo key where there is one and never the user's own key.
   Future<void> _share() async {
     try {
-      // the link at the end opens this page on a phone with API Scout; elsewhere it is just a line of text
-      await SharePlus.instance.share(ShareParams(text: '${_asMarkdown()}\n\nOpen in API Scout: ${deepLinkFor(v.entry.key)}', subject: v.name));
+      // the link at the end opens this page on a phone with API Free; elsewhere it is just a line of text
+      await SharePlus.instance.share(ShareParams(text: '${_asMarkdown()}\n\nOpen in API Free: ${deepLinkFor(v.entry.key)}', subject: v.name));
     } catch (_) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Nothing on this phone can take the share')));
     }
@@ -534,7 +534,7 @@ class _DetailPageState extends State<DetailPage> with SingleTickerProviderStateM
             ? 'Your own request for this API, remembered from the last time you tested it. Reset brings back the suggested one.'
             : v.example != null
                 ? 'Pre-filled with a request that works as it is - press Test this API. A request you change is remembered for this API.'
-                : 'API Scout only knows this API\'s docs page. Paste an endpoint URL from the docs, pick the method, then press Test this API.',
+                : 'API Free only knows this API\'s docs page. Paste an endpoint URL from the docs, pick the method, then press Test this API.',
         style: _muted(context),
       ),
       const SizedBox(height: 12),
@@ -697,7 +697,7 @@ class _DetailPageState extends State<DetailPage> with SingleTickerProviderStateM
           Text('Reading the docs page, the OpenAPI spec it points to, and the pricing page it links to…', style: _muted(context)),
         ])
       else if (scan == null) ...[
-        Text('API Scout can read this API\'s docs page, its OpenAPI spec when there is one, and the pricing page it links to, and pull out sign-up links, sample keys, example endpoints, auth schemes and the sentences about free tiers and limits. Only the provider\'s own site is read.', style: _muted(context)),
+        Text('API Free can read this API\'s docs page, its OpenAPI spec when there is one, and the pricing page it links to, and pull out sign-up links, sample keys, example endpoints, auth schemes and the sentences about free tiers and limits. Only the provider\'s own site is read.', style: _muted(context)),
         const SizedBox(height: 12),
         Align(
           alignment: Alignment.centerLeft,
