@@ -64,6 +64,9 @@ own published demo key where there is one, or how to get a key.
   top is lit while you scroll. Rows are now a fixed 76 dp (tags moved onto the status line; an API with no
   description shows its category there), which is what lets the rail land on a row by index. Collections have no
   rail - they keep the order you built them in.
+- 1.3.3: the detail tabs carry counts - Keys (demo key, how it is sent, example request, sign-up link, my key),
+  Try it (requests in the history), Docs (items the docs scan found), Mine (tags + note + collections). Zero shows
+  nothing, so a bare tab name means there is nothing behind it yet.
 
 ## One source of truth
 

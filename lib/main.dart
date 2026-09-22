@@ -712,7 +712,7 @@ Future<void> exportToFile(BuildContext context) async {
 void showAbout(BuildContext context) => showAboutDialog(
       context: context,
       applicationName: 'ApiScout',
-      applicationVersion: '1.3.2 (Android)',
+      applicationVersion: '1.3.3 (Android)',
       applicationLegalese: 'Free API finder. Rules and key knowledge: ${state.knowledge.exportedFrom}. Typefaces Manrope and JetBrains Mono, SIL Open Font License.',
       children: const [
         SizedBox(height: 12),

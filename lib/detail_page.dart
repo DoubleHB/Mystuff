@@ -306,7 +306,13 @@ class _DetailPageState extends State<DetailPage> with SingleTickerProviderStateM
           TabBar(
             controller: _tabs,
             labelPadding: const EdgeInsets.symmetric(horizontal: 6),
-            tabs: const [Tab(text: 'Overview'), Tab(text: 'Keys'), Tab(text: 'Try it'), Tab(text: 'Docs'), Tab(text: 'Mine')],
+            tabs: [
+              const Tab(text: 'Overview'),
+              Tab(child: _tabLabel(context, 'Keys', _keysCount)),
+              Tab(child: _tabLabel(context, 'Try it', state.historyOf(v).length)),
+              Tab(child: _tabLabel(context, 'Docs', state.docsScanOf(v)?.items.length ?? 0)),
+              Tab(child: _tabLabel(context, 'Mine', _mineCount)),
+            ],
           ),
           Expanded(
             child: TabBarView(controller: _tabs, children: [_overview(context), _keys(context), _tryIt(context), _docs(context), _mine(context)]),
@@ -315,6 +321,20 @@ class _DetailPageState extends State<DetailPage> with SingleTickerProviderStateM
       ),
     );
   }
+
+  /// "Keys (3)": the count tells which tabs hold anything before they are opened. Nothing is shown for zero.
+  Widget _tabLabel(BuildContext context, String text, int n) => n == 0
+      ? Text(text)
+      : Text.rich(TextSpan(children: [
+          TextSpan(text: text),
+          TextSpan(text: ' ($n)', style: TextStyle(fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+        ]));
+
+  /// What the Keys tab can hand over: demo key, how it is sent, a working example, the sign-up link, my own key.
+  int get _keysCount => [v.hasDemoKey, v.hint?.keyUsage != null, v.example != null, v.hint?.signupUrl != null, state.hasKey(v)].where((b) => b).length;
+
+  /// Tags, a note, and the collections this API is in.
+  int get _mineCount => state.tagsOf(v).length + (state.noteOf(v).trim().isEmpty ? 0 : 1) + state.collectionsOf(v).length;
 
   /// Every tab scrolls on its own and clears the gesture bar at the bottom.
   Widget _tab(BuildContext context, List<Widget> children) =>
