@@ -5,7 +5,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <application
-        android:label="API Scout"
+        android:label="API Free"
         android:allowBackup="false"
         android:fullBackupContent="false"
         android:name="${applicationName}"

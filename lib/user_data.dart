@@ -130,7 +130,7 @@ class BackupFile {
     } on FormatException {
       j = null;
     }
-    if (j is! Map || j['App'] != 'ApiScout') throw BackupFormatException('This is not an API Scout export file.');
+    if (j is! Map || j['App'] != 'ApiScout') throw BackupFormatException('This is not an API Free export file.');
     final file = BackupFile()
       ..exportedAt = DateTime.tryParse(j['ExportedAt'] as String? ?? '')
       ..secrets = j['Secrets'] as String?
@@ -144,7 +144,7 @@ class BackupFile {
       ..collections = {for (final e in _lists(j['Collections']).entries) if (e.key.trim().isNotEmpty) e.key: e.value};
     // the count comes from the file: refuse one that would keep the phone busy for an hour
     if (file.hasSecrets && (file.iterations < 0 || file.iterations > maxIterations)) {
-      throw BackupFormatException('The export file asks for an unreasonable amount of key stretching - it is damaged or not from API Scout.');
+      throw BackupFormatException('The export file asks for an unreasonable amount of key stretching - it is damaged or not from API Free.');
     }
     return file;
   }
@@ -170,7 +170,7 @@ class BackupFile {
     } on FormatException {
       j = null;
     }
-    if (j is! Map) throw BackupFormatException('The encrypted part of the file opened, but what is inside is not API Scout data.');
+    if (j is! Map) throw BackupFormatException('The encrypted part of the file opened, but what is inside is not API Free data.');
     return (_texts(j['MyKeys'])..removeWhere((_, v) => v.isEmpty), _maps(j['Variables']), testRequestsFromJson(j['TestRequests']));
   }
 

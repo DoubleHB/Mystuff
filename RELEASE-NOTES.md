@@ -1,4 +1,4 @@
-# API Scout for Android - release notes
+# API Free for Android - release notes
 
 ## 1.5.0
 

@@ -220,7 +220,7 @@ class AppState extends ChangeNotifier {
 
   Future<void> setDailyNotice(bool on) async {
     if (on && !await DailyNotice.askPermission()) {
-      status = 'Notifications are off for API Scout in Android\'s settings.';
+      status = 'Notifications are off for API Free in Android\'s settings.';
       on = false;
     }
     dailyNotice = on;

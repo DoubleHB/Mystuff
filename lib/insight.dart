@@ -21,7 +21,7 @@ class ApiInfo {
 }
 
 // "More about this API" - the desktop app's ApiInsight, with the same two halves: benefits() is worked out from what
-// API Scout already knows; readInsight() reads the provider's docs page (or the README for an API that lives on GitHub).
+// API Free already knows; readInsight() reads the provider's docs page (or the README for an API that lives on GitHub).
 // Nothing is invented: what the page does not say is not shown.
 
 final _noiseRx = RegExp(r'<(script|style|noscript|svg|nav|footer|header|form|aside)\b.*?</\1>', caseSensitive: false, dotAll: true);
@@ -114,7 +114,7 @@ List<String> benefits(ApiView v) {
         ? 'Reliable: ${e.health}% in freepublicapis.com\'s daily health tests.'
         : 'Health ${e.health}% in freepublicapis.com\'s daily tests - check it answers before building on it.');
   }
-  if (v.example != null) list.add('API Scout knows a request that works as it is - press Test this API.');
+  if (v.example != null) list.add('API Free knows a request that works as it is - press Test this API.');
   if (e.sources.length >= 3) list.add('Well known: listed by ${e.sources.length} independent directories.');
   return list;
 }
