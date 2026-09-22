@@ -39,6 +39,7 @@ class _DetailPageState extends State<DetailPage> with SingleTickerProviderStateM
   bool _sending = false;
   bool _showKey = false;
   bool _keyDirty = false;
+  bool _requestTouched = false;
   TestResult? _result;
 
   ApiView get v => widget.view;
@@ -50,8 +51,33 @@ class _DetailPageState extends State<DetailPage> with SingleTickerProviderStateM
       if (mounted && !_keyDirty) _key.text = k;
     });
     state.ensureHistory().then((_) {
-      if (mounted) setState(() {});
+      if (!mounted) return;
+      // the request last tested for this API comes back, unless typing started before it was read
+      final saved = state.savedRequestOf(v);
+      if (saved != null && !_requestTouched) _load(saved.method, saved.url, saved.headers, saved.body);
+      setState(() {});
     });
+  }
+
+  void _load(String method, String url, String headers, String body) {
+    _method = testMethods.contains(method) ? method : 'GET';
+    _url.text = url;
+    _headers.text = headers;
+    _body.text = body;
+  }
+
+  String get _defaultUrl => v.example ?? v.url;
+
+  /// True while the request is the one ApiScout suggested: nothing to remember, nothing to reset.
+  bool get _isSuggested => _method == 'GET' && _url.text.trim() == _defaultUrl && _headers.text.trim() == _defaultHeader && _body.text.trim().isEmpty;
+
+  /// Back to the suggested request; the saved one is forgotten (the desktop's Reset).
+  void _resetRequest() {
+    setState(() {
+      _load('GET', _defaultUrl, _defaultHeader, '');
+      _result = null;
+    });
+    state.setSavedRequest(v, null);
   }
 
   String get _requestText => '${_url.text}${_headers.text}${methodHasBody(_method) ? _body.text : ''}';
@@ -233,6 +259,9 @@ class _DetailPageState extends State<DetailPage> with SingleTickerProviderStateM
       headers = fillKey(headers, key);
       sentBody = fillKey(sentBody, key);
     }
+    // like the desktop: a request edited away from the suggested one is remembered as typed ({key} stays a placeholder);
+    // going back to the suggested one by hand forgets it
+    state.setSavedRequest(v, _isSuggested ? null : TestRequest(method, typedUrl.trim(), typedHeaders.trim(), body.trim()));
     setState(() => _sending = true);
     var r = await sendTest(method, url, headers, sentBody);
     if (url != filledUrl || headers != filledHeaders || sentBody != filledBody) {
@@ -501,9 +530,11 @@ class _DetailPageState extends State<DetailPage> with SingleTickerProviderStateM
     return _tab(context, [
       const SizedBox(height: 10),
       Text(
-        v.example != null
-            ? 'Pre-filled with a request that works as it is - press Test this API.'
-            : 'ApiScout only knows this API\'s docs page. Paste an endpoint URL from the docs, pick the method, then press Test this API.',
+        state.savedRequestOf(v) != null
+            ? 'Your own request for this API, remembered from the last time you tested it. Reset brings back the suggested one.'
+            : v.example != null
+                ? 'Pre-filled with a request that works as it is - press Test this API. A request you change is remembered for this API.'
+                : 'ApiScout only knows this API\'s docs page. Paste an endpoint URL from the docs, pick the method, then press Test this API.',
         style: _muted(context),
       ),
       const SizedBox(height: 12),
@@ -512,13 +543,16 @@ class _DetailPageState extends State<DetailPage> with SingleTickerProviderStateM
           value: _method,
           underline: const SizedBox.shrink(),
           items: [for (final m in testMethods) DropdownMenuItem(value: m, child: Text(m, style: const TextStyle(fontWeight: FontWeight.w800)))],
-          onChanged: (m) => setState(() => _method = m ?? 'GET'),
+          onChanged: (m) => setState(() {
+            _method = m ?? 'GET';
+            _requestTouched = true;
+          }),
         ),
         const SizedBox(width: 8),
         Expanded(
           child: TextField(
             controller: _url,
-            onChanged: (_) => setState(() {}), // a new {placeholder} offers a Variables line
+            onChanged: (_) => setState(() => _requestTouched = true), // a new {placeholder} offers a Variables line
             minLines: 1,
             maxLines: 4,
             keyboardType: TextInputType.url,
@@ -547,7 +581,7 @@ class _DetailPageState extends State<DetailPage> with SingleTickerProviderStateM
       const SizedBox(height: 8),
       TextField(
         controller: _headers,
-        onChanged: (_) => setState(() {}),
+        onChanged: (_) => setState(() => _requestTouched = true),
         minLines: 1,
         maxLines: 4,
         autocorrect: false,
@@ -558,6 +592,7 @@ class _DetailPageState extends State<DetailPage> with SingleTickerProviderStateM
         const SizedBox(height: 12),
         TextField(
           controller: _body,
+          onChanged: (_) => _requestTouched = true,
           minLines: 3,
           maxLines: 10,
           autocorrect: false,
@@ -612,6 +647,8 @@ class _DetailPageState extends State<DetailPage> with SingleTickerProviderStateM
             child: const Text('Copy as cURL')),
         if (state.historyOf(v).isNotEmpty)
           OutlinedButton.icon(onPressed: _showHistory, icon: const Icon(Icons.history, size: 18), label: Text('History (${state.historyOf(v).length})')),
+        if (!_isSuggested || state.savedRequestOf(v) != null)
+          TextButton.icon(onPressed: _resetRequest, icon: const Icon(Icons.restart_alt, size: 18), label: const Text('Reset')),
       ]),
       if (_result != null) ...[
         const SizedBox(height: 14),
@@ -657,10 +694,10 @@ class _DetailPageState extends State<DetailPage> with SingleTickerProviderStateM
         Row(children: [
           const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
           const SizedBox(width: 10),
-          Text('Reading the docs page and the pricing page it links to…', style: _muted(context)),
+          Text('Reading the docs page, the OpenAPI spec it points to, and the pricing page it links to…', style: _muted(context)),
         ])
       else if (scan == null) ...[
-        Text('ApiScout can read this API\'s docs page and the pricing page it links to, and pull out sign-up links, sample keys, example endpoints and the sentences about free tiers and limits. Only the provider\'s own site is read.', style: _muted(context)),
+        Text('ApiScout can read this API\'s docs page, its OpenAPI spec when there is one, and the pricing page it links to, and pull out sign-up links, sample keys, example endpoints, auth schemes and the sentences about free tiers and limits. Only the provider\'s own site is read.', style: _muted(context)),
         const SizedBox(height: 12),
         Align(
           alignment: Alignment.centerLeft,

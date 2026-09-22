@@ -4,11 +4,13 @@ import 'package:flutter/foundation.dart' show compute;
 
 import 'insight.dart' show PageStatus, fetchPage, htmlDecode, isPublicWebUrl;
 import 'models.dart';
+import 'openapi.dart';
 
 // "Scan docs for key info" - the desktop app's DocsScanner. Reads one API's public docs page (and the pricing page it
 // links to) looking for: sign-up / get-a-key links, sample keys printed in the docs, example endpoints, and free-tier
 // and rate-limit sentences. It only ever reads the provider's own published pages.
-// (The desktop also reads an OpenAPI spec when a source gives one; none of the phone's five sources does.)
+// The desktop reads an OpenAPI spec when a source gives one; none of the phone's five sources does, so the phone
+// looks for a spec link on the docs page, or a spec at the usual place (openapi.dart).
 
 class FoundItem {
   /// "Sign-up link", "Sample key", "Placeholder", "Example endpoint", "Free tier / limits", "Pricing page", "Pricing", "Note"
@@ -49,6 +51,8 @@ class DocsScanResult {
       if (n('Sign-up link') > 0) '${n('Sign-up link')} sign-up link(s)',
       if (n('Sample key') > 0) '${n('Sample key')} sample key(s)',
       if (n('Example endpoint') > 0) '${n('Example endpoint')} example endpoint(s)',
+      if (n(specKind) > 0) 'an OpenAPI spec',
+      if (n('Auth scheme') > 0) '${n('Auth scheme')} auth scheme(s)',
       if (n('Free tier / limits') + n('Pricing') > 0) '${n('Free tier / limits') + n('Pricing')} line(s) about what is free',
     ];
     return parts.isEmpty ? 'Nothing key-related found' : 'Found ${parts.join(', ')}';
@@ -331,7 +335,16 @@ List<Map<String, dynamic>> _pageIsolate(Map<String, String> a) {
   final r = DocsScanResult(a['url']!);
   readDocsPage(a['html']!, a['url']!, r);
   final pricing = findPricingLink(a['html']!, a['url']!);
-  return [for (final i in r.items) i.toJson(), if (pricing != null) {'pricingLink': pricing}];
+  return [for (final i in r.items) i.toJson(), if (pricing != null) {'pricingLink': pricing}, for (final s in findSpecUrls(a['html']!, a['url']!)) {'specLink': s}];
+}
+
+/// Empty when the text is not an OpenAPI / Swagger spec.
+List<Map<String, dynamic>> _specIsolate(Map<String, String> a) {
+  final spec = parseSpec(a['text']!);
+  if (spec == null) return const [];
+  final r = DocsScanResult(a['url']!);
+  readSpec(spec, a['url']!, r);
+  return [for (final i in r.items) i.toJson()];
 }
 
 List<Map<String, dynamic>> _pricingIsolate(Map<String, String> a) {
@@ -342,15 +355,18 @@ List<Map<String, dynamic>> _pricingIsolate(Map<String, String> a) {
 
 String _cap(String s) => s.length > _maxParseChars ? s.substring(0, _maxParseChars) : s;
 
-Future<DocsScanResult> scanDocs(ApiEntry api) async {
+Future<DocsScanResult> scanDocs(ApiEntry api, {String? exampleUrl}) async {
   final result = DocsScanResult(api.url);
   if (!isPublicWebUrl(api.url)) return result..error = 'Not read: the docs link is not a public web address.';
   String? pricingUrl;
+  final specLinks = <String>[];
   try {
     final html = _cap(await fetchPage(api.url, 3000000));
     for (final j in await compute(_pageIsolate, {'html': html, 'url': api.url})) {
       if (j['pricingLink'] != null) {
         pricingUrl = j['pricingLink'] as String;
+      } else if (j['specLink'] != null) {
+        specLinks.add(j['specLink'] as String);
       } else {
         result.items.add(FoundItem.fromJson(j));
       }
@@ -361,6 +377,23 @@ Future<DocsScanResult> scanDocs(ApiEntry api) async {
     result.error = 'The docs page took too long to answer.';
   } catch (ex) {
     result.error = 'Could not reach the docs page: $ex';
+  }
+
+  // the spec: links the page gave first; otherwise the usual places on the docs site and the API host
+  final candidates = specLinks.isNotEmpty ? specLinks : (result.error == null ? guessSpecUrls(api.url, exampleUrl: exampleUrl).take(4).toList() : const <String>[]);
+  for (final u in candidates) {
+    if (!isPublicWebUrl(u)) continue;
+    try {
+      final text = _cap(await fetchPage(u, 3000000));
+      final items = [for (final j in await compute(_specIsolate, {'text': text, 'url': u})) FoundItem.fromJson(j)];
+      if (items.isEmpty) continue;
+      // the spec's endpoints join the page's, so the Docs tab shows one EXAMPLE ENDPOINT section
+      var at = result.items.lastIndexWhere((i) => i.isEndpoint || i.kind == 'Sample key' || i.kind == 'Placeholder' || i.kind == 'Sign-up link') + 1;
+      result.items.insertAll(at, items);
+      break;
+    } catch (_) {
+      // a 404 at a guessed place, or a page that is not a spec: try the next
+    }
   }
 
   if (pricingUrl != null && isPublicWebUrl(pricingUrl)) {

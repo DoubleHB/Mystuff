@@ -71,14 +71,15 @@ function Draw-Icon($g, [float]$x, [float]$y, [float]$size, [bool]$rounded) {
 }
 
 $shotsList = @(
-    @('01-home',     'home',      '3,591 free APIs in your pocket',           'Scanned from five public directories. Nothing to sign up for, no key needed to browse.'),
+    # sub-captions: two lines at most, about 90 characters
+    @('01-home',     'home',      '3,592 free APIs in your pocket',           'Five public directories, merged and categorised. Rescan weekly on Wi-Fi if you like.'),
     @('02-demo-key', 'nasa1',     'See the demo key before you sign up',      'Provider-published test keys, a request that works as it is, and how to get your own key.'),
-    @('03-try-it',   'tryit',     'Try any endpoint from your phone',         'Variables, {key} filled in only when you press send, and a history of your last requests.'),
-    @('04-docs-scan','ctdb3',     'Scan the docs for key info',               'Sign-up links, sample keys and example endpoints read live from the provider''s own pages.'),
+    @('03-try-it',   'tryit',     'Try any endpoint from your phone',         'Auth presets, variables, {key} filled in only when you send, a searchable response tree.'),
+    @('04-docs-scan','ctdb3',     'Scan the docs for key info',               'Sign-up links, sample keys, endpoints and the OpenAPI spec, all from the provider''s own site.'),
     @('05-insight',  'insight',   'More about this API',                      'What the known facts mean for you, then the provider''s own words. Nothing is made up.'),
-    @('06-filters',  'filter',    'Filter by what you need',                  'Auth, how much is free, HTTPS and CORS. Find an API you can call today.'),
-    @('07-categories','drawer',   '42 categories, favourites, collections',   'Tag, note and group APIs, and move it all to and from the desktop app.'),
-    @('08-dark',     'dark-home', 'Light, dark or system theme',              'Your keys stay encrypted in the Android keystore, on this phone only.')
+    @('06-filters',  'filter',    'Filter by what you need',                  'Auth, how much is free, HTTPS and CORS. Search forgives a typo; an A-Z rail jumps long lists.'),
+    @('07-categories','drawer',   '42 categories, favourites, collections',   'Tag, note and group APIs, and move it all to and from the desktop app, keys encrypted.'),
+    @('08-dark',     'dark-home', 'Light, dark or system theme',              'API of the day as a 9:00 notification; share an API with a link that opens it in ApiScout.')
 )
 foreach ($s in $shotsList) { Frame-Shot $s[0] $s[1] $s[2] $s[3] }
 

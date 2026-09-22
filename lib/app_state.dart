@@ -515,6 +515,7 @@ class AppState extends ChangeNotifier {
     final wantKeys = file.hasSecrets && passphrase != null && passphrase.isNotEmpty;
     final secrets = wantKeys ? await compute(openSecretsIsolate, {'json': json, 'passphrase': passphrase}) : const <String, dynamic>{};
     final keys = ((secrets['keys'] as Map?) ?? const {}).cast<String, String>();
+    final requests = testRequestsFromJson(secrets['requests']);
     final summary = mergeUserData(user, file.data)..secretsSkipped = file.hasSecrets && !wantKeys;
     summary.variables = mergeVariables(user, {
       for (final e in ((secrets['variables'] as Map?) ?? const {}).entries) e.key as String: (e.value as Map).cast<String, String>(),
@@ -529,8 +530,21 @@ class AppState extends ChangeNotifier {
         summary.keys++;
       }
     }
+    if (requests.isNotEmpty) {
+      // a request already saved on this phone stays (the desktop's rule)
+      await ensureHistory();
+      for (final e in requests.entries) {
+        if (_requests!.containsKey(e.key)) {
+          summary.keptLocal++;
+        } else {
+          _requests![e.key] = e.value;
+          summary.requests++;
+        }
+      }
+      if (summary.requests > 0) await _saveRequests();
+    }
     if (all.isNotEmpty) {
-      final mentioned = {...file.data.favourites, ...file.data.tags.keys, ...file.data.notes.keys, for (final c in file.data.collections.values) ...c, ...keys.keys};
+      final mentioned = {...file.data.favourites, ...file.data.tags.keys, ...file.data.notes.keys, for (final c in file.data.collections.values) ...c, ...keys.keys, ...requests.keys};
       summary.notInCatalogue = mentioned.where((k) => !_byKey.containsKey(k)).length;
     }
     await saveUser();
@@ -538,16 +552,42 @@ class AppState extends ChangeNotifier {
     return summary;
   }
 
-  /// The same file format as the desktop app's export. Keys go in only with a passphrase.
+  /// The same file format as the desktop app's export. Keys and saved requests go in only with a passphrase.
   Future<String> exportBackup(String? passphrase) async {
     final withKeys = passphrase != null && passphrase.isNotEmpty;
-    return compute(writeBackupIsolate, {'data': jsonDecode(jsonEncode(user.toJson())), 'keys': withKeys ? await vault.readAll() : <String, String>{}, 'passphrase': passphrase});
+    if (withKeys) await ensureHistory();
+    return compute(writeBackupIsolate, {
+      'data': jsonDecode(jsonEncode(user.toJson())),
+      'keys': withKeys ? await vault.readAll() : <String, String>{},
+      'requests': withKeys ? {for (final e in _requests!.entries) e.key: e.value.toJson()} : <String, dynamic>{},
+      'passphrase': passphrase,
+    });
   }
 
   int get userItemCount => user.favourites.length + user.tags.length + user.notes.length + user.collections.length + user.variables.length;
 
-  /// Keys and request variables only leave the phone inside the encrypted part of an export.
-  int get secretItemCount => keyed.length + user.variables.length;
+  /// Keys, request variables and saved test requests only leave the phone inside the encrypted part of an export.
+  int get secretItemCount => keyed.length + user.variables.length + (_requests?.length ?? 0);
+
+  // ---------------------------------------------------------------- saved test requests (sealed like the history)
+
+  Map<String, TestRequest>? _requests;
+
+  Future<File> _requestsFile() async => File('${(await getApplicationSupportDirectory()).path}/requests.bin');
+
+  /// The request last tested for this API when it differed from the suggested one; null = the suggested one.
+  TestRequest? savedRequestOf(ApiView v) => _requests?[v.entry.key];
+
+  /// Remembers [r] for the API, or forgets the saved one with null. Nothing is written when nothing changed.
+  Future<void> setSavedRequest(ApiView v, TestRequest? r) async {
+    await ensureHistory();
+    final have = _requests![v.entry.key];
+    if (r == null ? have == null : have != null && have.sameAs(r)) return;
+    r == null ? _requests!.remove(v.entry.key) : _requests![v.entry.key] = r;
+    await _saveRequests();
+  }
+
+  Future<void> _saveRequests() => _writeSealed(_requestsFile, jsonEncode({for (final e in _requests!.entries) e.key: e.value.toJson()}));
 
   // ---------------------------------------------------------------- request variables
 
@@ -565,17 +605,25 @@ class AppState extends ChangeNotifier {
 
   Future<File> _historyFile() async => File('${(await getApplicationSupportDirectory()).path}/history.bin');
 
-  /// Read on first use, not at start-up: most visits never open it.
+  /// Read on first use, not at start-up: most visits never open it. The saved test requests share the key and come with it.
   Future<void> ensureHistory() async {
     if (_history != null) return;
     _history = {};
+    _requests = {};
     try {
       final saved = await vault.readSecret('history-key');
       if (saved != null) _historyKey = base64Decode(saved);
-      final file = await _historyFile();
-      if (_historyKey != null && await file.exists()) {
-        final plain = openWithKey(_historyKey!, await file.readAsBytes());
-        if (plain != null) _history = historyFromJson(jsonDecode(utf8.decode(plain)));
+      if (_historyKey != null) {
+        final file = await _historyFile();
+        if (await file.exists()) {
+          final plain = openWithKey(_historyKey!, await file.readAsBytes());
+          if (plain != null) _history = historyFromJson(jsonDecode(utf8.decode(plain)));
+        }
+        final requests = await _requestsFile();
+        if (await requests.exists()) {
+          final plain = openWithKey(_historyKey!, await requests.readAsBytes());
+          if (plain != null) _requests = testRequestsFromJson(jsonDecode(utf8.decode(plain)));
+        }
       }
     } catch (_) {
       // an unreadable history is an empty history
@@ -597,14 +645,16 @@ class AppState extends ChangeNotifier {
     if (_history!.remove(v.entry.key) != null) await _saveHistory();
   }
 
-  Future<void> _saveHistory() => _pendingSave = _pendingSave.then((_) async {
+  Future<void> _saveHistory() => _writeSealed(_historyFile, jsonEncode({for (final e in _history!.entries) e.key: [for (final h in e.value) h.toJson()]}));
+
+  /// Seals [json] with the keystore-held key (made on first use) and writes it whole, one write after another.
+  Future<void> _writeSealed(Future<File> Function() which, String json) => _pendingSave = _pendingSave.then((_) async {
         try {
           if (_historyKey == null) {
             _historyKey = newSealKey();
             await vault.writeSecret('history-key', base64Encode(_historyKey!));
           }
-          final json = jsonEncode({for (final e in _history!.entries) e.key: [for (final h in e.value) h.toJson()]});
-          final file = await _historyFile();
+          final file = await which();
           final temp = File('${file.path}.tmp');
           await temp.writeAsBytes(sealWithKey(_historyKey!, Uint8List.fromList(utf8.encode(json))), flush: true);
           await temp.rename(file.path);
@@ -638,7 +688,7 @@ class AppState extends ChangeNotifier {
     if (!scanningDocs.add(v.entry.key)) return;
     notifyListeners();
     try {
-      final result = await scanDocs(v.entry);
+      final result = await scanDocs(v.entry, exampleUrl: v.example);
       _docsScans[v.entry.key] = result;
       v.docsAccess = accessFromDocs(result);
       // only the latest few hundred are worth keeping on a phone

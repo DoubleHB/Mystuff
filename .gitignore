@@ -47,6 +47,11 @@ app.*.map.json
 # Widget Preview related
 .widget_preview/
 
-# built APK
+# built APK / bundle
 /ApiScout.apk
+/ApiScout.aab
 store/*.zip
+
+# release signing: the keystore and its passwords never go into git (back them up somewhere safe instead)
+/android/key.properties
+/android/keystore/

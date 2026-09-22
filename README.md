@@ -4,7 +4,7 @@ The Android sister of the desktop app in `C:\Claude\ApiScout` (which is unchange
 API directories, merge and categorise a few thousand free APIs, and show whether each needs a key - with the provider's
 own published demo key where there is one, or how to get a key.
 
-## What it does (version 1.3)
+## What it does (version 1.5)
 
 - **Scan** the same five keyless directories as the desktop default (public-apis, public-api-lists, publicapis.dev,
   freepublicapis.com, n0shake). Downloads run in parallel; parsing, merging and categorising run in a background
@@ -96,6 +96,21 @@ own published demo key where there is one, or how to get a key.
     See" until dismissed; the menu keeps the last one.
   - Cache versioning: the cached catalogue remembers a hash of `knowledge.json`. An app update with new rules
     re-categorises the cached entries at start-up (`recategorise`), no scan needed.
+- **1.5.0 - saved requests, OpenAPI, Play-ready.**
+  - Saved test requests, the desktop's way: a Try it request edited away from the suggested one is remembered for
+    that API when you press Test this API, comes back next time, and Reset brings the suggested one back
+    (`TestRequest` in `user_data.dart`; `requests.bin`, sealed like the history). They travel in the export's
+    encrypted part as `TestRequests`, so the desktop's Import reads them and the phone reads the desktop's.
+  - OpenAPI spec reader in the docs scan (`openapi.dart`): the page's spec link (an href, or the URL a Swagger UI
+    script is given) or the usual places (`/openapi.json`, `/swagger.json`, `/v3/api-docs`, …) on the docs site and
+    the API host; JSON or YAML (`yaml` package). Adds the spec (title, version, path count), up to five GET
+    endpoints without parameters, and the auth schemes - the desktop's `ReadSpec`, which only gets a spec URL from
+    a source; the phone finds it.
+  - Release signing: `make-release-key.ps1` makes `android/keystore/apiscout-release.jks` + `android/key.properties`
+    (both ignored by git; back them up); `build.gradle.kts` signs with them when present, else the debug key.
+    `build-apk.ps1 -Bundle` also builds `ApiScout.aab` for Play. A phone with a debug-signed build must uninstall
+    it first (export your data before, import after).
+  - Play screenshots redone with the 1.5 look (`store/`).
 
 ## One source of truth
 
@@ -112,7 +127,7 @@ Keys policy is the desktop's: only demo keys the providers print in their own do
 - `lib/knowledge.dart` - loads the rules; categorise, find a key hint, access level; `ApiView` (what the UI shows)
 - `lib/sources.dart` - the five sources, awesome-list table parser, JSON parsers, merge / de-dupe key, isolate entry point
 - `lib/tester.dart` - Try it: send, format, cURL, {key};  `lib/variables.dart` - request variables
-- `lib/docs_scanner.dart` - Scan docs for key info
+- `lib/docs_scanner.dart` - Scan docs for key info;  `lib/openapi.dart` - find and read an OpenAPI / Swagger spec
 - `lib/insight.dart`, `insight_page.dart` - More about this API
 - `lib/user_data.dart` - favourites/tags/notes/collections, the desktop export format and its encryption (pointycastle)
 - `lib/vault.dart` - My key storage (Android keystore)
@@ -130,9 +145,12 @@ Keys policy is the desktop's: only demo keys the providers print in their own do
 powershell -ExecutionPolicy Bypass -File C:\Claude\ApiScoutMobile\build-apk.ps1        # -> ApiScout.apk
 ```
 
-Flutter 3.47 is in `C:\Claude\tools\flutter` (not on PATH; the script sets everything). The APK is signed with the
-debug key - fine for installing on your own phone (allow "install unknown apps"), not for the Play Store.
-App id `com.kramn.apiscout_mobile`.
+Flutter 3.47 is in `C:\Claude\tools\flutter` (not on PATH; the script sets everything). App id `com.kramn.apiscout_mobile`.
 
-Not in this version (desktop only): saved test requests, C# generation, OpenAPI spec reading,
-compare, what changed, link check, drag-to-reorder and Test all for collections.
+Signing: run `make-release-key.ps1` once (it writes `android/keystore/apiscout-release.jks` and `android/key.properties`,
+both kept out of git - back them up, a lost key cannot be replaced for the same app on Play). With those present the
+APK and the bundle are release-signed; without them the debug key is used, which is fine for your own phone (allow
+"install unknown apps") but not for Play. `build-apk.ps1 -Bundle` adds `ApiScout.aab`, the file Play takes; the
+listing text and images are in `store/`.
+
+Not in this version (desktop only): C# generation, compare, link check, drag-to-reorder and Test all for collections.

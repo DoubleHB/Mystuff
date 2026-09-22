@@ -44,6 +44,38 @@ class UserData {
   }
 }
 
+/// A Try it request edited away from the suggested one, remembered per API - the desktop's ApiTestRequest, with its
+/// JSON names. A header may hold a token, so on the phone it is sealed like the history, and in an export it travels
+/// only inside the encrypted part.
+class TestRequest {
+  final String method, url, headers, body;
+  const TestRequest(this.method, this.url, this.headers, this.body);
+
+  Map<String, dynamic> toJson() => {'Method': method, 'Url': url, 'Headers': headers, 'Body': body};
+
+  /// The desktop's names or this app's; null without a URL.
+  static TestRequest? fromJson(dynamic j) {
+    if (j is! Map) return null;
+    String s(String a, String b) => j[a] is String ? j[a] as String : j[b] is String ? j[b] as String : '';
+    final url = s('Url', 'url').trim();
+    if (url.isEmpty) return null;
+    final method = s('Method', 'method').trim().toUpperCase();
+    return TestRequest(method.isEmpty ? 'GET' : method, url, s('Headers', 'headers'), s('Body', 'body'));
+  }
+
+  bool sameAs(TestRequest o) => method == o.method && url == o.url && headers == o.headers && body == o.body;
+}
+
+Map<String, TestRequest> testRequestsFromJson(dynamic j) {
+  if (j is! Map) return {};
+  final out = <String, TestRequest>{};
+  for (final e in j.entries) {
+    final r = TestRequest.fromJson(e.value);
+    if (e.key is String && r != null) out[e.key as String] = r;
+  }
+  return out;
+}
+
 List<String> _strings(dynamic v) => v is List ? [for (final s in v) if (s is String && s.isNotEmpty) s] : [];
 Map<String, List<String>> _lists(dynamic v) => v is Map ? {for (final e in v.entries) if (e.key is String && e.value is List) e.key as String: _strings(e.value)} : {};
 Map<String, Map<String, String>> _maps(dynamic v) => v is Map ? {for (final e in v.entries) if (e.key is String && e.value is Map) e.key as String: _texts(e.value)} : {};
@@ -120,9 +152,9 @@ class BackupFile {
   /// The saved keys inside the file (catalogue key → API key).
   Map<String, String> openKeys(String passphrase) => openSecrets(passphrase).$1;
 
-  /// Keys and request variables inside the file. Slow on purpose (key stretching): call it through compute().
-  (Map<String, String>, Map<String, Map<String, String>>) openSecrets(String passphrase) {
-    if (!hasSecrets) return ({}, {});
+  /// Keys, request variables and saved test requests inside the file. Slow on purpose (key stretching): call it through compute().
+  (Map<String, String>, Map<String, Map<String, String>>, Map<String, TestRequest>) openSecrets(String passphrase) {
+    if (!hasSecrets) return ({}, {}, {});
     final Uint8List sealed, saltBytes;
     try {
       sealed = base64Decode(secrets!);
@@ -139,11 +171,12 @@ class BackupFile {
       j = null;
     }
     if (j is! Map) throw BackupFormatException('The encrypted part of the file opened, but what is inside is not ApiScout data.');
-    return (_texts(j['MyKeys'])..removeWhere((_, v) => v.isEmpty), _maps(j['Variables']));
+    return (_texts(j['MyKeys'])..removeWhere((_, v) => v.isEmpty), _maps(j['Variables']), testRequestsFromJson(j['TestRequests']));
   }
 
-  /// A file the desktop app's Import reads. [keys] and the request variables go in only with a passphrase.
-  static String write(UserData data, {Map<String, String> keys = const {}, String? passphrase, int iterations = defaultIterations, DateTime? now, Random? random}) {
+  /// A file the desktop app's Import reads. [keys], the request variables and the saved test [requests] go in only with a passphrase.
+  static String write(UserData data,
+      {Map<String, String> keys = const {}, Map<String, TestRequest> requests = const {}, String? passphrase, int iterations = defaultIterations, DateTime? now, Random? random}) {
     final j = <String, dynamic>{
       'App': 'ApiScout',
       'Version': 1,
@@ -157,14 +190,14 @@ class BackupFile {
       'Iterations': 0,
       'SecretCount': 0,
     };
-    if (passphrase != null && passphrase.isNotEmpty && (keys.isNotEmpty || data.variables.isNotEmpty)) {
+    if (passphrase != null && passphrase.isNotEmpty && (keys.isNotEmpty || data.variables.isNotEmpty || requests.isNotEmpty)) {
       final rnd = random ?? Random.secure();
       Uint8List bytes(int n) => Uint8List.fromList([for (var i = 0; i < n; i++) rnd.nextInt(256)]);
       final saltBytes = bytes(16);
-      final plain = utf8.encode(jsonEncode({'MyKeys': keys, 'TestRequests': <String, dynamic>{}, 'Variables': data.variables}));
+      final plain = utf8.encode(jsonEncode({'MyKeys': keys, 'TestRequests': {for (final e in requests.entries) e.key: e.value.toJson()}, 'Variables': data.variables}));
       j['Salt'] = base64Encode(saltBytes);
       j['Iterations'] = iterations;
-      j['SecretCount'] = keys.length;
+      j['SecretCount'] = keys.length + requests.length; // the desktop's count: keys and saved requests
       j['Secrets'] = base64Encode(_seal(Uint8List.fromList(plain), passphrase, saltBytes, iterations, bytes(12)));
     }
     return const JsonEncoder.withIndent('  ').convert(j);
@@ -284,21 +317,21 @@ Uint8List _open(Uint8List sealed, String passphrase, Uint8List salt, int iterati
 
 /// compute() entry points: key stretching takes seconds on a phone.
 Map<String, dynamic> openSecretsIsolate(Map<String, String> args) {
-  final (keys, variables) = BackupFile.read(args['json']!).openSecrets(args['passphrase']!);
-  return {'keys': keys, 'variables': variables};
+  final (keys, variables, requests) = BackupFile.read(args['json']!).openSecrets(args['passphrase']!);
+  return {'keys': keys, 'variables': variables, 'requests': {for (final e in requests.entries) e.key: e.value.toJson()}};
 }
 String writeBackupIsolate(Map<String, dynamic> args) => BackupFile.write(UserData.fromJson((args['data'] as Map).cast<String, dynamic>()),
-    keys: (args['keys'] as Map).cast<String, String>(), passphrase: args['passphrase'] as String?);
+    keys: (args['keys'] as Map).cast<String, String>(), requests: testRequestsFromJson(args['requests']), passphrase: args['passphrase'] as String?);
 
 class ImportSummary {
-  int favourites = 0, tagged = 0, notes = 0, keys = 0, variables = 0, keptLocal = 0, collectionEntries = 0, notInCatalogue = 0;
+  int favourites = 0, tagged = 0, notes = 0, keys = 0, variables = 0, requests = 0, keptLocal = 0, collectionEntries = 0, notInCatalogue = 0;
   bool secretsSkipped = false;
 
   @override
   String toString() => '${collectionEntries > 0 ? '$collectionEntries collection entr${collectionEntries == 1 ? 'y' : 'ies'} added. ' : ''}'
-      'Imported $favourites favourite(s), tags for $tagged API(s), $notes note(s), $keys key(s) and $variables request variable(s).'
+      'Imported $favourites favourite(s), tags for $tagged API(s), $notes note(s), $keys key(s), $variables request variable(s) and $requests saved test request(s).'
       '${keptLocal > 0 ? ' $keptLocal item(s) already on this phone were kept as they are.' : ''}'
-      '${secretsSkipped ? ' The saved keys and variables in the file were skipped (no passphrase given).' : ''}'
+      '${secretsSkipped ? ' The saved keys, variables and test requests in the file were skipped (no passphrase given).' : ''}'
       '${notInCatalogue > 0 ? ' $notInCatalogue of them are not in this phone\'s catalogue yet - scan to see them.' : ''}';
 }
 

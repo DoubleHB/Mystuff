@@ -12,6 +12,7 @@ import 'package:apiscout_mobile/json_tree.dart';
 import 'package:apiscout_mobile/knowledge.dart';
 import 'package:apiscout_mobile/links.dart';
 import 'package:apiscout_mobile/models.dart';
+import 'package:apiscout_mobile/openapi.dart';
 import 'package:apiscout_mobile/search.dart';
 import 'package:apiscout_mobile/sources.dart';
 import 'package:apiscout_mobile/tester.dart';
@@ -262,6 +263,7 @@ API | Description | Auth | HTTPS | CORS |
     print('310,000 rounds of key stretching took ${watch.elapsedMilliseconds} ms here');
     expect(keys, {'url:api.nasa.gov': 'nasa-Key+with/odd=chars&42', 'url:openweathermap.org/api': '0123456789abcdef0123456789abcdef'});
     expect(file.openSecrets('correct horse 42').$2, {'url:api.nasa.gov': {'date': '2024-01-01', 'City': 'New York'}});
+    expect(file.openSecrets('correct horse 42').$3, isEmpty); // the fixture has no saved test requests
     final phone = UserData()..variables = {'url:api.nasa.gov': {'city': 'Paris'}};
     expect(mergeVariables(phone, file.openSecrets('correct horse 42').$2), 1); // "City" is already set here (whatever the case): it stays
     expect(phone.variables['url:api.nasa.gov'], {'city': 'Paris', 'date': '2024-01-01'});
@@ -300,7 +302,10 @@ API | Description | Auth | HTTPS | CORS |
     expect(back.data.collections, mine.collections);
     if (Platform.environment['APISCOUT_PHONE_EXPORT'] case final out?) {
       // build-apk.ps1 hands this file to the desktop app's real import, to prove the other direction
-      File(out).writeAsStringSync(BackupFile.write(mine..variables = {'url:api.nasa.gov': {'rover': 'curiosity'}}, keys: {'url:api.nasa.gov': 'phone-Key+/=&1'}, passphrase: 'from the phone'));
+      File(out).writeAsStringSync(BackupFile.write(mine..variables = {'url:api.nasa.gov': {'rover': 'curiosity'}},
+          keys: {'url:api.nasa.gov': 'phone-Key+/=&1'},
+          requests: {'url:api.nasa.gov': const TestRequest('GET', 'https://api.nasa.gov/planetary/apod?api_key={key}&date={today}', '', '')},
+          passphrase: 'from the phone'));
     }
   });
 
@@ -383,6 +388,78 @@ POST /v1/cats</pre>
     final back = historyFromJson(jsonDecode(utf8.decode(openWithKey(key, sealed)!)));
     expect([back['api']!.single.url, back['api']!.single.ok], ['https://a.example/?k={key}', true]);
     expect(historyFromJson('nonsense'), isEmpty);
+  });
+
+  test('saved test requests: the desktop\'s names, only inside the export secrets, sealed on the phone', () {
+    const r = TestRequest('POST', 'https://a.example/x?k={key}', 'X-Api-Key: {key}', '{"a":1}');
+    expect(r.toJson(), {'Method': 'POST', 'Url': 'https://a.example/x?k={key}', 'Headers': 'X-Api-Key: {key}', 'Body': '{"a":1}'});
+    final read = testRequestsFromJson({'k': r.toJson(), 'noUrl': {'Method': 'GET'}, 'phone': {'method': 'get', 'url': 'https://z.example/'}, 'junk': 3});
+    expect(read.keys, ['k', 'phone']);
+    expect([read['k']!.sameAs(r), read['phone']!.method, read['phone']!.headers], [true, 'GET', '']);
+
+    final clear = BackupFile.write(UserData(), requests: {'k': r}); // no passphrase: the request stays out
+    expect(clear.contains('a.example') || BackupFile.read(clear).hasSecrets, isFalse);
+    final sealed = BackupFile.write(UserData(), requests: {'k': r}, passphrase: 'pp', iterations: 500);
+    expect(sealed.contains('a.example'), isFalse);
+    final back = BackupFile.read(sealed);
+    expect(back.secretCount, 1); // the desktop's count: keys + saved requests
+    expect(back.openSecrets('pp').$3['k']!.toJson(), r.toJson());
+    final s = ImportSummary()..requests = 2;
+    expect(s.toString(), contains('2 saved test request(s)'));
+
+    final key = newSealKey();
+    final json = jsonEncode({'k': r.toJson()});
+    final onDisk = sealWithKey(key, Uint8List.fromList(utf8.encode(json)));
+    expect(utf8.decode(onDisk, allowMalformed: true).contains('a.example'), isFalse);
+    expect(testRequestsFromJson(jsonDecode(utf8.decode(openWithKey(key, onDisk)!)))['k']!.sameAs(r), isTrue);
+  });
+
+  test('OpenAPI: spec links on a docs page, the usual places, and what a JSON or YAML spec says', () {
+    const html = '<a href="/docs/openapi.json">spec</a><script src="/swagger-ui-bundle.js"></script>'
+        '<script>SwaggerUIBundle({url: "https://api.foo.example/v3/api-docs"})</script><a href="/docs/swagger">UI</a><link href="openapi.yaml">';
+    expect(findSpecUrls(html, 'https://foo.example/docs/'), ['https://foo.example/docs/openapi.json', 'https://foo.example/docs/openapi.yaml', 'https://api.foo.example/v3/api-docs']);
+    expect(findSpecUrls('<p>nothing</p>', 'https://foo.example/'), isEmpty);
+    final guesses = guessSpecUrls('https://foo.example/docs/intro', exampleUrl: 'https://api.foo.example/v1/things?key={key}');
+    expect(guesses.first, 'https://foo.example/openapi.json');
+    expect(guesses, contains('https://api.foo.example/openapi.json'));
+    expect(guesses.toSet().length, guesses.length);
+
+    final spec = parseSpec(jsonEncode({
+      'openapi': '3.0.1',
+      'info': {'title': 'Things', 'version': '2'},
+      'servers': [{'url': 'https://api.foo.example/v1/'}],
+      'components': {
+        'securitySchemes': {
+          'ApiKeyAuth': {'type': 'apiKey', 'in': 'header', 'name': 'X-Api-Key'},
+          'OAuth': {'type': 'oauth2', 'flows': {'implicit': {'authorizationUrl': 'https://foo.example/auth'}}},
+        }
+      },
+      'paths': {'/things': {'get': {'summary': 'List things'}}, '/things/{id}': {'get': {}}, '/other': {'post': {}}},
+    }));
+    final r = DocsScanResult('x');
+    readSpec(spec!, 'https://foo.example/docs/openapi.json', r);
+    expect(r.items.map((i) => '${i.kind}|${i.value}'), [
+      'OpenAPI spec|https://foo.example/docs/openapi.json',
+      'Example endpoint|https://api.foo.example/v1/things', // GET, no {parameter}; POST-only and templated paths are left out
+      'Auth scheme|API key in header: X-Api-Key',
+      'Auth scheme|OAuth 2 - authorise at https://foo.example/auth',
+    ]);
+    expect(r.items[0].note, startsWith('Things 2 · 3 paths · OpenAPI 3.0.1'));
+    expect([r.items[1].method, r.items[1].note], ['GET', 'GET - from the OpenAPI spec: List things. Press Try to load it.']);
+    expect(r.summary, 'Found 1 example endpoint(s), an OpenAPI spec, 2 auth scheme(s)');
+
+    // Swagger 2 as YAML
+    final old = parseSpec('swagger: "2.0"\ninfo:\n  title: Old\n  version: "1"\nhost: api.old.example\nbasePath: /v2\nschemes: [http, https]\n'
+        'paths:\n  /pets:\n    get:\n      summary: Pets\n  /pets/{id}:\n    get: {}\nsecurityDefinitions:\n  key:\n    type: apiKey\n    in: query\n    name: api_key\n');
+    final r2 = DocsScanResult('x');
+    readSpec(old!, 'https://api.old.example/swagger.yaml', r2);
+    expect(r2.items.map((i) => i.value), ['https://api.old.example/swagger.yaml', 'https://api.old.example/v2/pets', 'API key in query: api_key']);
+    expect(r2.items.last.note, "From the OpenAPI spec ('key')");
+
+    final open = DocsScanResult('x');
+    readSpec(parseSpec('{"openapi":"3.1.0","paths":{}}')!, 'u', open);
+    expect(open.items.map((i) => i.value), ['u', 'None declared']);
+    expect([parseSpec('<html>'), parseSpec('{"not": "a spec"}'), parseSpec('title: just yaml\n'), parseSpec('')], [null, null, null, null]);
   });
 
   test('more about this API: benefits, HTML and README reading', () {

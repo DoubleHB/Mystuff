@@ -1,4 +1,4 @@
-# ApiScout - Google Play listing (version 1.2)
+# ApiScout - Google Play listing (version 1.5)
 
 Everything below is ready to paste into the Play Console. Character limits are Google's: app name 30,
 short description 80, full description 4,000. Counts are given so you can trim with confidence.
@@ -28,13 +28,16 @@ WHAT YOU GET FOR EACH API
 - "More about this API": what the known facts mean for you, then a summary and feature list read from the provider's docs page. Nothing is invented; if the page says little, the app says so.
 
 SCAN THE DOCS FOR KEY INFO
-Ask ApiScout to read an API's documentation page and the pricing page it links to. It pulls out sign-up links, sample keys and placeholders, example endpoints, and the sentences about free tiers and rate limits - all from the provider's own site. Press "Try" on any endpoint it finds to send it immediately.
+Ask ApiScout to read an API's documentation page, the OpenAPI spec it points to, and the pricing page it links to. It pulls out sign-up links, sample keys and placeholders, example endpoints, auth schemes, and the sentences about free tiers and rate limits - all from the provider's own site. Press "Try" on any endpoint it finds to send it immediately.
 
 TRY IT
-Send GET, POST, PUT, PATCH or DELETE requests with headers and a body, and read the pretty-printed JSON reply. Write {key} anywhere in a request and your saved key is filled in only at the moment of sending - it never appears in what you copy. Request variables ({name} = value, plus {today}, {now}, {timestamp} and more) make requests reusable, and the last 8 requests per API are kept with their responses so you can load one back with a tap. Copy any request as cURL.
+Send GET, POST, PUT, PATCH or DELETE requests with headers and a body, and read the reply as a searchable, folding JSON tree. Auth presets write the usual Bearer, X-Api-Key, ?api_key= or RapidAPI lines for you. Write {key} anywhere in a request and your saved key is filled in only at the moment of sending - it never appears in what you copy. Request variables ({name} = value, plus {today}, {now}, {timestamp} and more) make requests reusable; a request you change is remembered for that API, and the last 8 requests per API are kept with their responses so you can load one back with a tap. Copy any request as cURL.
 
 ORGANISE
-Search by name, description, category or URL. Filter by what you need before calling (no key, API key, OAuth), how much is free, HTTPS and CORS. Star favourites, add tags and notes, and group APIs into collections that appear in the category drawer. An API of the day shows one API you can try today with no key.
+Search by name, description, category or URL - a typo is forgiven, and recent searches wait under the box. An A-Z rail jumps through long lists. Filter by what you need before calling (no key, API key, OAuth), how much is free, HTTPS and CORS. Star favourites, add tags and notes, and group APIs into collections that appear in the category drawer. An API of the day shows one API you can try today with no key - as a 9:00 notification too, if you want it.
+
+STAYS FRESH
+Rescan weekly on Wi-Fi while the app is closed, and see what changed - new APIs, ones no longer listed, changed auth - the next time you open it. Share any API to a chat or a note; the link at the end opens it in ApiScout.
 
 YOUR KEYS STAY YOURS
 Keys you save are encrypted under the Android keystore and stay on this phone. They are excluded from Android's cloud backup. Request history is encrypted the same way, and keys are never written to it.
@@ -61,9 +64,11 @@ ALSO
 - Data shared with third parties: none by the app itself. Requests you send in "Try it" go to whichever API you
   choose; the directory scans go to the five directory sites; "More about" and "Scan docs" fetch the provider's own docs and pricing pages.
 - Data stored on the device: catalogue, favourites, tags, notes, collections, request variables and docs-scan results in the app's private
-  storage; saved API keys in the Android keystore (flutter_secure_storage); request history encrypted with a keystore-held key.
+  storage; saved API keys in the Android keystore (flutter_secure_storage); request history and saved test requests encrypted with a keystore-held key.
 - Data can be exported by the user to a file; secrets in that file are encrypted with the user's passphrase.
-- Permissions: INTERNET only. No location, contacts, camera or storage permissions (the import/export file picker uses the system picker).
+- Permissions: INTERNET, POST_NOTIFICATIONS (the optional "API of the day" notification; Android asks) and RECEIVE_BOOT_COMPLETED (so
+  those notifications survive a reboot). No location, contacts, camera or storage permissions (the import/export file picker uses the
+  system picker). The optional weekly rescan uses WorkManager on an unmetered network only.
 - Data deletion: uninstalling the app removes everything, since allowBackup is off.
 
 ## Privacy policy (Play requires a URL for every app)
@@ -86,10 +91,12 @@ Suggested text to host on a page and link from the listing:
 
 ## Before you upload - things Play will insist on
 
-1. **Release signing.** ApiScout.apk is signed with the debug key. Play needs a release key: create one with
-   `keytool`, put its details in `android/key.properties`, reference it from `android/app/build.gradle.kts`, and build.
-2. **App bundle, not APK.** New apps must be uploaded as an `.aab`: `flutter build appbundle --release`.
+1. **Release signing.** Done in 1.5: `make-release-key.ps1` made `android/keystore/apiscout-release.jks` and
+   `android/key.properties` (neither in git). Back both up. Play App Signing will treat this as the upload key.
+2. **App bundle, not APK.** `ApiScout.aab` is what you upload (`build-apk.ps1 -Bundle`, or `flutter build appbundle --release`).
 3. **Application id.** The bundle uses `com.kramn.apiscout_mobile`. It cannot be changed after the first upload.
 4. **Third-party logos.** The screenshots show provider logos (NASA, GitHub, TheCocktailDB) that the app loads from the
    providers' own sites. This is normal for a directory app, but you can pick screenshots without them if you prefer.
-5. The "3,591" in the first caption is today's count. Update it, or make it "3,500+", if the catalogue grows before release.
+5. The "3,592" in the first caption is today's count. Update it, or make it "3,500+", if the catalogue grows before release.
+6. **Phones with the old sideloaded build.** Those were debug-signed; a release-signed build will not install over them.
+   Export data in the app first, uninstall, install, import.
