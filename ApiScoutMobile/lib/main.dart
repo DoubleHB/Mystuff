@@ -1,0 +1,865 @@
+import 'dart:convert';
+
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderAbstractViewport, RenderSliver;
+import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:workmanager/workmanager.dart';
+
+import 'app_state.dart';
+import 'az_rail.dart';
+import 'background.dart';
+import 'changes_page.dart';
+import 'detail_page.dart';
+import 'knowledge.dart';
+import 'links.dart';
+import 'notify.dart';
+import 'user_data.dart';
+import 'widgets.dart';
+
+final state = AppState();
+
+/// The app's navigator, for pages opened from outside a screen: a notification tap or an apiscout:// link.
+final appNavigator = GlobalKey<NavigatorState>();
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  // edge to edge: the list scrolls under transparent system bars; the pages add the insets back themselves
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  try {
+    await Workmanager().initialize(backgroundDispatcher);
+  } catch (_) {
+    // no WorkManager (a test host, say): the weekly rescan setting simply cannot be turned on
+  }
+  await DailyNotice.init(openApiByKey);
+  await state.load();
+  runApp(const ApiScoutApp());
+  final fromNotification = await DailyNotice.launchedWith();
+  if (fromNotification != null) WidgetsBinding.instance.addPostFrameCallback((_) => openApiByKey(fromNotification));
+}
+
+/// Opens the detail page for a catalogue key, or a note that the catalogue does not have it (yet).
+void openApiByKey(String key) {
+  final nav = appNavigator.currentState;
+  if (nav == null) return;
+  FocusManager.instance.primaryFocus?.unfocus();
+  final v = state.find(key);
+  nav.push(MaterialPageRoute(builder: (_) => v == null ? MissingApiPage(apiKey: key) : DetailPage(view: v)));
+}
+
+/// A link or notification pointed at an API the phone's catalogue does not hold.
+class MissingApiPage extends StatelessWidget {
+  final String apiKey;
+  const MissingApiPage({super.key, required this.apiKey});
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(toolbarHeight: 48),
+        body: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Not in this phone\'s catalogue', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, letterSpacing: -0.4)),
+            const SizedBox(height: 10),
+            Text('The link points at "$apiKey". ${state.all.isEmpty ? 'Scan first, then open the link again.' : 'It is not in the last scan on this phone - scan again, or search for it by name.'}', style: const TextStyle(height: 1.45)),
+            const SizedBox(height: 20),
+            FilledButton.icon(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  state.scan();
+                },
+                icon: const Icon(Icons.refresh),
+                label: const Text('Scan the internet')),
+          ]),
+        ),
+      );
+}
+
+/// The ledger look: one ink, one hairline, one accent (the teal of the icon), and colour only where it means something.
+ThemeData ledgerTheme(Brightness brightness) {
+  final dark = brightness == Brightness.dark;
+  final ink = dark ? const Color(0xFFE8ECF1) : const Color(0xFF111418);
+  final ground = dark ? const Color(0xFF0F1114) : Colors.white;
+  final line = dark ? const Color(0xFF262B33) : const Color(0xFFE3E7EC);
+  final muted = dark ? const Color(0xFF98A2B0) : const Color(0xFF6B7480);
+  final tint = dark ? const Color(0xFF181C22) : const Color(0xFFF3F5F7);
+  final accent = dark ? const Color(0xFF3ECDB8) : const Color(0xFF158F82);
+  final scheme = ColorScheme.fromSeed(seedColor: accent, brightness: brightness).copyWith(
+    primary: accent,
+    onPrimary: dark ? const Color(0xFF0F1114) : Colors.white,
+    surface: ground,
+    onSurface: ink,
+    onSurfaceVariant: muted,
+    outline: muted,
+    outlineVariant: line,
+    surfaceContainerLowest: ground,
+    surfaceContainerLow: ground,
+    surfaceContainer: ground,
+    surfaceContainerHigh: tint,
+    surfaceContainerHighest: tint,
+    secondaryContainer: tint,
+    onSecondaryContainer: ink,
+    surfaceTint: Colors.transparent,
+  );
+  final overlay = SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    statusBarIconBrightness: dark ? Brightness.light : Brightness.dark,
+    systemNavigationBarColor: Colors.transparent,
+    systemNavigationBarIconBrightness: dark ? Brightness.light : Brightness.dark,
+    systemNavigationBarContrastEnforced: false,
+  );
+  const bold = TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w700);
+  return ThemeData(
+    useMaterial3: true,
+    colorScheme: scheme,
+    fontFamily: 'Manrope',
+    scaffoldBackgroundColor: ground,
+    splashFactory: InkSparkle.splashFactory,
+    appBarTheme: AppBarTheme(backgroundColor: ground, foregroundColor: ink, elevation: 0, scrolledUnderElevation: 0, surfaceTintColor: Colors.transparent, systemOverlayStyle: overlay),
+    dividerTheme: DividerThemeData(color: line, thickness: 1, space: 1),
+    cardTheme: CardThemeData(color: ground, elevation: 0, surfaceTintColor: Colors.transparent, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6), side: BorderSide(color: line))),
+    filledButtonTheme: FilledButtonThemeData(style: FilledButton.styleFrom(backgroundColor: ink, foregroundColor: ground, shape: const StadiumBorder(), textStyle: bold)),
+    outlinedButtonTheme: OutlinedButtonThemeData(style: OutlinedButton.styleFrom(foregroundColor: ink, side: BorderSide(color: ink, width: 1.5), shape: const StadiumBorder(), textStyle: bold)),
+    textButtonTheme: TextButtonThemeData(style: TextButton.styleFrom(foregroundColor: accent, textStyle: bold)),
+    chipTheme: ChipThemeData(
+      backgroundColor: ground,
+      selectedColor: ink,
+      checkmarkColor: ground,
+      side: BorderSide(color: line),
+      shape: const StadiumBorder(),
+      labelStyle: TextStyle(fontFamily: 'Manrope', fontWeight: FontWeight.w600, fontSize: 12.5, color: WidgetStateColor.resolveWith((s) => s.contains(WidgetState.selected) ? ground : ink)),
+    ),
+    inputDecorationTheme: InputDecorationTheme(
+      isDense: true,
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(4), borderSide: BorderSide(color: line)),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(4), borderSide: BorderSide(color: line)),
+      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(4), borderSide: BorderSide(color: ink, width: 1.5)),
+      labelStyle: TextStyle(color: muted),
+      helperStyle: TextStyle(color: muted, fontSize: 11),
+    ),
+    snackBarTheme: SnackBarThemeData(behavior: SnackBarBehavior.floating, backgroundColor: ink, contentTextStyle: TextStyle(fontFamily: 'Manrope', color: ground, fontWeight: FontWeight.w600)),
+    tabBarTheme: TabBarThemeData(labelColor: ink, unselectedLabelColor: muted, indicatorColor: ink, indicatorSize: TabBarIndicatorSize.label, dividerColor: line, labelStyle: bold.copyWith(fontSize: 13), unselectedLabelStyle: bold.copyWith(fontSize: 13, fontWeight: FontWeight.w600)),
+    listTileTheme: ListTileThemeData(selectedColor: ink, selectedTileColor: tint),
+    drawerTheme: DrawerThemeData(backgroundColor: ground, surfaceTintColor: Colors.transparent, shape: const RoundedRectangleBorder()),
+    bottomSheetTheme: BottomSheetThemeData(backgroundColor: ground, surfaceTintColor: Colors.transparent),
+    dialogTheme: DialogThemeData(backgroundColor: ground, surfaceTintColor: Colors.transparent),
+    popupMenuTheme: PopupMenuThemeData(color: ground, surfaceTintColor: Colors.transparent),
+    progressIndicatorTheme: ProgressIndicatorThemeData(color: accent, linearTrackColor: tint),
+    switchTheme: SwitchThemeData(thumbColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? ground : muted), trackColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? ink : tint)),
+  );
+}
+
+class ApiScoutApp extends StatelessWidget {
+  const ApiScoutApp({super.key});
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+        listenable: state,
+        builder: (context, _) => MaterialApp(
+          title: 'ApiScout',
+          debugShowCheckedModeBanner: false,
+          navigatorKey: appNavigator,
+          // apiscout://open/api/<key> arrives as the route "/api/<key>", at start-up or while the app is running
+          onGenerateRoute: (settings) {
+            final key = apiKeyFromRoute(settings.name);
+            if (key == null) return null;
+            final v = state.find(key);
+            return MaterialPageRoute(settings: settings, builder: (_) => v == null ? MissingApiPage(apiKey: key) : DetailPage(view: v));
+          },
+          onUnknownRoute: (settings) => MaterialPageRoute(settings: settings, builder: (_) => const HomePage()),
+          theme: ledgerTheme(Brightness.light),
+          darkTheme: ledgerTheme(Brightness.dark),
+          themeMode: switch (state.theme) {
+            ThemeModeSetting.light => ThemeMode.light,
+            ThemeModeSetting.dark => ThemeMode.dark,
+            ThemeModeSetting.system => ThemeMode.system,
+          },
+          home: const HomePage(),
+        ),
+      );
+}
+
+/// The search box must not take the focus (and the keyboard) back when the detail page closes.
+void openDetail(BuildContext context, ApiView v) {
+  FocusManager.instance.primaryFocus?.unfocus();
+  Navigator.of(context).push(MaterialPageRoute(builder: (_) => DetailPage(view: v)));
+}
+
+Future<void> copyText(BuildContext context, String text, String label) async {
+  if (text.isEmpty) return;
+  await Clipboard.setData(ClipboardData(text: text));
+  if (!context.mounted) return;
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text('✓ $label copied'), duration: const Duration(seconds: 2)));
+}
+
+Future<void> openUrl(BuildContext context, String? url) async {
+  final uri = Uri.tryParse(url ?? '');
+  if (uri == null || !(uri.scheme == 'http' || uri.scheme == 'https')) return;
+  final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+  if (!ok && context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not open the browser')));
+}
+
+/// "★ Favourites" → "Favourites", "📁 Side projects" → "Side projects": the headline carries the name, not the marker.
+String plainCategory(String category) => category == allCategory ? 'All APIs' : category.replaceFirst(RegExp(r'^[^\p{L}\p{N}]+', unicode: true), '');
+
+class HomePage extends StatefulWidget {
+  const HomePage({super.key});
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  final _search = TextEditingController();
+  final _searchFocus = FocusNode();
+  final _list = ScrollController();
+  int _listVersion = 0;
+  double _rowExtent = 76;
+
+  // the A-Z rail: which row each initial starts at (for the rows list it was built from), the sliver that holds the
+  // rows (its preceding scroll extent = header + API of the day, whatever they measure), and the initial at the top
+  final _rowsKey = GlobalKey();
+  List<ApiView> _railRows = const [];
+  List<(String, int)> _railFirst = const [];
+  final _atLetter = ValueNotifier<String?>(null);
+
+  @override
+  void initState() {
+    super.initState();
+    _list.addListener(_onScroll);
+    _searchFocus.addListener(() => setState(() {})); // the recent searches show while the box is focused and empty
+  }
+
+  @override
+  void dispose() {
+    _search.dispose();
+    _searchFocus.dispose();
+    _list.dispose();
+    _atLetter.dispose();
+    super.dispose();
+  }
+
+  bool get _showRecent => _searchFocus.hasFocus && _search.text.trim().isEmpty && state.recentSearches.isNotEmpty;
+
+  void _useRecent(String term) {
+    _search.text = term;
+    state.setSearch(term);
+    state.rememberSearch(term);
+    _searchFocus.unfocus();
+  }
+
+  /// A rail is worth having for a long list in name order - not for a collection, which keeps the order it was built in.
+  bool get _showRail => state.rows.length >= 40 && !state.category.startsWith(collectionPrefix);
+
+  List<(String, int)> get _letters {
+    if (!identical(_railRows, state.rows)) {
+      _railRows = state.rows;
+      _railFirst = firstIndexByInitial([for (final v in state.rows) v.name]);
+    }
+    return _railFirst;
+  }
+
+  double get _rowsBase {
+    final r = _rowsKey.currentContext?.findRenderObject();
+    if (r is! RenderSliver || !r.attached || r.geometry == null) return 0;
+    // the scroll offset that puts the rows sliver at the top = everything before it, at whatever height it measured
+    return RenderAbstractViewport.maybeOf(r)?.getOffsetToReveal(r, 0).offset ?? 0;
+  }
+
+  void _onScroll() {
+    if (!_list.hasClients || !_showRail) {
+      _atLetter.value = null;
+      return;
+    }
+    // the list runs edge to edge, so the first row the eye sees starts below the status bar
+    final i = ((_list.offset + _topInset - _rowsBase) / _rowExtent).floor().clamp(0, state.rows.length - 1);
+    _atLetter.value = initialOf(state.rows[i].name);
+  }
+
+  double get _topInset => MediaQuery.viewPaddingOf(context).top;
+
+  void _jumpToLetter(String letter) {
+    if (!_list.hasClients) return;
+    for (final (l, i) in _letters) {
+      if (l != letter) continue;
+      _list.jumpTo((_rowsBase + i * _rowExtent - _topInset).clamp(0.0, _list.position.maxScrollExtent));
+      return;
+    }
+  }
+
+  String get _subtitle {
+    if (state.busy || state.all.isEmpty) return state.status;
+    final t = state.scannedAt;
+    final when = t == null ? '' : '  ·  scanned ${t.day}/${t.month}/${t.year}';
+    return '${state.rows.length} of ${state.all.length} APIs$when';
+  }
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+        listenable: state,
+        builder: (context, _) {
+          final scheme = Theme.of(context).colorScheme;
+          if (_listVersion != state.listVersion) {
+            // a new category, search, tag or filter: start the new list from the top, not wherever the old one was
+            _listVersion = state.listVersion;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (_list.hasClients && _list.offset > 0) _list.jumpTo(0);
+            });
+          }
+          final showChips = state.all.isNotEmpty;
+          final showRail = _showRail;
+          final showRecent = _showRecent;
+          if (showRail) WidgetsBinding.instance.addPostFrameCallback((_) => _onScroll());
+          // everything in the header is text, so the header grows with the phone's text size
+          final ts = MediaQuery.textScalerOf(context).scale(10) / 10;
+          final toolbarH = 20 + 46 * ts, searchH = 8 + 46 * ts, chipsH = 44 * ts, recentH = 40 * ts;
+          final headerH = toolbarH + searchH + (showChips ? chipsH : 0) + (showRecent ? recentH : 0) + (state.busy ? 3 : 0);
+          _rowExtent = rowExtentFor(context);
+          return Scaffold(
+            drawer: const CategoryDrawer(),
+            body: Stack(children: [
+              CustomScrollView(
+                controller: _list,
+                slivers: [
+                  // floating + snap: the header slides away as the list scrolls and comes back on a flick up
+                  SliverAppBar(
+                    floating: true,
+                    snap: true,
+                    toolbarHeight: toolbarH,
+                    titleSpacing: 0,
+                    title: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                      Text(plainCategory(state.category), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: -0.6, height: 1.1)),
+                      const SizedBox(height: 3),
+                      Text(_subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: scheme.onSurfaceVariant)),
+                    ]),
+                    actions: [
+                      IconButton(tooltip: 'Scan the internet', icon: const Icon(Icons.refresh), onPressed: state.busy ? null : state.scan),
+                      PopupMenuButton<String>(
+                        onSelected: (v) {
+                          if (v == 'about') {
+                            showAbout(context);
+                          } else if (v == 'import') {
+                            importFromFile(context);
+                          } else if (v == 'export') {
+                            exportToFile(context);
+                          } else if (v == 'notice') {
+                            state.setDailyNotice(!state.dailyNotice);
+                          } else if (v == 'weekly') {
+                            state.setWeeklyRescan(!state.weeklyRescan);
+                          } else if (v == 'changes') {
+                            Navigator.of(context).push(MaterialPageRoute(builder: (_) => ChangesPage(diff: state.changes!)));
+                          } else {
+                            state.setTheme(ThemeModeSetting.values.byName(v));
+                          }
+                        },
+                        itemBuilder: (_) => [
+                          for (final t in ThemeModeSetting.values)
+                            CheckedPopupMenuItem(value: t.name, checked: state.theme == t, child: Text('Theme: ${t.name}')),
+                          const PopupMenuDivider(),
+                          CheckedPopupMenuItem(value: 'notice', checked: state.dailyNotice, child: const Text('API of the day at 9:00 (notification)')),
+                          CheckedPopupMenuItem(value: 'weekly', checked: state.weeklyRescan, child: const Text('Rescan weekly on Wi-Fi')),
+                          PopupMenuItem(value: 'changes', enabled: state.changes != null, child: const Text('What the last scan changed…')),
+                          const PopupMenuDivider(),
+                          const PopupMenuItem(value: 'import', child: Text('Import from the desktop app…')),
+                          const PopupMenuItem(value: 'export', child: Text('Export my data…')),
+                          const PopupMenuDivider(),
+                          const PopupMenuItem(value: 'about', child: Text('About')),
+                        ],
+                      ),
+                    ],
+                    bottom: PreferredSize(
+                      preferredSize: Size.fromHeight(headerH - toolbarH),
+                      child: Column(children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                          child: SizedBox(
+                            height: 46 * ts,
+                            child: TextField(
+                              controller: _search,
+                              focusNode: _searchFocus,
+                              onChanged: state.setSearch,
+                              onSubmitted: state.rememberSearch,
+                              textInputAction: TextInputAction.search,
+                              style: const TextStyle(fontSize: 15),
+                              decoration: InputDecoration(
+                                hintText: 'Search name, description, category or URL',
+                                hintStyle: TextStyle(color: scheme.onSurfaceVariant, fontSize: 14.5),
+                                prefixIcon: const Icon(Icons.search, size: 22),
+                                prefixIconConstraints: const BoxConstraints(minWidth: 34),
+                                suffixIcon: _search.text.isEmpty
+                                    ? null
+                                    : IconButton(
+                                        icon: const Icon(Icons.close, size: 20),
+                                        tooltip: 'Clear the search',
+                                        onPressed: () {
+                                          _search.clear();
+                                          state.setSearch('');
+                                        }),
+                                suffixIconConstraints: const BoxConstraints(minWidth: 34),
+                                contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                                border: UnderlineInputBorder(borderSide: BorderSide(color: scheme.onSurface, width: 1.5)),
+                                enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: scheme.onSurface, width: 1.5)),
+                                focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: scheme.primary, width: 2)),
+                              ),
+                            ),
+                          ),
+                        ),
+                        if (showRecent)
+                          SizedBox(
+                            height: recentH,
+                            child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 12), children: [
+                              for (final r in state.recentSearches)
+                                FilterPill(r, icon: Icons.history, onTap: () => _useRecent(r), onLongPress: () => state.forgetSearch(r)),
+                              if (state.recentSearches.isNotEmpty) FilterPill('Forget all', onTap: state.clearRecentSearches),
+                            ]),
+                          ),
+                        if (showChips) SizedBox(height: chipsH, child: _filterBar(context)),
+                        if (state.busy) LinearProgressIndicator(minHeight: 3, value: state.progress == 0 ? null : state.progress),
+                      ]),
+                    ),
+                  ),
+                  if (state.all.isEmpty)
+                    SliverFillRemaining(hasScrollBody: false, child: state.busy ? const SkeletonRows() : EmptyState(onScan: state.scan))
+                  else if (state.rows.isEmpty)
+                    SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: Center(
+                        child: Column(mainAxisSize: MainAxisSize.min, children: [
+                          const Text('Nothing matches these filters', style: TextStyle(fontWeight: FontWeight.w600)),
+                          const SizedBox(height: 10),
+                          OutlinedButton(
+                              onPressed: () {
+                                _search.clear();
+                                state.clearFilters();
+                              },
+                              child: const Text('Clear filters')),
+                        ]),
+                      ),
+                    )
+                  else ...[
+                    if (state.hasUnseenChanges) const SliverToBoxAdapter(child: ChangesStrip()),
+                    if (state.showApiOfTheDay) const SliverToBoxAdapter(child: ApiOfTheDayCard()),
+                    // fixed-height rows: the rail can then land on row i without ever laying out the rows before it
+                    SliverFixedExtentList.builder(
+                      key: _rowsKey,
+                      itemExtent: _rowExtent,
+                      itemCount: state.rows.length,
+                      itemBuilder: (context, i) {
+                        final v = state.rows[i];
+                        return SwipeActions(
+                          rowKey: ValueKey('row:${v.entry.key}'),
+                          favourite: state.isFavourite(v),
+                          onStar: () => state.toggleFavourite(v),
+                          onCollect: () => addToCollectionFor(context, v),
+                          child: ApiTile(
+                            view: v,
+                            favourite: state.isFavourite(v),
+                            tags: state.tagsOf(v),
+                            hasKey: state.hasKey(v),
+                            rightInset: showRail ? railWidth : 0,
+                            onTap: () {
+                              // a search that led to an API is one worth offering again
+                              if (state.search.trim().isNotEmpty) state.rememberSearch(state.search);
+                              openDetail(context, v);
+                            },
+                            onFavourite: () => state.toggleFavourite(v),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                  SliverPadding(padding: EdgeInsets.only(bottom: 24 + MediaQuery.viewPaddingOf(context).bottom)),
+                ],
+              ),
+              // once the header has floated away the rows would run under the clock: a band in the ground colour
+              Positioned(top: 0, left: 0, right: 0, height: MediaQuery.viewPaddingOf(context).top, child: IgnorePointer(child: ColoredBox(color: scheme.surface))),
+              if (showRail)
+                Positioned(
+                  right: 0,
+                  width: railWidth,
+                  // below the header at its full height, so the letters never sit over the search or the chips
+                  top: MediaQuery.viewPaddingOf(context).top + headerH + 8,
+                  bottom: MediaQuery.viewPaddingOf(context).bottom + 8,
+                  child: AlphabetRail(letters: [for (final (l, _) in _letters) l], current: _atLetter, onLetter: _jumpToLetter),
+                ),
+            ]),
+          );
+        },
+      );
+}
+
+extension on _HomePageState {
+  /// The filters, always in view: category, auth, how much is free, HTTPS, CORS - then the user's tags.
+  Widget _filterBar(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final filtered = state.activeFilterCount > 0 || state.category != allCategory || state.tagFilter != null;
+    return ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 12), children: [
+      // its own Builder: the drawer belongs to the Scaffold below the outer builder's context
+      Builder(builder: (ctx) => FilterPill('${plainCategory(state.category)} ▾', selected: state.category != allCategory, onTap: () => Scaffold.of(ctx).openDrawer())),
+      _menuPill(context, 'Auth', authFilters, state.authFilter, (v) => state.setFilters(auth: v)),
+      _menuPill(context, 'Free', accessFilters, state.accessFilter, (v) => state.setFilters(access: v)),
+      FilterPill('HTTPS', selected: state.httpsOnly, onTap: () => state.setFilters(https: !state.httpsOnly)),
+      FilterPill('CORS', selected: state.corsOnly, onTap: () => state.setFilters(cors: !state.corsOnly)),
+      if (filtered)
+        FilterPill('Clear', icon: Icons.close, onTap: () {
+          // the search stays: only the choices in this row are cleared
+          state.setFilters(auth: authFilters.first, access: accessFilters.first, https: false, cors: false);
+          state.setCategory(allCategory);
+          state.setTagFilter(null);
+        }),
+      if (state.user.tagCounts.isNotEmpty) ...[
+        Padding(padding: const EdgeInsets.fromLTRB(4, 10, 10, 10), child: VerticalDivider(width: 1, color: scheme.outlineVariant)),
+        for (final (tag, count) in state.user.tagCounts)
+          FilterPill('#$tag  $count', selected: state.tagFilter?.toLowerCase() == tag.toLowerCase(), onTap: () => state.setTagFilter(state.tagFilter?.toLowerCase() == tag.toLowerCase() ? null : tag)),
+      ],
+    ]);
+  }
+
+  /// A pill that opens a menu of choices; the pill shows the choice while one is made.
+  Widget _menuPill(BuildContext context, String name, List<String> choices, String current, void Function(String) pick) {
+    final active = current != choices.first;
+    return PopupMenuButton<String>(
+      tooltip: name,
+      onSelected: pick,
+      itemBuilder: (_) => [for (final c in choices) CheckedPopupMenuItem(value: c, checked: c == current, child: Text(c))],
+      child: FilterPill('${active ? current : name} ▾', selected: active),
+    );
+  }
+}
+
+/// One filter chip in the ledger style: a hairline pill, ink-filled while it is on. Without [onTap] the parent handles the tap.
+class FilterPill extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final IconData? icon;
+  final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
+  const FilterPill(this.label, {super.key, this.selected = false, this.icon, this.onTap, this.onLongPress});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(right: 6, top: 6, bottom: 8),
+      child: Material(
+        color: selected ? scheme.onSurface : Colors.transparent,
+        shape: StadiumBorder(side: BorderSide(color: selected ? scheme.onSurface : scheme.outlineVariant)),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          onLongPress: onLongPress,
+          child: Semantics(
+            selected: selected,
+            child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              if (icon != null) Padding(padding: const EdgeInsets.only(right: 4), child: Icon(icon, size: 14, color: selected ? scheme.surface : scheme.onSurface)),
+              Text(label, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: selected ? scheme.surface : scheme.onSurface)),
+            ]),
+          ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// "12 new, 3 gone since the last scan · See": one line above the list until the user has looked or dismissed it.
+class ChangesStrip extends StatelessWidget {
+  const ChangesStrip({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final c = state.changes!;
+    return Material(
+      color: scheme.surfaceContainerHighest,
+      child: InkWell(
+        onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ChangesPage(diff: c))),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 6, 4, 6),
+          child: Row(children: [
+            Icon(Icons.new_releases_outlined, size: 18, color: scheme.primary),
+            const SizedBox(width: 10),
+            Expanded(child: Text('${c.summary} since the last scan  ·  See', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700))),
+            IconButton(tooltip: 'Dismiss', visualDensity: VisualDensity.compact, icon: const Icon(Icons.close, size: 18), onPressed: state.markChangesSeen),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+/// Swipe left on a row → pick a collection for it (the same dialog as the detail page).
+Future<void> addToCollectionFor(BuildContext context, ApiView v) async {
+  final name = await showDialog<String>(context: context, builder: (_) => CollectionDialog(already: state.collectionsOf(v)));
+  if (name == null || name.trim().isEmpty || !context.mounted) return;
+  final used = state.addToCollection(v, name);
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text('✓ ${v.name} added to "$used" - it is in the category menu')));
+}
+
+class EmptyState extends StatelessWidget {
+  final VoidCallback onScan;
+  const EmptyState({super.key, required this.onScan});
+
+  @override
+  Widget build(BuildContext context) => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Text('No APIs yet', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, letterSpacing: -0.4)),
+            const SizedBox(height: 8),
+            Text(
+              'ApiScout reads the big public API directories, merges them, works out what each API is for, and tells you whether you need a key - and how to get one.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, height: 1.45),
+            ),
+            const SizedBox(height: 20),
+            FilledButton.icon(onPressed: onScan, icon: const Icon(Icons.refresh), label: const Text('Scan the internet')),
+          ]),
+        ),
+      );
+}
+
+class CategoryDrawer extends StatelessWidget {
+  const CategoryDrawer({super.key});
+
+  @override
+  Widget build(BuildContext context) => Drawer(
+        child: SafeArea(
+          child: ListenableBuilder(
+            listenable: state,
+            builder: (context, _) => ListView(padding: EdgeInsets.zero, children: [
+              const Padding(padding: EdgeInsets.fromLTRB(16, 18, 16, 4), child: FieldLabel('CATEGORIES')),
+              for (final (i, (name, count)) in state.categories.indexed) ...[
+                if (i == state.specialCategoryCount) const Divider(height: 8),
+                ListTile(
+                  dense: true,
+                  selected: state.category == name,
+                  // a collection stays tappable when the filters hide all of it: long-press is how it is deleted
+                  enabled: count > 0 || state.category == name || name.startsWith(collectionPrefix),
+                  title: Text(name, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: state.category == name ? FontWeight.w800 : FontWeight.w500)),
+                  trailing: Text('$count', style: TextStyle(fontFeatures: const [FontFeature.tabularFigures()], color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                  onTap: () {
+                    state.setCategory(name);
+                    Navigator.of(context).pop();
+                  },
+                  onLongPress: name.startsWith(collectionPrefix) ? () => _deleteCollection(context, name.substring(collectionPrefix.length)) : null,
+                ),
+              ],
+              if (state.user.collections.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                  child: Text('Long-press a 📁 collection to delete it.', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                ),
+            ]),
+          ),
+        ),
+      );
+}
+
+Future<void> _deleteCollection(BuildContext context, String name) async {
+  final yes = await showDialog<bool>(
+    context: context,
+    builder: (_) => AlertDialog(
+      title: Text('Delete "$name"?'),
+      content: const Text('Only the collection goes - the APIs in it, their tags, notes and keys stay.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
+        FilledButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Delete')),
+      ],
+    ),
+  );
+  if (yes == true) state.deleteCollection(name);
+}
+
+/// One API a day that answers without signing up for anything: an ink-ruled box at the top of the list.
+class ApiOfTheDayCard extends StatelessWidget {
+  const ApiOfTheDayCard({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final v = state.apiOfTheDay!;
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
+      child: Material(
+        color: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6), side: BorderSide(color: scheme.onSurface, width: 1.5)),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () => openDetail(context, v),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 10, 4, 10),
+            child: Row(children: [
+              // no hero here: the same API can sit in the list below, and one page can carry one hero per key
+              BrandTile(v, size: 40),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('API OF THE DAY', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, letterSpacing: 1.1, color: scheme.primary)),
+                  Text(v.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, letterSpacing: -0.2)),
+                  Text(v.entry.description.isEmpty ? v.entry.category : v.entry.description, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12.5)),
+                  const SizedBox(height: 2),
+                  Text('${v.hasDemoKey ? 'Demo key included' : 'No key needed'}  ·  tap to try it', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: scheme.onSurfaceVariant)),
+                ]),
+              ),
+              IconButton(tooltip: 'Show another one', icon: const Icon(Icons.refresh), onPressed: state.anotherApiOfTheDay),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------- moving data between the desktop app and the phone
+
+void _say(BuildContext context, String text) {
+  if (!context.mounted) return;
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text(text), duration: const Duration(seconds: 5)));
+}
+
+/// Asks for a passphrase. Pops null for Cancel, '' for "without the keys".
+Future<String?> _askPassphrase(BuildContext context, {required String title, required String explanation, required String skipLabel, bool confirm = false}) {
+  final first = TextEditingController(), second = TextEditingController();
+  String? problem;
+  return showDialog<String>(
+    context: context,
+    builder: (context) => StatefulBuilder(
+      builder: (context, setState) => AlertDialog(
+        title: Text(title),
+        content: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(explanation),
+            const SizedBox(height: 14),
+            TextField(controller: first, obscureText: true, autocorrect: false, enableSuggestions: false, decoration: const InputDecoration(labelText: 'Passphrase')),
+            if (confirm) ...[
+              const SizedBox(height: 10),
+              TextField(controller: second, obscureText: true, autocorrect: false, enableSuggestions: false, decoration: const InputDecoration(labelText: 'The same again')),
+            ],
+            if (problem != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(problem!, style: TextStyle(color: Theme.of(context).colorScheme.error))),
+          ]),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.of(context).pop(''), child: Text(skipLabel)),
+          FilledButton(
+              onPressed: () {
+                if (first.text.isEmpty) {
+                  setState(() => problem = 'Type the passphrase, or choose "$skipLabel".');
+                } else if (confirm && first.text.length < 8) {
+                  setState(() => problem = 'Use at least 8 characters: the passphrase is all that protects the keys in the file.');
+                } else if (confirm && first.text != second.text) {
+                  setState(() => problem = 'The two do not match.');
+                } else {
+                  Navigator.of(context).pop(first.text);
+                }
+              },
+              child: const Text('OK')),
+        ],
+      ),
+    ),
+  );
+}
+
+/// Menu → Import: a file made by the desktop app's "Export my data" (or by this app).
+Future<void> importFromFile(BuildContext context) async {
+  try {
+    final picked = await FilePicker.pickFile(dialogTitle: 'Pick the ApiScout export file', type: FileType.any);
+    if (picked == null || !context.mounted) return;
+    final size = await picked.length() ?? 0;
+    if (!context.mounted) return;
+    if (size > 20 * 1024 * 1024) return _say(context, 'That file is far too big to be an ApiScout export.');
+    final json = utf8.decode(await picked.readAsBytes(), allowMalformed: true);
+    final file = BackupFile.read(json); // throws when it is some other file
+    String? passphrase;
+    if (file.hasSecrets) {
+      if (!context.mounted) return;
+      passphrase = await _askPassphrase(context,
+          title: 'This file holds ${file.secretCount} encrypted key(s) / test request(s)',
+          explanation: 'The phone takes the keys. Type the passphrase that was chosen when the file was exported and they go into this phone\'s secure storage. Unlocking takes a few seconds.',
+          skipLabel: 'Skip the keys');
+      if (passphrase == null) return;
+    }
+    if (!context.mounted) return;
+    showDialog(context: context, barrierDismissible: false, builder: (_) => const Center(child: CircularProgressIndicator()));
+    ImportSummary summary;
+    try {
+      summary = await state.importBackup(json, passphrase);
+    } finally {
+      if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
+    }
+    if (!context.mounted) return;
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Imported'),
+        content: Text('$summary\n\nNothing that was already on this phone was changed or removed.'),
+        actions: [FilledButton(onPressed: () => Navigator.of(context).pop(), child: const Text('OK'))],
+      ),
+    );
+  } on BackupFormatException catch (ex) {
+    if (context.mounted) _say(context, ex.message);
+  } on WrongPassphraseException catch (ex) {
+    if (context.mounted) _say(context, '$ex Nothing was imported.');
+  } catch (ex) {
+    if (context.mounted) _say(context, 'Could not import: $ex');
+  }
+}
+
+/// Menu → Export: the same file format, so the desktop app's Import reads it.
+Future<void> exportToFile(BuildContext context) async {
+  if (state.userItemCount == 0 && state.keyed.isEmpty) return _say(context, 'Nothing to export yet: no favourites, tags, notes, collections, variables or keys.');
+  try {
+    String? passphrase = '';
+    if (state.secretItemCount > 0) {
+      passphrase = await _askPassphrase(context,
+          title: 'Include your saved keys and request variables?',
+          explanation: 'This phone holds ${state.keyed.length} key(s) and variables for ${state.user.variables.length} API(s). With a passphrase they go into the file encrypted (AES-256); the desktop app asks for the same passphrase when it imports. Without one they stay out of the file.',
+          skipLabel: 'Without the keys',
+          confirm: true);
+      if (passphrase == null) return;
+    }
+    if (!context.mounted) return;
+    showDialog(context: context, barrierDismissible: false, builder: (_) => const Center(child: CircularProgressIndicator()));
+    String json;
+    try {
+      json = await state.exportBackup(passphrase);
+    } finally {
+      if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
+    }
+    final now = DateTime.now();
+    final saved = await FilePicker.saveFile(
+      fileName: 'apiscout-phone-${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}.json',
+      bytes: Uint8List.fromList(utf8.encode(json)),
+      mimeType: 'application/json',
+    );
+    if (saved != null && context.mounted) _say(context, '✓ Exported. On the PC: ApiScout → About → Import…, and pick this file.');
+  } catch (ex) {
+    if (context.mounted) _say(context, 'Could not export: $ex');
+  }
+}
+
+void showAbout(BuildContext context) => showAboutDialog(
+      context: context,
+      applicationName: 'ApiScout',
+      applicationVersion: '1.5.0 (Android)',
+      applicationLegalese: 'Free API finder. Rules and key knowledge: ${state.knowledge.exportedFrom}. Typefaces Manrope and JetBrains Mono, SIL Open Font License.',
+      children: const [
+        SizedBox(height: 12),
+        Text('Scans five public API directories, merges and categorises them, and shows whether an API needs a key - with the '
+            'provider\'s own published demo key where there is one, or how to get a key.\n\n'
+            'Demo keys shown are only ones the providers print in their own docs. ApiScout never looks for leaked or private keys.\n\n'
+            'Your own keys are kept encrypted by the Android keystore, on this phone only. Favourites, tags, notes and collections move '
+            'between the PC and the phone with Export / Import (this menu; on the PC: About → Export… / Import…) - keys travel only inside the file, encrypted with a passphrase you choose.'),
+      ],
+    );
+
+// keeps the import of knowledge.dart honest for analyzers: the tile and detail page take ApiView
+typedef ApiViewRef = ApiView;
