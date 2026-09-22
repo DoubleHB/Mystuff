@@ -93,7 +93,7 @@ $f1 = New-Object System.Drawing.Font 'Segoe UI', 96, 'Bold', ([System.Drawing.Gr
 $f2 = New-Object System.Drawing.Font 'Segoe UI', 40, 'Regular', ([System.Drawing.GraphicsUnit]::Pixel)
 $f3 = New-Object System.Drawing.Font 'Segoe UI', 30, 'Regular', ([System.Drawing.GraphicsUnit]::Pixel)
 $g.DrawString('API Free', $f1, $b, 400, 105)
-$g.DrawString('free API finder', $f2, $b, 408, 225)
+$g.DrawString('find and test public APIs', $f2, $b, 408, 225)
 $g.DrawString("Thousands of free APIs, their demo keys,`na docs scanner and a request tester.", $f3, $b, 408, 300)
 $f1.Dispose(); $f2.Dispose(); $f3.Dispose(); $b.Dispose(); $g.Dispose()
 $bmp.Save((Join-Path $PSScriptRoot 'feature-graphic.png'), [System.Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose()

@@ -1,4 +1,4 @@
-# API Free Mobile - free API finder for Android (Flutter)
+# API Free Mobile - find and test public APIs on Android (Flutter)
 
 The Android sister of the desktop app in `C:\Claude\ApiScout` (which is unchanged by it). Same job: scan the public
 API directories, merge and categorise a few thousand free APIs, and show whether each needs a key - with the provider's
@@ -111,6 +111,8 @@ own published demo key where there is one, or how to get a key.
     `build-apk.ps1 -Bundle` also builds `ApiScout.aab` for Play. A phone with a debug-signed build must uninstall
     it first (export your data before, import after).
   - Play screenshots redone with the 1.5 look (`store/`).
+- **1.5.1 - renamed API Free.** The app, the listing and the desktop app are now called API Free (the ApiScout name
+  was taken). Package id, files, data and keys are untouched, so 1.5.1 installs over 1.5.0.
 
 ## One source of truth
 
