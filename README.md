@@ -1,7 +1,7 @@
-# ApiScout - free API finder
+# API Scout - free API finder
 
 Find free public APIs and know, before you sign up for anything, whether you can call one right now and with
-what key. ApiScout scans the internet's public API directories, merges them into one catalogue of about 3,600
+what key. API Scout scans the internet's public API directories, merges them into one catalogue of about 3,600
 APIs in 42 categories, and for each one shows the provider's own published demo key where there is one, how the
 key is sent, what is free, and where to get your own key. Then you can test the API from the app.
 
@@ -20,7 +20,7 @@ are encrypted with a passphrase.
 
 ## Keys policy
 
-ApiScout shows only demo keys that providers print in their own public documentation - never leaked or private
+API Scout shows only demo keys that providers print in their own public documentation - never leaked or private
 keys. Keys you save are encrypted on your device (Windows DPAPI on the desktop, the Android keystore on the phone),
 never appear in what you copy or share, and leave a device only inside an export's passphrase-protected section.
 
