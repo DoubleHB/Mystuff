@@ -6,7 +6,7 @@ namespace ApiScout.Services;
 
 public sealed record SourceInfo(string Id, string Name, string Description, bool DefaultOn);
 
-/// <summary>The places ApiScout looks. Each fetch returns raw entries; <see cref="Scanner"/> merges them.</summary>
+/// <summary>The places API Scout looks. Each fetch returns raw entries; <see cref="Scanner"/> merges them.</summary>
 public static class Sources
 {
     public static readonly SourceInfo[] All =

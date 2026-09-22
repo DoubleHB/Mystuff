@@ -80,7 +80,7 @@ public sealed class AboutWindow : Window
     {
         _vm = vm;
         _store = store;
-        Title = "About ApiScout";
+        Title = "About API Scout";
         Width = 560;
         SizeToContent = SizeToContent.Height;
         ResizeMode = ResizeMode.NoResize;
@@ -90,7 +90,7 @@ public sealed class AboutWindow : Window
         SetResourceReference(ForegroundProperty, "TextBrush");
 
         var panel = new StackPanel { Margin = new Thickness(24, 20, 24, 20) };
-        panel.Children.Add(new TextBlock { Text = "ApiScout", FontSize = 24, FontWeight = FontWeights.Bold });
+        panel.Children.Add(new TextBlock { Text = "API Scout", FontSize = 24, FontWeight = FontWeights.Bold });
         panel.Children.Add(Muted($"free API finder  ·  version {VersionText}  ·  {RuntimeInformation.FrameworkDescription}"));
 
         panel.Children.Add(Heading("YOUR DATA"));
@@ -108,7 +108,7 @@ public sealed class AboutWindow : Window
         panel.Children.Add(Heading("UPDATES"));
         _feed.Text = store.Settings.UpdateFeed;
         AutomationProperties.SetName(_feed, "Update source");
-        _feed.ToolTip = "A GitHub owner/repo, a folder holding the ApiScout git repository, or a latest.json file / URL. Empty = " + (UpdateChecker.DefaultFeed.Length > 0 ? UpdateChecker.DefaultFeed : "not set");
+        _feed.ToolTip = "A GitHub owner/repo, a folder holding the API Scout git repository, or a latest.json file / URL. Empty = " + (UpdateChecker.DefaultFeed.Length > 0 ? UpdateChecker.DefaultFeed : "not set");
         var check = Small("Check now", () => _ = CheckForUpdateAsync());
         _openUpdate = Small("Open", () => OpenDownload());
         _openUpdate.Visibility = Visibility.Collapsed;
@@ -165,7 +165,7 @@ public sealed class AboutWindow : Window
     {
         var ask = new InputDialog("Export my data", "Passphrase for your saved keys. Leave it empty to export without the keys.\n\nYou will need the same passphrase to import them - it cannot be recovered.", [], "Continue", secret: true) { Owner = this };
         if (ask.ShowDialog() != true) return;
-        var dlg = new SaveFileDialog { Title = "Export my ApiScout data", FileName = $"apiscout-my-data-{DateTime.Now:yyyy-MM-dd}.json", Filter = "ApiScout export|*.json" };
+        var dlg = new SaveFileDialog { Title = "Export my API Scout data", FileName = $"apiscout-my-data-{DateTime.Now:yyyy-MM-dd}.json", Filter = "API Scout export|*.json" };
         if (dlg.ShowDialog(this) != true) return;
         try
         {
@@ -177,7 +177,7 @@ public sealed class AboutWindow : Window
 
     private void Import()
     {
-        var dlg = new OpenFileDialog { Title = "Import ApiScout data", Filter = "ApiScout export|*.json|All files|*.*" };
+        var dlg = new OpenFileDialog { Title = "Import API Scout data", Filter = "API Scout export|*.json|All files|*.*" };
         if (dlg.ShowDialog(this) != true) return;
         try
         {

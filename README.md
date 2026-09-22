@@ -1,4 +1,4 @@
-# ApiScout - free API finder
+# API Scout - free API finder
 
 WPF (.NET 10, Fluent theme) desktop tool that scans the internet's public API directories, merges and
 categorises what it finds, and tells you for every API whether you need a key - showing the public demo
@@ -27,7 +27,7 @@ key when the provider publishes one, or how and where to get a free key when not
   order: curated provider knowledge, the directory's own paid/open flag (n0shake), "no key" = fully free, wording
   in the description (free plan, trial, paid…), then the result of a docs scan. Included in CSV/JSON/text copies.
 - **Test this API** (Ctrl+T): sends the request in the "Try it" card - GET, POST, PUT, PATCH or DELETE - pre-filled
-  with a working example when ApiScout knows one, otherwise paste an endpoint from the docs. Headers one per line;
+  with a working example when API Scout knows one, otherwise paste an endpoint from the docs. Headers one per line;
   POST/PUT/PATCH get a body box (Tidy JSON button) and the Content-Type is set from the body (JSON, form, XML,
   text) unless you give your own. Shows status, time, type, size and the pretty-printed JSON with Copy response;
   Copy as cURL copies the whole request. `{key}` in the URL, a header or the body inserts the key saved under
@@ -50,9 +50,9 @@ key when the provider publishes one, or how and where to get a free key when not
   new ones get a NEW pill for 14 days and a "🆕 New (last 14 days)" category. The very first scan is the baseline.
   **Re-scan automatically** (Sources popup): Never / Daily / Weekly (default) - checked on start-up and every 30
   minutes while open. `ApiScout.exe --scan` does a headless re-scan (for Task Scheduler) and logs the result.
-- **Also when ApiScout is closed** (Sources popup): registers the per-user Windows scheduled task "ApiScout
+- **Also when API Scout is closed** (Sources popup): registers the per-user Windows scheduled task "ApiScout
   background scan" (09:00 daily or Mondays, catches up after a missed start, no admin rights) that runs
-  `ApiScout.exe --scan` and shows a Windows notification naming the new APIs - click it to open ApiScout.
+  `ApiScout.exe --scan` and shows a Windows notification naming the new APIs - click it to open API Scout.
   `ApiScout.exe --background-scan=weekly|daily|off` does the same from a script. Test copies (APISCOUT_DATA) refuse.
 - **Brand logos**: provider site icons in the grid and detail header (Google s2, then DuckDuckGo; only the domain is
   sent; cached in `logos\`; coloured initial when there is none). Toggle in the Sources popup. APIs hosted on
@@ -88,9 +88,9 @@ key when the provider publishes one, or how and where to get a free key when not
   missing; endpoints from a docs scan add their `{id}`-style names to the box. In the C# client a path variable
   becomes a parameter and the others turn into parameter defaults. "Copy as cURL" fills variables, never `{key}`.
   They are exported with the keys (passphrase only), since a variable may hold something private.
-- **Tray mode** (Sources → "Keep ApiScout in the tray when minimised"): minimising hides the window; the tray icon
+- **Tray mode** (Sources → "Keep API Scout in the tray when minimised"): minimising hides the window; the tray icon
   reopens it and has Scan now, API of the day, My shortlist and Exit. Re-scans keep running and new APIs arrive
-  as a notification (click → the New category). Starting ApiScout again brings the hidden window back.
+  as a notification (click → the New category). Starting API Scout again brings the hidden window back.
 - **Update and restart** (About, portable copy only): fetches the portable zip the update check found - from
   `latest.json` (with its sha256), from `..\ApiScout-Dist` when the source is the repo folder, or from the GitHub
   release of the tag (asset `*portable.zip`; a private repository needs a read-only token, stored DPAPI-encrypted
@@ -151,7 +151,7 @@ key when the provider publishes one, or how and where to get a free key when not
 
 Demo keys in `Services/KeyKnowledge.cs` are only ones the provider publishes in its own docs (NASA `DEMO_KEY`,
 Alpha Vantage `demo`, TheSportsDB `123`…); each was verified against the live API on 2026-09-21.
-ApiScout never looks for leaked or private keys - the docs scan only reads the provider's own public pages.
+API Scout never looks for leaked or private keys - the docs scan only reads the provider's own public pages.
 
 ## Layout
 

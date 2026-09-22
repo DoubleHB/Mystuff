@@ -2,7 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:ApiScout.ViewModels"
-        Title="ApiScout - free API finder" Width="1500" Height="900" MinWidth="1100" MinHeight="640"
+        Title="API Scout - free API finder" Width="1500" Height="900" MinWidth="1100" MinHeight="640"
         Background="{DynamicResource BgBrush}" Foreground="{DynamicResource TextBrush}"
         WindowStartupLocation="CenterScreen">
     <Window.InputBindings>
@@ -34,7 +34,7 @@
                         <TextBlock Text="{}{ }" FontFamily="Cascadia Mono, Consolas" FontWeight="Bold" FontSize="14" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
                     <StackPanel Margin="10,0,24,0" VerticalAlignment="Center">
-                        <TextBlock Text="ApiScout" FontSize="18" FontWeight="Bold" />
+                        <TextBlock Text="API Scout" FontSize="18" FontWeight="Bold" />
                         <TextBlock Text="free API finder" Style="{StaticResource Muted}" FontSize="11" />
                     </StackPanel>
                 </StackPanel>
@@ -102,18 +102,18 @@
                     <DockPanel>
                         <ComboBox DockPanel.Dock="Left" ItemsSource="{Binding AutoRescanOptions}" SelectedItem="{Binding AutoRescan}" Width="120" AutomationProperties.Name="Auto re-scan" />
                         <TextBlock Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="10,0,0,0" VerticalAlignment="Center"
-                                   Text="When the last scan is that old, ApiScout re-scans on start-up (or while open) and marks what is NEW." />
+                                   Text="When the last scan is that old, API Scout re-scans on start-up (or while open) and marks what is NEW." />
                     </DockPanel>
                     <CheckBox IsChecked="{Binding BackgroundScan}" Margin="0,8,0,0" AutomationProperties.Name="Background scan">
                         <StackPanel>
-                            <TextBlock Text="Also when ApiScout is closed" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold" />
+                            <TextBlock Text="Also when API Scout is closed" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold" />
                             <TextBlock Style="{StaticResource Muted}" TextWrapping="Wrap" MaxWidth="390"
                                        Text="Adds a Windows scheduled task (09:00, daily or Mondays, or as soon as the PC is next on) that re-scans quietly and shows a notification when new APIs appear. Untick to remove it." />
                         </StackPanel>
                     </CheckBox>
                     <CheckBox IsChecked="{Binding TrayMode}" Margin="0,10,0,0" AutomationProperties.Name="Tray mode">
                         <StackPanel>
-                            <TextBlock Text="Keep ApiScout in the tray when minimised" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold" />
+                            <TextBlock Text="Keep API Scout in the tray when minimised" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold" />
                             <TextBlock Style="{StaticResource Muted}" TextWrapping="Wrap" MaxWidth="390"
                                        Text="Minimising hides the window; the tray icon opens it again and has Scan now, API of the day and My shortlist. Automatic re-scans keep running and new APIs are announced with a notification." />
                         </StackPanel>
@@ -394,7 +394,7 @@
                     <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVis}}" MaxWidth="460">
                         <TextBlock Text="No APIs yet" FontSize="22" FontWeight="Bold" HorizontalAlignment="Center" />
                         <TextBlock TextWrapping="Wrap" TextAlignment="Center" Margin="0,8,0,16" Foreground="{DynamicResource MutedBrush}"
-                                   Text="ApiScout reads the big public API directories, merges them, works out what each API is for, and tells you whether you need a key - and how to get one." />
+                                   Text="API Scout reads the big public API directories, merges them, works out what each API is for, and tells you whether you need a key - and how to get one." />
                         <Button Content="⟳  Scan the internet" Command="{Binding ScanCommand}" Style="{DynamicResource AccentButtonStyle}" Padding="18,9" HorizontalAlignment="Center" FontWeight="SemiBold" />
                     </StackPanel>
                 </Grid>
@@ -676,7 +676,7 @@
                                 <DockPanel Margin="0,8,0,0" KeyboardNavigation.TabNavigation="Local">
                                     <Button DockPanel.Dock="Right" Content="Copy" Command="{Binding CopyCommand}" CommandParameter="mykey" Style="{StaticResource Mini}" AutomationProperties.Name="Copy my key" TabIndex="3" />
                                     <Button DockPanel.Dock="Right" Content="Save" Command="{Binding SaveMyKeyCommand}" Style="{StaticResource Mini}" AutomationProperties.Name="Save my key" TabIndex="2"
-                                            ToolTip="Also saved by Enter, and when you move to another API or close ApiScout" />
+                                            ToolTip="Also saved by Enter, and when you move to another API or close API Scout" />
                                     <ToggleButton DockPanel.Dock="Right" Content="Show" IsChecked="{Binding ShowMyKey}" Margin="6,0,0,0" Padding="9,3" FontSize="12" MinHeight="26" AutomationProperties.Name="Show my key" TabIndex="0" />
                                     <Grid>
                                         <TextBox Text="{Binding Selected.MyKey, UpdateSourceTrigger=PropertyChanged}" FontFamily="Cascadia Mono, Consolas" FontSize="12.5"

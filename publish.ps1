@@ -1,4 +1,4 @@
-# ApiScout release build.
+# API Scout release build.
 #   .\publish.ps1            framework-dependent build into ..\ApiScout-App (close ApiScout.exe first) + the portable zip
 #   .\publish.ps1 -SkipApp   only the portable zip
 # The portable zip is one self-contained ApiScout.exe (no .NET install needed), README.md and portable.txt; with
@@ -33,11 +33,11 @@ Copy-Item -LiteralPath (Join-Path $build 'ApiScout.exe') -Destination $stage
 Copy-Item -LiteralPath (Join-Path $root 'README.md') -Destination $stage
 [IO.Directory]::Delete($build, $true)
 @"
-ApiScout $version - portable copy
+API Scout $version - portable copy
 
 Run ApiScout.exe; nothing needs installing (the .NET runtime is inside the exe).
-While this file sits beside ApiScout.exe, everything ApiScout keeps - the scanned catalogue, favourites,
-tags, collections, notes - is stored in the "data" folder next to it. Delete this file and ApiScout uses
+While this file sits beside ApiScout.exe, everything API Scout keeps - the scanned catalogue, favourites,
+tags, collections, notes - is stored in the "data" folder next to it. Delete this file and API Scout uses
 %LOCALAPPDATA%\ApiScout instead.
 
 Saved API keys are encrypted for the Windows account that saved them, so they do not travel with the
