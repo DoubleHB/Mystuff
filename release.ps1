@@ -40,7 +40,7 @@ Keep portable.txt beside the exe to keep all data in a folder next to it.
 In the app, About > Updates: enter ``$repo`` and later versions are found from this repository's desktop-v tags;
 "Update and restart" swaps in the new exe.
 "@
-    Publish-Release "desktop-v$v" "API Scout $v (Windows)" $notes $zip
+    Publish-Release "desktop-v$v" "API Free $v (Windows)" $notes $zip
 }
 
 if ($Mobile) {
@@ -49,8 +49,8 @@ if ($Mobile) {
     # the release notes are the section for this version in ApiScoutMobile\RELEASE-NOTES.md
     $md = Get-Content 'ApiScoutMobile\RELEASE-NOTES.md' -Raw
     $section = [regex]::Match($md, "(?s)## $([regex]::Escape($v))\s*\r?\n(.*?)(?=\r?\n## |\z)").Groups[1].Value.Trim()
-    if (-not $section) { $section = "API Scout for Android $v." }
+    if (-not $section) { $section = "API Free for Android $v." }
     $notes = "$section`n`nInstall: allow 'install unknown apps' for your browser or file manager, open ApiScout.apk. A build older than 1.5.0 was signed with a debug key: export your data in the app, uninstall it, install this, import."
-    Publish-Release "mobile-v$v" "API Scout $v (Android)" $notes $apk
+    Publish-Release "mobile-v$v" "API Free $v (Android)" $notes $apk
 }
 "Releases: https://github.com/$repo/releases"
