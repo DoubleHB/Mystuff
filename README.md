@@ -1,4 +1,4 @@
-# API Free - free API finder
+# API Free - find and test public APIs
 
 WPF (.NET 10, Fluent theme) desktop tool that scans the internet's public API directories, merges and
 categorises what it finds, and tells you for every API whether you need a key - showing the public demo
