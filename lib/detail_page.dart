@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 
 import 'docs_scanner.dart';
 import 'insight_page.dart';
@@ -246,6 +247,16 @@ class _DetailPageState extends State<DetailPage> with SingleTickerProviderStateM
         if (v.hint?.signupUrl != null) 'Get a key: ${v.hint!.signupUrl}',
       ].join('\n');
 
+  /// The Markdown copy, handed to Android's share sheet (a chat, a note, an email). It carries the provider's
+  /// published demo key where there is one and never the user's own key.
+  Future<void> _share() async {
+    try {
+      await SharePlus.instance.share(ShareParams(text: _asMarkdown(), subject: v.name));
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Nothing on this phone can take the share')));
+    }
+  }
+
   String _asMarkdown() => [
         '### [${v.name}](${v.url})',
         '',
@@ -269,6 +280,7 @@ class _DetailPageState extends State<DetailPage> with SingleTickerProviderStateM
         appBar: AppBar(
           toolbarHeight: 48,
           actions: [
+            IconButton(tooltip: 'Share as Markdown', icon: const Icon(Icons.share_outlined), onPressed: _share),
             IconButton(
               tooltip: state.isFavourite(v) ? 'Remove from favourites' : 'Add to favourites',
               icon: Icon(state.isFavourite(v) ? Icons.star : Icons.star_border, color: state.isFavourite(v) ? const Color(0xFFF5B83D) : null),

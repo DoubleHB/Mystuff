@@ -67,6 +67,8 @@ own published demo key where there is one, or how to get a key.
 - 1.3.3: the detail tabs carry counts - Keys (demo key, how it is sent, example request, sign-up link, my key),
   Try it (requests in the history), Docs (items the docs scan found), Mine (tags + note + collections). Zero shows
   nothing, so a bare tab name means there is nothing behind it yet.
+- 1.3.4: a share button on the detail page hands the Markdown copy to Android's share sheet (`share_plus`). It
+  carries the provider's published demo key where there is one, never your own key.
 
 ## One source of truth
 
