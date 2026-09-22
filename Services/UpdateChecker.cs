@@ -19,7 +19,8 @@ public static partial class UpdateChecker
 {
     [GeneratedRegex(@"^[A-Za-z0-9][\w.-]*/[\w.-]+$")]
     private static partial Regex GitHubRepoRx();
-    [GeneratedRegex(@"^v?(\d+\.\d+(?:\.\d+){0,2})$", RegexOptions.IgnoreCase)]
+    // v1.4.0, 1.4.0, or desktop-v1.4.0 (the combined repository holds the Android app too, whose tags are mobile-v…)
+    [GeneratedRegex(@"^(?:desktop-)?v?(\d+\.\d+(?:\.\d+){0,2})$", RegexOptions.IgnoreCase)]
     private static partial Regex VersionTagRx();
 
     /// <summary>The source folder recorded at build time (AssemblyMetadata "UpdateFeed").</summary>
@@ -60,10 +61,11 @@ public static partial class UpdateChecker
                 var info = FromTags(names, current, "github.com/" + feed);
                 if (!info.Newer) return info;
                 info = info with { Download = $"https://github.com/{feed}/releases" };
+                // the release of that tag may carry the portable zip: the tag is desktop-v1.6.0 in the combined repository, v1.6.0 in a desktop-only one
+                var tagged = names.Contains($"desktop-v{Full(info.Latest!)}") ? $"desktop-v{Full(info.Latest!)}" : $"v{Full(info.Latest!)}";
                 try
                 {
-                    // the release of that tag may carry the portable zip
-                    using var rel = JsonDocument.Parse(await GitHubAsync($"https://api.github.com/repos/{feed}/releases/tags/v{Full(info.Latest!)}", token, ct));
+                    using var rel = JsonDocument.Parse(await GitHubAsync($"https://api.github.com/repos/{feed}/releases/tags/{tagged}", token, ct));
                     if (rel.RootElement.TryGetProperty("assets", out var assets) && assets.ValueKind == JsonValueKind.Array)
                         foreach (var a in assets.EnumerateArray())
                         {
