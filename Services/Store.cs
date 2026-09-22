@@ -5,7 +5,7 @@ using ApiScout.Models;
 
 namespace ApiScout.Services;
 
-/// <summary>Everything API Scout keeps on disk, under %LOCALAPPDATA%\ApiScout (APISCOUT_DATA overrides).</summary>
+/// <summary>Everything API Free keeps on disk, under %LOCALAPPDATA%\ApiScout (APISCOUT_DATA overrides).</summary>
 public sealed class Store
 {
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };

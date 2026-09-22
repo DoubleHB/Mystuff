@@ -11,7 +11,7 @@ namespace ApiScout.Services;
 public sealed record UpdateInfo(bool Ok, bool Newer, Version? Latest, string Message, string? Download = null, string? Package = null, string? Sha256 = null);
 
 /// <summary>
-/// "Is there a newer API Scout?" - answered from version tags (v1.4.0). The feed is one of:
+/// "Is there a newer API Free?" - answered from version tags (v1.4.0). The feed is one of:
 /// a GitHub "owner/repo" (its tags), a folder holding a git repository (its tags, read straight from .git - no git.exe needed),
 /// or a latest.json file / URL as publish.ps1 writes it. Empty = the repository this build was made from.
 /// </summary>
@@ -34,7 +34,7 @@ public static partial class UpdateChecker
     public static async Task<UpdateInfo> CheckAsync(string? feed, Version current, CancellationToken ct, string? token = null)
     {
         feed = string.IsNullOrWhiteSpace(feed) ? DefaultFeed : feed.Trim().Trim('"');
-        if (feed.Length == 0) return new(false, false, null, "No update source is set. Enter a GitHub owner/repo, a folder with the API Scout git repository, or a latest.json.");
+        if (feed.Length == 0) return new(false, false, null, "No update source is set. Enter a GitHub owner/repo, a folder with the API Free git repository, or a latest.json.");
         try
         {
             if (Http.IsWebUrl(feed)) return FromLatestJson(await Http.GetTextAsync(feed, ct, maxBytes: 200_000, timeoutSeconds: 15), current, feed);

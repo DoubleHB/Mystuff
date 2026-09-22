@@ -6,7 +6,7 @@ namespace ApiScout.Services;
 /// <summary>
 /// "Update and restart" for the portable copy: fetch the zip the update check found, take ApiScout.exe out of it and
 /// swap it in. A running exe cannot be overwritten but it can be renamed, so the old one becomes ApiScout.exe.old and
-/// is deleted the next time API Scout starts.
+/// is deleted the next time API Free starts.
 /// </summary>
 public static class Updater
 {
@@ -89,7 +89,7 @@ public static class Updater
         }
         using var resp = await Http.Client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
         resp.EnsureSuccessStatusCode();
-        if (resp.Content.Headers.ContentLength > MaxZipBytes) throw new InvalidDataException("The file is far too big to be API Scout.");
+        if (resp.Content.Headers.ContentLength > MaxZipBytes) throw new InvalidDataException("The file is far too big to be API Free.");
         await using var stream = await resp.Content.ReadAsStreamAsync(ct);
         await CopyAsync(stream, target, resp.Content.Headers.ContentLength ?? 0, progress, ct);
     }
@@ -104,7 +104,7 @@ public static class Updater
         {
             await to.WriteAsync(buffer.AsMemory(0, read), ct);
             total += read;
-            if (total > MaxZipBytes) throw new InvalidDataException("The file is far too big to be API Scout.");
+            if (total > MaxZipBytes) throw new InvalidDataException("The file is far too big to be API Free.");
             if (length > 0) progress.Report(100.0 * total / length);
         }
     }

@@ -99,7 +99,7 @@ public partial class MainWindow : Window
     private UI.TrayIcon? _tray;
     private WindowState _restoreTo = WindowState.Normal;
 
-    /// <summary>Back from the tray (icon click, menu, balloon, or a second API Scout being started).</summary>
+    /// <summary>Back from the tray (icon click, menu, balloon, or a second API Free being started).</summary>
     public void ShowFromTray()
     {
         Show();
@@ -231,7 +231,7 @@ public partial class MainWindow : Window
         _tour =
         [
             new(() => ScanButton, "Start here: Scan the internet",
-                "API Scout reads the big public API directories, merges them and sorts a few thousand free APIs into categories. It takes about ten seconds (F5). Under Sources you choose where it looks and how often it re-scans by itself."),
+                "API Free reads the big public API directories, merges them and sorts a few thousand free APIs into categories. It takes about ten seconds (F5). Under Sources you choose where it looks and how often it re-scans by itself."),
             new(() => DashboardPanel, "The dashboard",
                 "How many APIs are completely free, have a free tier, or only a trial; what is new this week; what is rate limited. Every tile is a shortcut - click to filter, click again to clear. On the right, an API of the day you can test with one click."),
             new(() => DetailArea, "Keys, and Try it",
@@ -335,7 +335,7 @@ public partial class MainWindow : Window
 
     private void DeleteCollection_Click(object sender, RoutedEventArgs e)
     {
-        if (MessageBox.Show(this, $"Delete the collection \"{_vm.ShortlistTitle}\"?\n\nOnly the group goes - the APIs, their keys, notes and tests stay.", "API Scout", MessageBoxButton.OKCancel, MessageBoxImage.Question) == MessageBoxResult.OK)
+        if (MessageBox.Show(this, $"Delete the collection \"{_vm.ShortlistTitle}\"?\n\nOnly the group goes - the APIs, their keys, notes and tests stay.", "API Free", MessageBoxButton.OKCancel, MessageBoxImage.Question) == MessageBoxResult.OK)
             _vm.DeleteCollection();
     }
 

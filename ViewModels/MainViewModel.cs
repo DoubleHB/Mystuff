@@ -109,7 +109,7 @@ public sealed partial class MainViewModel : ObservableObject
         var info = await UpdateChecker.CheckAsync(_store.Settings.UpdateFeed, UpdateChecker.Current, CancellationToken.None, _store.GetUpdateToken());
         _store.Settings.LastUpdateCheck = DateTime.Now;
         _store.SaveSettings();
-        if (info.Newer) { UpdateNote = $"API Scout {info.Latest} is available"; ShowToast($"⬆ {UpdateNote} - see About (F1)"); }
+        if (info.Newer) { UpdateNote = $"API Free {info.Latest} is available"; ShowToast($"⬆ {UpdateNote} - see About (F1)"); }
     }
 
     [ObservableProperty] private string _updateNote = "";
@@ -253,7 +253,7 @@ public sealed partial class MainViewModel : ObservableObject
         }
     }
 
-    /// <summary>Tick box "also when API Scout is closed": registers / removes the Windows scheduled task.</summary>
+    /// <summary>Tick box "also when API Free is closed": registers / removes the Windows scheduled task.</summary>
     public bool BackgroundScan
     {
         get => _store.Settings.BackgroundScan;

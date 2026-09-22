@@ -222,7 +222,7 @@ public sealed partial class ApiRow : ObservableObject
     public string DefaultTestHeader => KeyUsage?.StartsWith("Header: ") == true ? KeyUsage[8..] : "";
     public string TestHint => HasExample
         ? "Pre-filled with a request that works as it is - press Test this API (Ctrl+T)."
-        : "API Scout only knows this API's docs page. Paste an endpoint URL from the docs, pick the method, then press Test this API.";
+        : "API Free only knows this API's docs page. Paste an endpoint URL from the docs, pick the method, then press Test this API.";
 
     // ---- rate limit memory + last test, for the Try it card, the grid and the shortlist
     [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsLimited), nameof(LimitLabel), nameof(LimitShort))] private DateTime? _limitedUntil;
