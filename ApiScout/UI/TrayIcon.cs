@@ -39,7 +39,7 @@ public sealed class TrayIcon : IDisposable
         _icon = new Forms.NotifyIcon
         {
             Icon = Environment.ProcessPath is { } exe ? System.Drawing.Icon.ExtractAssociatedIcon(exe) : System.Drawing.SystemIcons.Application,
-            Text = "API Free - free API finder",
+            Text = "API Free - find and test public APIs",
             ContextMenuStrip = menu,
             Visible = true,
         };

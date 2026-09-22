@@ -19,7 +19,7 @@ $zip = Join-Path (Split-Path $root -Parent) "ApiScout-Dist\ApiScout-$version-por
 
 if (-not (git remote)) {
     $visibility = if ($Public) { '--public' } else { '--private' }
-    gh repo create $Name $visibility --source . --remote origin --description 'API Free - free API finder (WPF)'
+    gh repo create $Name $visibility --source . --remote origin --description 'API Free - find and test public APIs (WPF)'
     if ($LASTEXITCODE -ne 0) { throw 'gh repo create failed' }
 }
 git push -u origin HEAD

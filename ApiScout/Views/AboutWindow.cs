@@ -91,7 +91,7 @@ public sealed class AboutWindow : Window
 
         var panel = new StackPanel { Margin = new Thickness(24, 20, 24, 20) };
         panel.Children.Add(new TextBlock { Text = "API Free", FontSize = 24, FontWeight = FontWeights.Bold });
-        panel.Children.Add(Muted($"free API finder  ·  version {VersionText}  ·  {RuntimeInformation.FrameworkDescription}"));
+        panel.Children.Add(Muted($"find and test public APIs  ·  version {VersionText}  ·  {RuntimeInformation.FrameworkDescription}"));
 
         panel.Children.Add(Heading("YOUR DATA"));
         _dataSummary.Text = vm.DataSummary;
