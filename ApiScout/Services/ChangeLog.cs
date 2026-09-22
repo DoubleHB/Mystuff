@@ -43,7 +43,7 @@ public static class ChangeLog
     public static string ToMarkdown(ScanReport r)
     {
         static string Cell(string s) => s.Replace("|", "\\|").Replace("\r", "").Replace('\n', ' ');
-        var sb = new StringBuilder($"## ApiScout: what the scan of {r.At:d MMM yyyy HH:mm} changed\n\n");
+        var sb = new StringBuilder($"## API Scout: what the scan of {r.At:d MMM yyyy HH:mm} changed\n\n");
         sb.Append($"{r.Total:N0} APIs, compared with the scan of {r.ComparedWith:d MMM yyyy HH:mm}: {r.Added.Count:N0} new, {r.Removed.Count:N0} gone, {r.Changed.Count:N0} changed.");
         if (r.FailedSources > 0) sb.Append($" {r.FailedSources} source(s) could not be read - what only they knew was kept, not counted as gone.");
         sb.Append('\n');

@@ -19,7 +19,7 @@ public sealed class ChangesWindow : Window
     public ChangesWindow(MainViewModel vm)
     {
         _vm = vm;
-        Title = "What changed - ApiScout";
+        Title = "What changed - API Scout";
         Width = 760;
         Height = Math.Min(820, SystemParameters.WorkArea.Height - 60);
         MinWidth = 560; MinHeight = 360;

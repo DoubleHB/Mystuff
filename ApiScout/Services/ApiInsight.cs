@@ -18,7 +18,7 @@ public sealed class ApiInfo
 }
 
 /// <summary>
-/// "More about this API". Two halves: <see cref="Benefits"/> is worked out from what ApiScout already knows (key, free
+/// "More about this API". Two halves: <see cref="Benefits"/> is worked out from what API Scout already knows (key, free
 /// level, HTTPS, CORS, health, spec); <see cref="ReadAsync"/> reads the provider's docs page - or the README for an API
 /// that lives on GitHub - and pulls out how it describes itself. Nothing is invented: what the page does not say is not shown.
 /// </summary>
@@ -60,7 +60,7 @@ public static partial class ApiInsight
         else if (r.Cors == "No") list.Add("No CORS: call it from a server or desktop app - a browser page would need a proxy.");
         if (r.Entry.Health is { } h) list.Add(h >= 90 ? $"Reliable: {h}% in freepublicapis.com's daily health tests." : $"Health {h}% in freepublicapis.com's daily tests - check it answers before building on it.");
         if (r.HasSpec) list.Add("Has an OpenAPI spec: client code and request collections can be generated from it.");
-        if (r.HasExample) list.Add("ApiScout knows a request that works as it is - press Test this API.");
+        if (r.HasExample) list.Add("API Scout knows a request that works as it is - press Test this API.");
         if (r.Entry.Sources.Count >= 3) list.Add($"Well known: listed by {r.Entry.Sources.Count} independent directories.");
         if (r.IsNew) list.Add("New: first seen by a scan in the last two weeks.");
         return list;

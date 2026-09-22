@@ -5,7 +5,7 @@ using ApiScout.ViewModels;
 
 namespace ApiScout.Views;
 
-/// <summary>"More about this API": the benefits ApiScout can state from what it knows, then what the provider's own page says.</summary>
+/// <summary>"More about this API": the benefits API Scout can state from what it knows, then what the provider's own page says.</summary>
 public sealed class InsightWindow : Window
 {
     private static readonly Dictionary<string, ApiInfo> Cache = []; // per session: the page is read once per API
@@ -85,7 +85,7 @@ public sealed class InsightWindow : Window
         if (_info is null) return;
         if (_info.Summary.Length > 0) _body.Children.Add(new TextBlock { Text = _info.Summary, TextWrapping = TextWrapping.Wrap, LineHeight = 21 });
         if (_info.Error is not null) _body.Children.Add(Muted(_info.Error));
-        else if (_info.Summary.Length == 0) _body.Children.Add(Muted("The page has no summary paragraph ApiScout could pick out."));
+        else if (_info.Summary.Length == 0) _body.Children.Add(Muted("The page has no summary paragraph API Scout could pick out."));
 
         if (_info.Features.Count > 0)
         {
