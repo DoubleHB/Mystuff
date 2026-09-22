@@ -45,6 +45,8 @@ own published demo key where there is one, or how to get a key.
   Import… on the PC; `Services/Backup.cs`): favourites, tags, notes, collections in the clear, saved keys and request variables inside
   AES-256-GCM under PBKDF2-SHA256 (310,000 rounds) from a passphrase - or left out. Merge rules are the desktop's:
   nothing already there is overwritten. The desktop needed no change for this.
+- 1.2.1: choosing a category, tag, search or filter scrolls the list back to the top (`AppState.listVersion`);
+  starring, tagging or a rescan keep the scroll position.
 
 ## One source of truth
 

@@ -70,10 +70,13 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final _search = TextEditingController();
+  final _list = ScrollController();
+  int _listVersion = 0;
 
   @override
   void dispose() {
     _search.dispose();
+    _list.dispose();
     super.dispose();
   }
 
@@ -82,6 +85,13 @@ class _HomePageState extends State<HomePage> {
         listenable: state,
         builder: (context, _) {
           final scheme = Theme.of(context).colorScheme;
+          if (_listVersion != state.listVersion) {
+            // a new category, search, tag or filter: start the new list from the top, not wherever the old one was
+            _listVersion = state.listVersion;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (_list.hasClients && _list.offset > 0) _list.jumpTo(0);
+            });
+          }
           return Scaffold(
             appBar: AppBar(
               title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -182,6 +192,7 @@ class _HomePageState extends State<HomePage> {
                                 child: const Text('Clear filters')),
                           ]))
                         : ListView.builder(
+                            controller: _list,
                             itemCount: state.rows.length + (state.showApiOfTheDay ? 1 : 0),
                             itemBuilder: (context, i) {
                               if (state.showApiOfTheDay) {
@@ -500,7 +511,7 @@ class FilterSheet extends StatelessWidget {
 void showAbout(BuildContext context) => showAboutDialog(
       context: context,
       applicationName: 'ApiScout',
-      applicationVersion: '1.2.0 (Android)',
+      applicationVersion: '1.2.1 (Android)',
       applicationLegalese: 'Free API finder. Rules and key knowledge: ${state.knowledge.exportedFrom}.',
       children: const [
         SizedBox(height: 12),

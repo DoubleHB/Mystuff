@@ -263,13 +263,19 @@ class AppState extends ChangeNotifier {
 
   int specialCategoryCount = 3;
 
+  /// Bumped whenever the user changes what the list shows (category, search, tag, filters) - the list scrolls back
+  /// to the top on every change of it. Not bumped by favourites, tags, notes or scans, which must keep the scroll position.
+  int listVersion = 0;
+
   void setSearch(String value) {
     search = value;
+    listVersion++;
     applyFilter();
   }
 
   void setCategory(String value) {
     category = value;
+    listVersion++;
     applyFilter();
   }
 
@@ -278,6 +284,7 @@ class AppState extends ChangeNotifier {
     accessFilter = access ?? accessFilter;
     httpsOnly = https ?? httpsOnly;
     corsOnly = cors ?? corsOnly;
+    listVersion++;
     applyFilter();
   }
 
@@ -288,6 +295,7 @@ class AppState extends ChangeNotifier {
     authFilter = authFilters.first;
     accessFilter = accessFilters.first;
     httpsOnly = corsOnly = false;
+    listVersion++;
     applyFilter();
   }
 
@@ -304,6 +312,7 @@ class AppState extends ChangeNotifier {
 
   void setTagFilter(String? tag) {
     tagFilter = tag;
+    listVersion++;
     applyFilter();
   }
 
