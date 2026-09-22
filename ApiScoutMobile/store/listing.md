@@ -5,7 +5,7 @@ short description 80, full description 4,000. Counts are given so you can trim w
 
 ## App name (30 max)
 
-`API Free - free API finder` (26)
+`API Free - public API finder` (28)
 
 ## Short description (80 max)
 

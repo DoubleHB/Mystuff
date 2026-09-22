@@ -849,8 +849,8 @@ Future<void> exportToFile(BuildContext context) async {
 void showAbout(BuildContext context) => showAboutDialog(
       context: context,
       applicationName: 'API Free',
-      applicationVersion: '1.5.0 (Android)',
-      applicationLegalese: 'Free API finder. Rules and key knowledge: ${state.knowledge.exportedFrom}. Typefaces Manrope and JetBrains Mono, SIL Open Font License.',
+      applicationVersion: '1.5.1 (Android)',
+      applicationLegalese: 'Find and test public APIs. Rules and key knowledge: ${state.knowledge.exportedFrom}. Typefaces Manrope and JetBrains Mono, SIL Open Font License.',
       children: const [
         SizedBox(height: 12),
         Text('Scans five public API directories, merges and categorises them, and shows whether an API needs a key - with the '

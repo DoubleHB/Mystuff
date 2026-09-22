@@ -1,5 +1,10 @@
 # API Free for Android - release notes
 
+## 1.5.1
+
+The app is now called **API Free** (it was ApiScout; that name was already taken). Nothing else changes: the
+package id, your data, keys and saved requests stay exactly where they were, and 1.5.1 installs over 1.5.0.
+
 ## 1.5.0
 
 The phone app catches up with the desktop on saved requests and OpenAPI, and is ready for Google Play.
