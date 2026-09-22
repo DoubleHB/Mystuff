@@ -4,7 +4,7 @@ The Android sister of the desktop app in `C:\Claude\ApiScout` (which is unchange
 API directories, merge and categorise a few thousand free APIs, and show whether each needs a key - with the provider's
 own published demo key where there is one, or how to get a key.
 
-## What it does (version 1.2)
+## What it does (version 1.3)
 
 - **Scan** the same five keyless directories as the desktop default (public-apis, public-api-lists, publicapis.dev,
   freepublicapis.com, n0shake). Downloads run in parallel; parsing, merging and categorising run in a background
@@ -47,6 +47,14 @@ own published demo key where there is one, or how to get a key.
   nothing already there is overwritten. The desktop needed no change for this.
 - 1.2.1: choosing a category, tag, search or filter scrolls the list back to the top (`AppState.listVersion`);
   starring, tagging or a rescan keep the scroll position.
+- **1.3.0 - the ledger look.** Same features, new presentation: Manrope for text and JetBrains Mono for hosts,
+  keys, URLs and responses (static instances bundled in `assets/fonts`, SIL OFL); white (or near-black) ground with
+  hairline dividers instead of cards; the current category as the page headline; colour only in the status words and
+  the teal accent; the search bar and status slide away as the list scrolls and return on a flick up; edge to edge;
+  skeleton rows while the first scan runs; the logo flies from the row into the detail header. The detail page is
+  five tabs - Overview, Keys, Try it, Docs, Mine - so Try it is one tap away instead of a scroll past Keys and My key.
+  "Try" on a found endpoint and "Scan docs" switch tabs; long "how to get a key" text is folded behind "Show the steps".
+  `ledgerTheme()` in `main.dart` holds every colour and shape; `widgets.dart` has `mono`, `tonalStyle`, `FoldedText`, `SkeletonRows`.
 
 ## One source of truth
 

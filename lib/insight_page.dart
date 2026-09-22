@@ -58,7 +58,7 @@ class _InsightPageState extends State<InsightPage> {
         ],
       ),
       body: ListView(padding: EdgeInsets.only(top: 8, bottom: 24 + MediaQuery.viewPaddingOf(context).bottom), children: [
-        Section('At a glance', children: [
+        Section('At a glance', first: true, children: [
           if (v.entry.description.isNotEmpty) Padding(padding: const EdgeInsets.only(bottom: 10), child: Text(v.entry.description)),
           for (final b in benefits(v))
             b.startsWith('Careful') || b.startsWith('No HTTPS')
@@ -94,14 +94,14 @@ class _InsightPageState extends State<InsightPage> {
               for (final s in info.sections)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(color: scheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(12)),
+                  decoration: BoxDecoration(border: Border.all(color: scheme.outlineVariant), borderRadius: BorderRadius.circular(12)),
                   child: Text(s, style: const TextStyle(fontSize: 12.5)),
                 ),
             ]),
           ]),
         if (info != null && !_loading)
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
             child: Text('Read from ${info.source}. Only what the page itself says is shown - nothing is made up.', style: muted),
           ),
       ]),
