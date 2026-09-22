@@ -69,6 +69,33 @@ own published demo key where there is one, or how to get a key.
   nothing, so a bare tab name means there is nothing behind it yet.
 - 1.3.4: a share button on the detail page hands the Markdown copy to Android's share sheet (`share_plus`). It
   carries the provider's published demo key where there is one, never your own key.
+- **1.4.0 - daily-use polish.**
+  - Search forgives a typo: a word of four letters or more also matches a word one edit away (two from eight
+    letters), so "wether" finds weather and "cocktial" the cocktail APIs (`search.dart`, `ApiView.matchesWord`).
+    Searches that led somewhere (search pressed, or a result opened) are offered under the box while it is focused
+    and empty; long-press one to forget it.
+  - A response page (`response_page.dart`): find with next/previous and the match count, and JSON as a tree whose
+    nodes fold (tap a `{…}` or `[…]`, long-press a value to copy it); a query shows only the matching lines and the
+    way to them. "Tree & search" above the response in Try it opens it.
+  - Auth presets in Try it: Bearer, X-Api-Key, ?api_key= and RapidAPI write the usual header or query parameter
+    with `{key}` in it (`withHeaderLine`, `withQueryParam` in `tester.dart`).
+  - Large text and TalkBack: list rows, the header and the rail grow with the phone's text size
+    (`rowExtentFor`); the rail letters are buttons for a screen reader, swipe actions are in the row's actions
+    menu, filter pills report their state, brand tiles are decoration.
+  - "API of the day" as a notification at 9:00 (menu; Android asks once). The next seven mornings are scheduled
+    from the phone's catalogue with the same pick the card makes (`notify.dart`, `flutter_local_notifications`);
+    tapping one opens the API.
+  - Deep links: the shared text ends with `apiscout://open/api/<key>`, which opens that API on a phone with
+    ApiScout (Flutter's own deep-link handling, `links.dart`; an API not in the phone's catalogue gets a page saying
+    so). There is no https domain to verify, so the link is plain text in most chat apps: copy and open it.
+  - Rescan weekly on Wi-Fi (menu): Android WorkManager runs the same scan while the app is closed
+    (`background.dart`, `workmanager`; unmetered network, battery not low). A thin result (fewer than three
+    sources, or under 500 APIs) is dropped rather than replacing a good catalogue.
+  - What changed: every scan, in the app or in the background, leaves `changes.json` - new, no longer listed, and
+    changed category or auth (`changes.dart`). A strip above the list says "12 new, 3 gone since the last scan ·
+    See" until dismissed; the menu keeps the last one.
+  - Cache versioning: the cached catalogue remembers a hash of `knowledge.json`. An app update with new rules
+    re-categorises the cached entries at start-up (`recategorise`), no scan needed.
 
 ## One source of truth
 
@@ -90,7 +117,9 @@ Keys policy is the desktop's: only demo keys the providers print in their own do
 - `lib/user_data.dart` - favourites/tags/notes/collections, the desktop export format and its encryption (pointycastle)
 - `lib/vault.dart` - My key storage (Android keystore)
 - `lib/app_state.dart` - catalogue, filters, favourites, theme (ChangeNotifier)
-- `lib/main.dart`, `detail_page.dart`, `widgets.dart`, `az_rail.dart` - the screens
+- `lib/main.dart`, `detail_page.dart`, `widgets.dart`, `az_rail.dart`, `response_page.dart`, `changes_page.dart` - the screens
+- `lib/search.dart` (typo-tolerant search, recent searches), `json_tree.dart` (response tree), `changes.dart` (scan diff),
+  `links.dart` (apiscout:// links), `notify.dart` (API of the day notification), `background.dart` (weekly rescan)
 - `test/apiscout_test.dart` - self-check (`--dart-define=LIVE=true` adds the real scan). `test/fixtures/desktop-export.json` is a real
   file from the desktop's Backup code (`ApiScout.Tests -- --phone-fixture <file>`, passphrase in the test); the other direction is
   `ApiScout.Tests -- --phone-import <file> <passphrase>` on the file the test writes when APISCOUT_PHONE_EXPORT is set.

@@ -5,22 +5,74 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderAbstractViewport, RenderSliver;
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:workmanager/workmanager.dart';
 
 import 'app_state.dart';
 import 'az_rail.dart';
+import 'background.dart';
+import 'changes_page.dart';
 import 'detail_page.dart';
 import 'knowledge.dart';
+import 'links.dart';
+import 'notify.dart';
 import 'user_data.dart';
 import 'widgets.dart';
 
 final state = AppState();
 
+/// The app's navigator, for pages opened from outside a screen: a notification tap or an apiscout:// link.
+final appNavigator = GlobalKey<NavigatorState>();
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // edge to edge: the list scrolls under transparent system bars; the pages add the insets back themselves
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  try {
+    await Workmanager().initialize(backgroundDispatcher);
+  } catch (_) {
+    // no WorkManager (a test host, say): the weekly rescan setting simply cannot be turned on
+  }
+  await DailyNotice.init(openApiByKey);
   await state.load();
   runApp(const ApiScoutApp());
+  final fromNotification = await DailyNotice.launchedWith();
+  if (fromNotification != null) WidgetsBinding.instance.addPostFrameCallback((_) => openApiByKey(fromNotification));
+}
+
+/// Opens the detail page for a catalogue key, or a note that the catalogue does not have it (yet).
+void openApiByKey(String key) {
+  final nav = appNavigator.currentState;
+  if (nav == null) return;
+  FocusManager.instance.primaryFocus?.unfocus();
+  final v = state.find(key);
+  nav.push(MaterialPageRoute(builder: (_) => v == null ? MissingApiPage(apiKey: key) : DetailPage(view: v)));
+}
+
+/// A link or notification pointed at an API the phone's catalogue does not hold.
+class MissingApiPage extends StatelessWidget {
+  final String apiKey;
+  const MissingApiPage({super.key, required this.apiKey});
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(toolbarHeight: 48),
+        body: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Not in this phone\'s catalogue', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, letterSpacing: -0.4)),
+            const SizedBox(height: 10),
+            Text('The link points at "$apiKey". ${state.all.isEmpty ? 'Scan first, then open the link again.' : 'It is not in the last scan on this phone - scan again, or search for it by name.'}', style: const TextStyle(height: 1.45)),
+            const SizedBox(height: 20),
+            FilledButton.icon(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  state.scan();
+                },
+                icon: const Icon(Icons.refresh),
+                label: const Text('Scan the internet')),
+          ]),
+        ),
+      );
 }
 
 /// The ledger look: one ink, one hairline, one accent (the teal of the icon), and colour only where it means something.
@@ -106,6 +158,15 @@ class ApiScoutApp extends StatelessWidget {
         builder: (context, _) => MaterialApp(
           title: 'ApiScout',
           debugShowCheckedModeBanner: false,
+          navigatorKey: appNavigator,
+          // apiscout://open/api/<key> arrives as the route "/api/<key>", at start-up or while the app is running
+          onGenerateRoute: (settings) {
+            final key = apiKeyFromRoute(settings.name);
+            if (key == null) return null;
+            final v = state.find(key);
+            return MaterialPageRoute(settings: settings, builder: (_) => v == null ? MissingApiPage(apiKey: key) : DetailPage(view: v));
+          },
+          onUnknownRoute: (settings) => MaterialPageRoute(settings: settings, builder: (_) => const HomePage()),
           theme: ledgerTheme(Brightness.light),
           darkTheme: ledgerTheme(Brightness.dark),
           themeMode: switch (state.theme) {
@@ -151,8 +212,10 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final _search = TextEditingController();
+  final _searchFocus = FocusNode();
   final _list = ScrollController();
   int _listVersion = 0;
+  double _rowExtent = 76;
 
   // the A-Z rail: which row each initial starts at (for the rows list it was built from), the sliver that holds the
   // rows (its preceding scroll extent = header + API of the day, whatever they measure), and the initial at the top
@@ -165,14 +228,25 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     _list.addListener(_onScroll);
+    _searchFocus.addListener(() => setState(() {})); // the recent searches show while the box is focused and empty
   }
 
   @override
   void dispose() {
     _search.dispose();
+    _searchFocus.dispose();
     _list.dispose();
     _atLetter.dispose();
     super.dispose();
+  }
+
+  bool get _showRecent => _searchFocus.hasFocus && _search.text.trim().isEmpty && state.recentSearches.isNotEmpty;
+
+  void _useRecent(String term) {
+    _search.text = term;
+    state.setSearch(term);
+    state.rememberSearch(term);
+    _searchFocus.unfocus();
   }
 
   /// A rail is worth having for a long list in name order - not for a collection, which keeps the order it was built in.
@@ -199,7 +273,7 @@ class _HomePageState extends State<HomePage> {
       return;
     }
     // the list runs edge to edge, so the first row the eye sees starts below the status bar
-    final i = ((_list.offset + _topInset - _rowsBase) / rowExtent).floor().clamp(0, state.rows.length - 1);
+    final i = ((_list.offset + _topInset - _rowsBase) / _rowExtent).floor().clamp(0, state.rows.length - 1);
     _atLetter.value = initialOf(state.rows[i].name);
   }
 
@@ -209,7 +283,7 @@ class _HomePageState extends State<HomePage> {
     if (!_list.hasClients) return;
     for (final (l, i) in _letters) {
       if (l != letter) continue;
-      _list.jumpTo((_rowsBase + i * rowExtent - _topInset).clamp(0.0, _list.position.maxScrollExtent));
+      _list.jumpTo((_rowsBase + i * _rowExtent - _topInset).clamp(0.0, _list.position.maxScrollExtent));
       return;
     }
   }
@@ -235,7 +309,13 @@ class _HomePageState extends State<HomePage> {
           }
           final showChips = state.all.isNotEmpty;
           final showRail = _showRail;
+          final showRecent = _showRecent;
           if (showRail) WidgetsBinding.instance.addPostFrameCallback((_) => _onScroll());
+          // everything in the header is text, so the header grows with the phone's text size
+          final ts = MediaQuery.textScalerOf(context).scale(10) / 10;
+          final toolbarH = 20 + 46 * ts, searchH = 8 + 46 * ts, chipsH = 44 * ts, recentH = 40 * ts;
+          final headerH = toolbarH + searchH + (showChips ? chipsH : 0) + (showRecent ? recentH : 0) + (state.busy ? 3 : 0);
+          _rowExtent = rowExtentFor(context);
           return Scaffold(
             drawer: const CategoryDrawer(),
             body: Stack(children: [
@@ -246,7 +326,7 @@ class _HomePageState extends State<HomePage> {
                   SliverAppBar(
                     floating: true,
                     snap: true,
-                    toolbarHeight: 66,
+                    toolbarHeight: toolbarH,
                     titleSpacing: 0,
                     title: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
                       Text(plainCategory(state.category), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: -0.6, height: 1.1)),
@@ -263,6 +343,12 @@ class _HomePageState extends State<HomePage> {
                             importFromFile(context);
                           } else if (v == 'export') {
                             exportToFile(context);
+                          } else if (v == 'notice') {
+                            state.setDailyNotice(!state.dailyNotice);
+                          } else if (v == 'weekly') {
+                            state.setWeeklyRescan(!state.weeklyRescan);
+                          } else if (v == 'changes') {
+                            Navigator.of(context).push(MaterialPageRoute(builder: (_) => ChangesPage(diff: state.changes!)));
                           } else {
                             state.setTheme(ThemeModeSetting.values.byName(v));
                           }
@@ -270,6 +356,10 @@ class _HomePageState extends State<HomePage> {
                         itemBuilder: (_) => [
                           for (final t in ThemeModeSetting.values)
                             CheckedPopupMenuItem(value: t.name, checked: state.theme == t, child: Text('Theme: ${t.name}')),
+                          const PopupMenuDivider(),
+                          CheckedPopupMenuItem(value: 'notice', checked: state.dailyNotice, child: const Text('API of the day at 9:00 (notification)')),
+                          CheckedPopupMenuItem(value: 'weekly', checked: state.weeklyRescan, child: const Text('Rescan weekly on Wi-Fi')),
+                          PopupMenuItem(value: 'changes', enabled: state.changes != null, child: const Text('What the last scan changed…')),
                           const PopupMenuDivider(),
                           const PopupMenuItem(value: 'import', child: Text('Import from the desktop app…')),
                           const PopupMenuItem(value: 'export', child: Text('Export my data…')),
@@ -279,15 +369,17 @@ class _HomePageState extends State<HomePage> {
                       ),
                     ],
                     bottom: PreferredSize(
-                      preferredSize: Size.fromHeight(54 + (showChips ? 44 : 0) + (state.busy ? 3 : 0)),
+                      preferredSize: Size.fromHeight(headerH - toolbarH),
                       child: Column(children: [
                         Padding(
                           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                           child: SizedBox(
-                            height: 46,
+                            height: 46 * ts,
                             child: TextField(
                               controller: _search,
+                              focusNode: _searchFocus,
                               onChanged: state.setSearch,
+                              onSubmitted: state.rememberSearch,
                               textInputAction: TextInputAction.search,
                               style: const TextStyle(fontSize: 15),
                               decoration: InputDecoration(
@@ -313,7 +405,16 @@ class _HomePageState extends State<HomePage> {
                             ),
                           ),
                         ),
-                        if (showChips) SizedBox(height: 44, child: _filterBar(context)),
+                        if (showRecent)
+                          SizedBox(
+                            height: recentH,
+                            child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 12), children: [
+                              for (final r in state.recentSearches)
+                                FilterPill(r, icon: Icons.history, onTap: () => _useRecent(r), onLongPress: () => state.forgetSearch(r)),
+                              if (state.recentSearches.isNotEmpty) FilterPill('Forget all', onTap: state.clearRecentSearches),
+                            ]),
+                          ),
+                        if (showChips) SizedBox(height: chipsH, child: _filterBar(context)),
                         if (state.busy) LinearProgressIndicator(minHeight: 3, value: state.progress == 0 ? null : state.progress),
                       ]),
                     ),
@@ -337,11 +438,12 @@ class _HomePageState extends State<HomePage> {
                       ),
                     )
                   else ...[
+                    if (state.hasUnseenChanges) const SliverToBoxAdapter(child: ChangesStrip()),
                     if (state.showApiOfTheDay) const SliverToBoxAdapter(child: ApiOfTheDayCard()),
                     // fixed-height rows: the rail can then land on row i without ever laying out the rows before it
                     SliverFixedExtentList.builder(
                       key: _rowsKey,
-                      itemExtent: rowExtent,
+                      itemExtent: _rowExtent,
                       itemCount: state.rows.length,
                       itemBuilder: (context, i) {
                         final v = state.rows[i];
@@ -356,7 +458,11 @@ class _HomePageState extends State<HomePage> {
                             tags: state.tagsOf(v),
                             hasKey: state.hasKey(v),
                             rightInset: showRail ? railWidth : 0,
-                            onTap: () => openDetail(context, v),
+                            onTap: () {
+                              // a search that led to an API is one worth offering again
+                              if (state.search.trim().isNotEmpty) state.rememberSearch(state.search);
+                              openDetail(context, v);
+                            },
                             onFavourite: () => state.toggleFavourite(v),
                           ),
                         );
@@ -373,7 +479,7 @@ class _HomePageState extends State<HomePage> {
                   right: 0,
                   width: railWidth,
                   // below the header at its full height, so the letters never sit over the search or the chips
-                  top: MediaQuery.viewPaddingOf(context).top + 66 + 54 + (showChips ? 44 : 0) + 8,
+                  top: MediaQuery.viewPaddingOf(context).top + headerH + 8,
                   bottom: MediaQuery.viewPaddingOf(context).bottom + 8,
                   child: AlphabetRail(letters: [for (final (l, _) in _letters) l], current: _atLetter, onLetter: _jumpToLetter),
                 ),
@@ -428,7 +534,8 @@ class FilterPill extends StatelessWidget {
   final bool selected;
   final IconData? icon;
   final VoidCallback? onTap;
-  const FilterPill(this.label, {super.key, this.selected = false, this.icon, this.onTap});
+  final VoidCallback? onLongPress;
+  const FilterPill(this.label, {super.key, this.selected = false, this.icon, this.onTap, this.onLongPress});
 
   @override
   Widget build(BuildContext context) {
@@ -441,13 +548,43 @@ class FilterPill extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
-          child: Padding(
+          onLongPress: onLongPress,
+          child: Semantics(
+            selected: selected,
+            child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               if (icon != null) Padding(padding: const EdgeInsets.only(right: 4), child: Icon(icon, size: 14, color: selected ? scheme.surface : scheme.onSurface)),
               Text(label, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: selected ? scheme.surface : scheme.onSurface)),
             ]),
           ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// "12 new, 3 gone since the last scan · See": one line above the list until the user has looked or dismissed it.
+class ChangesStrip extends StatelessWidget {
+  const ChangesStrip({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final c = state.changes!;
+    return Material(
+      color: scheme.surfaceContainerHighest,
+      child: InkWell(
+        onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ChangesPage(diff: c))),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 6, 4, 6),
+          child: Row(children: [
+            Icon(Icons.new_releases_outlined, size: 18, color: scheme.primary),
+            const SizedBox(width: 10),
+            Expanded(child: Text('${c.summary} since the last scan  ·  See', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700))),
+            IconButton(tooltip: 'Dismiss', visualDensity: VisualDensity.compact, icon: const Icon(Icons.close, size: 18), onPressed: state.markChangesSeen),
+          ]),
         ),
       ),
     );
@@ -712,7 +849,7 @@ Future<void> exportToFile(BuildContext context) async {
 void showAbout(BuildContext context) => showAboutDialog(
       context: context,
       applicationName: 'ApiScout',
-      applicationVersion: '1.3.4 (Android)',
+      applicationVersion: '1.4.0 (Android)',
       applicationLegalese: 'Free API finder. Rules and key knowledge: ${state.knowledge.exportedFrom}. Typefaces Manrope and JetBrains Mono, SIL Open Font License.',
       children: const [
         SizedBox(height: 12),

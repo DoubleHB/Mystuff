@@ -6,7 +6,9 @@ import 'package:share_plus/share_plus.dart';
 import 'docs_scanner.dart';
 import 'insight_page.dart';
 import 'knowledge.dart';
+import 'links.dart';
 import 'main.dart';
+import 'response_page.dart';
 import 'tester.dart';
 import 'user_data.dart';
 import 'variables.dart';
@@ -166,6 +168,22 @@ class _DetailPageState extends State<DetailPage> with SingleTickerProviderStateM
   /// "Header: X-Api-Key: abc" in the key knowledge means the key travels in a header.
   String get _defaultHeader => (v.hint?.keyUsage ?? '').startsWith('Header: ') ? v.hint!.keyUsage!.substring(8) : '';
 
+  /// One tap writes the usual place for a key, with {key} standing for the saved one.
+  void _applyPreset(String preset) => setState(() {
+        switch (preset) {
+          case 'Bearer':
+            _headers.text = withHeaderLine(_headers.text, 'Authorization', 'Bearer {key}');
+          case 'X-Api-Key':
+            _headers.text = withHeaderLine(_headers.text, 'X-Api-Key', '{key}');
+          case '?api_key=':
+            _url.text = withQueryParam(_url.text, 'api_key', '{key}');
+          case 'RapidAPI':
+            final host = Uri.tryParse(_url.text.trim())?.host ?? '';
+            _headers.text = withHeaderLine(_headers.text, 'X-RapidAPI-Key', '{key}');
+            if (host.isNotEmpty) _headers.text = withHeaderLine(_headers.text, 'X-RapidAPI-Host', host);
+        }
+      });
+
   @override
   void dispose() {
     // what was typed last must not be lost to the back button
@@ -251,7 +269,8 @@ class _DetailPageState extends State<DetailPage> with SingleTickerProviderStateM
   /// published demo key where there is one and never the user's own key.
   Future<void> _share() async {
     try {
-      await SharePlus.instance.share(ShareParams(text: _asMarkdown(), subject: v.name));
+      // the link at the end opens this page on a phone with ApiScout; elsewhere it is just a line of text
+      await SharePlus.instance.share(ShareParams(text: '${_asMarkdown()}\n\nOpen in ApiScout: ${deepLinkFor(v.entry.key)}', subject: v.name));
     } catch (_) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Nothing on this phone can take the share')));
     }
@@ -509,7 +528,23 @@ class _DetailPageState extends State<DetailPage> with SingleTickerProviderStateM
           ),
         ),
       ]),
-      const SizedBox(height: 12),
+      const SizedBox(height: 10),
+      Wrap(spacing: 6, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
+        Text('Auth:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: scheme.onSurfaceVariant)),
+        for (final p in authPresets)
+          ActionChip(
+            label: Text(p),
+            visualDensity: VisualDensity.compact,
+            tooltip: switch (p) {
+              'Bearer' => 'Authorization: Bearer {key}',
+              'X-Api-Key' => 'X-Api-Key: {key} header',
+              '?api_key=' => 'api_key={key} in the URL',
+              _ => 'X-RapidAPI-Key and X-RapidAPI-Host headers',
+            },
+            onPressed: () => _applyPreset(p),
+          ),
+      ]),
+      const SizedBox(height: 8),
       TextField(
         controller: _headers,
         onChanged: (_) => setState(() {}),
@@ -584,6 +619,11 @@ class _DetailPageState extends State<DetailPage> with SingleTickerProviderStateM
         if (_result!.body.isNotEmpty) ...[
           Row(children: [
             const Expanded(child: FieldLabel('RESPONSE')),
+            TextButton.icon(
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ResponsePage(title: v.name, body: _result!.body, isJson: _result!.isJson))),
+              icon: const Icon(Icons.open_in_full, size: 16),
+              label: Text(_result!.isJson ? 'Tree & search' : 'Search'),
+            ),
             TextButton.icon(onPressed: () => copyText(context, _result!.body, 'Response'), icon: const Icon(Icons.copy, size: 16), label: const Text('Copy')),
           ]),
           Container(

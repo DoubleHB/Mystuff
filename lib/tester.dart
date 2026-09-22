@@ -23,6 +23,36 @@ final _keyPlaceholderRx = RegExp(r'\{key\}', caseSensitive: false);
 bool usesKeyPlaceholder(String text) => _keyPlaceholderRx.hasMatch(text);
 String fillKey(String text, String key, {bool escape = false}) => text.replaceAll(_keyPlaceholderRx, escape ? Uri.encodeComponent(key) : key);
 
+/// Auth presets for Try it: one tap writes the usual header (or query parameter) with {key} standing for the saved key.
+const authPresets = ['Bearer', 'X-Api-Key', '?api_key=', 'RapidAPI'];
+
+/// [headers] with a "[name]: [value]" line: replacing the line of that name (whatever its case) or adding one.
+String withHeaderLine(String headers, String name, String value) {
+  final lines = [for (final l in headers.split('\n')) if (l.trim().isNotEmpty) l.trimRight()];
+  final i = lines.indexWhere((l) => l.split(':').first.trim().toLowerCase() == name.toLowerCase());
+  if (i >= 0) {
+    lines[i] = '$name: $value';
+  } else {
+    lines.add('$name: $value');
+  }
+  return lines.join('\n');
+}
+
+/// [url] with "[name]=[value]" in its query: replacing that parameter if it is already there.
+String withQueryParam(String url, String name, String value) {
+  url = url.trim();
+  final q = url.indexOf('?');
+  if (q < 0) return '$url?$name=$value';
+  final params = url.substring(q + 1).split('&').where((p) => p.isNotEmpty).toList();
+  final i = params.indexWhere((p) => p.split('=').first.toLowerCase() == name.toLowerCase());
+  if (i >= 0) {
+    params[i] = '$name=$value';
+  } else {
+    params.add('$name=$value');
+  }
+  return '${url.substring(0, q)}?${params.join('&')}';
+}
+
 /// Zero or more "Name: value" lines. Returns the first malformed line through [bad].
 Map<String, String>? parseHeaders(String text, void Function(String bad) bad) {
   final headers = <String, String>{};

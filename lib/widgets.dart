@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart' show CustomSemanticsAction;
 import 'package:flutter/services.dart';
 
 import 'knowledge.dart';
@@ -71,12 +72,15 @@ class BrandTile extends StatelessWidget {
     for (final c in (host.isEmpty ? view.name : host).codeUnits) {
       hash = (hash * 31 + c) & 0x7fffffff;
     }
-    final initial = Container(
-      width: size,
-      height: size,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(color: _avatarColors[hash % _avatarColors.length], borderRadius: BorderRadius.circular(size * 0.18)),
-      child: Text(letter, style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: size * 0.45)),
+    // decoration only: a screen reader has the name in the row already
+    final initial = ExcludeSemantics(
+      child: Container(
+        width: size,
+        height: size,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(color: _avatarColors[hash % _avatarColors.length], borderRadius: BorderRadius.circular(size * 0.18)),
+        child: Text(letter, style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: size * 0.45)),
+      ),
     );
     final tile = host.isEmpty
         ? initial
@@ -88,6 +92,7 @@ class BrandTile extends StatelessWidget {
               width: size,
               height: size,
               fit: BoxFit.contain,
+              excludeFromSemantics: true,
               errorBuilder: (_, _, _) => initial,
               // same footprint as the initial, so rows line up whether or not an icon arrived
               frameBuilder: (_, child, frame, _) => frame == null ? initial : Container(width: size, height: size, color: Colors.white, padding: EdgeInsets.all(size * 0.08), child: child),
@@ -99,8 +104,9 @@ class BrandTile extends StatelessWidget {
 
 /// One row of the list: a hairline below, colour only in the status words.
 /// Every list row is exactly this tall (the tile centres its three lines in it), so the A-Z rail can jump to a row
-/// by index alone: name, description (or the category when there is none), status words + tags.
-const rowExtent = 76.0;
+/// by index alone: name, description (or the category when there is none), status words + tags. The three lines
+/// grow with the phone's text size, so the row does too.
+double rowExtentFor(BuildContext context) => 20 + MediaQuery.textScalerOf(context).scale(56);
 
 class ApiTile extends StatelessWidget {
   final ApiView view;
@@ -120,7 +126,7 @@ class ApiTile extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       child: Container(
-        height: rowExtent,
+        height: rowExtentFor(context),
         decoration: BoxDecoration(border: Border(bottom: BorderSide(color: scheme.outlineVariant))),
         padding: EdgeInsets.fromLTRB(16, 0, 4 + rightInset, 0),
         child: Row(children: [
@@ -168,7 +174,13 @@ class SwipeActions extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Dismissible(
+    // a screen reader cannot swipe a row: the two actions are in its actions menu instead
+    return Semantics(
+      customSemanticsActions: {
+        CustomSemanticsAction(label: favourite ? 'Remove from favourites' : 'Add to favourites'): onStar,
+        const CustomSemanticsAction(label: 'Add to a collection'): onCollect,
+      },
+      child: Dismissible(
       key: rowKey,
       direction: DismissDirection.horizontal,
       dismissThresholds: const {DismissDirection.startToEnd: 0.3, DismissDirection.endToStart: 0.3},
@@ -184,6 +196,7 @@ class SwipeActions extends StatelessWidget {
       background: _pane(context, color: const Color(0xFFF5B83D), ink: const Color(0xFF111418), icon: favourite ? Icons.star_border : Icons.star, label: favourite ? 'UNSTAR' : 'STAR', align: Alignment.centerLeft),
       secondaryBackground: _pane(context, color: scheme.onSurface, ink: scheme.surface, icon: Icons.create_new_folder_outlined, label: 'COLLECTION', align: Alignment.centerRight),
       child: child,
+      ),
     );
   }
 }

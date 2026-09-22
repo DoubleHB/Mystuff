@@ -6,9 +6,13 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'background.dart';
+import 'changes.dart';
 import 'docs_scanner.dart';
 import 'knowledge.dart';
 import 'models.dart';
+import 'notify.dart';
+import 'search.dart';
 import 'sources.dart';
 import 'user_data.dart';
 import 'vault.dart';
@@ -43,6 +47,16 @@ class AppState extends ChangeNotifier {
   int _dayOffset = 0;
   String? tagFilter;
 
+  /// Searches that led somewhere, newest first (shown under the search box while it is empty).
+  List<String> recentSearches = [];
+
+  /// API of the day as a 9:00 notification; a rescan once a week on Wi-Fi while the app is closed.
+  bool dailyNotice = false;
+  bool weeklyRescan = false;
+
+  /// What the last scan (in the app or in the background) changed, until the user has looked.
+  CatalogueDiff? changes;
+
   AppState({KeyVault? vault}) : vault = vault ?? SecureKeyVault();
 
   bool ready = false;
@@ -75,10 +89,20 @@ class AppState extends ChangeNotifier {
       vault = MemoryKeyVault();
     }
     theme = ThemeModeSetting.values[(_prefs.getInt('theme') ?? 0).clamp(0, 2)];
+    recentSearches = _prefs.getStringList('recent-searches') ?? [];
+    dailyNotice = _prefs.getBool('daily-notice') ?? false;
+    weeklyRescan = _prefs.getBool('weekly-rescan') ?? false;
+    await _loadChanges();
     try {
       final file = await _catalogueFile();
       if (await file.exists()) {
-        final cat = Catalogue.fromJson(jsonDecode(await file.readAsString()) as Map<String, dynamic>);
+        var cat = Catalogue.fromJson(jsonDecode(await file.readAsString()) as Map<String, dynamic>);
+        if (cat.rules != rulesHash(_knowledgeJson) && cat.entries.isNotEmpty) {
+          // an app update brought new rules: same entries, fresh categories, no scan
+          recategorise(cat.entries, knowledge);
+          cat = Catalogue(cat.scannedAt, cat.entries, rules: rulesHash(_knowledgeJson));
+          await _saveCatalogue(cat);
+        }
         _use(cat);
         status = 'Loaded ${all.length} APIs from the last scan (${_when(cat.scannedAt)}).';
       }
@@ -88,10 +112,44 @@ class AppState extends ChangeNotifier {
     if (all.isEmpty && status.isEmpty) status = 'Press Scan to find free APIs.';
     ready = true;
     notifyListeners();
+    if (dailyNotice) await DailyNotice.schedule(dailyItems());
   }
 
   Future<File> _catalogueFile() async => File('${(await getApplicationSupportDirectory()).path}/catalogue.json');
   Future<File> _userFile() async => File('${(await getApplicationSupportDirectory()).path}/user.json');
+  Future<File> _changesFile() async => File('${(await getApplicationSupportDirectory()).path}/changes.json');
+
+  Future<void> _saveCatalogue(Catalogue cat) async => writeFileAtomically(await _catalogueFile(), jsonEncode(cat.toJson()));
+
+  Future<void> _loadChanges() async {
+    try {
+      final file = await _changesFile();
+      if (await file.exists()) changes = CatalogueDiff.fromJson(jsonDecode(await file.readAsString()) as Map<String, dynamic>);
+    } catch (_) {
+      changes = null;
+    }
+  }
+
+  Future<void> _saveChanges() async {
+    try {
+      final file = await _changesFile();
+      if (changes == null) {
+        if (await file.exists()) await file.delete();
+      } else {
+        await writeFileAtomically(file, jsonEncode(changes!.toJson()));
+      }
+    } catch (_) {}
+  }
+
+  /// The strip above the list shows while this is true.
+  bool get hasUnseenChanges => changes != null && !changes!.seen && changes!.total > 0;
+
+  void markChangesSeen() {
+    if (changes == null) return;
+    changes!.seen = true;
+    _saveChanges();
+    notifyListeners();
+  }
 
   Future<void> _loadUser() async {
     try {
@@ -136,11 +194,61 @@ class AppState extends ChangeNotifier {
   ApiView? find(String key) => _byKey[key];
 
   /// One API a day that answers without any sign-up - the same pick as the desktop app makes from the same catalogue.
-  void _pickApiOfTheDay() {
+  void _pickApiOfTheDay() => apiOfTheDay = apiOfTheDayFor(DateTime.now(), offset: _dayOffset);
+
+  static int _dayNumber(DateTime day) => DateTime.utc(day.year, day.month, day.day).difference(DateTime.utc(1, 1, 1)).inDays; // .NET's DateOnly.DayNumber
+
+  ApiView? apiOfTheDayFor(DateTime day, {int offset = 0}) {
     final candidates = [for (final v in all) if (v.example != null && (v.keylessWorks || v.hasDemoKey)) v]..sort((a, b) => a.entry.key.compareTo(b.entry.key));
-    final now = DateTime.now();
-    final dayNumber = DateTime.utc(now.year, now.month, now.day).difference(DateTime.utc(1, 1, 1)).inDays; // .NET's DateOnly.DayNumber
-    apiOfTheDay = candidates.isEmpty ? null : candidates[(dayNumber + _dayOffset) % candidates.length];
+    return candidates.isEmpty ? null : candidates[(_dayNumber(day) + offset) % candidates.length];
+  }
+
+  /// The next seven mornings' picks, for the notifications.
+  List<DailyItem> dailyItems() {
+    final today = DateTime.now();
+    return [
+      for (var d = 0; d < 7; d++)
+        if (apiOfTheDayFor(today.add(Duration(days: d))) case final v?)
+          (
+            when: DateTime(today.year, today.month, today.day + d, 9),
+            key: v.entry.key,
+            title: 'API of the day: ${v.name}',
+            body: v.entry.description.isEmpty ? '${v.hasDemoKey ? 'Demo key included' : 'No key needed'} · tap to try it' : v.entry.description,
+          ),
+    ];
+  }
+
+  Future<void> setDailyNotice(bool on) async {
+    if (on && !await DailyNotice.askPermission()) {
+      status = 'Notifications are off for ApiScout in Android\'s settings.';
+      on = false;
+    }
+    dailyNotice = on;
+    await _prefs.setBool('daily-notice', on);
+    notifyListeners();
+    if (on) {
+      await DailyNotice.schedule(dailyItems());
+    } else {
+      await DailyNotice.cancelAll();
+    }
+  }
+
+  Future<void> setWeeklyRescan(bool on) async {
+    weeklyRescan = on;
+    await _prefs.setBool('weekly-rescan', on);
+    notifyListeners();
+    try {
+      if (on) {
+        await enableWeeklyRescan();
+      } else {
+        await disableWeeklyRescan();
+      }
+    } catch (ex) {
+      status = 'Could not set up the weekly rescan: $ex';
+      weeklyRescan = false;
+      await _prefs.setBool('weekly-rescan', false);
+      notifyListeners();
+    }
   }
 
   void anotherApiOfTheDay() {
@@ -188,15 +296,18 @@ class AppState extends ChangeNotifier {
         return;
       }
       final before = all.length;
-      final known = {for (final v in all) v.entry.key};
-      final cat = Catalogue(DateTime.now(), entries);
-      await (await _catalogueFile()).writeAsString(jsonEncode(cat.toJson()), flush: true);
+      if (before > 0) {
+        changes = diffCatalogues([for (final v in all) v.entry], entries);
+        await _saveChanges();
+      }
+      final cat = Catalogue(DateTime.now(), entries, rules: rulesHash(_knowledgeJson));
+      await _saveCatalogue(cat);
       _use(cat);
-      final added = before == 0 ? 0 : entries.where((e) => !known.contains(e.key)).length;
       final failed = allNotes.where((n) => n.contains('failed')).toList();
       status = 'Scan finished: ${all.length} unique APIs in ${{for (final v in all) v.entry.category}.length} categories'
-          '${before > 0 ? ' - $added new since the last scan' : ''}'
+          '${before > 0 ? ' - ${changes!.summary.toLowerCase()} since the last scan' : ''}'
           '${failed.isEmpty ? '.' : '. ${failed.length} source(s) failed: ${failed.join('; ')}'}';
+      if (dailyNotice) await DailyNotice.schedule(dailyItems());
     } catch (ex) {
       status = 'Scan failed: $ex';
     } finally {
@@ -227,7 +338,7 @@ class AppState extends ChangeNotifier {
             _matchesAuth(v) &&
             (accessFilter == accessFilters.first || v.accessLabel == accessFilter) &&
             (tagFilter == null || tagsOf(v).any((t) => t.toLowerCase() == tagFilter!.toLowerCase())) &&
-            words.every((w) => v.searchText.contains(w) || tagsOf(v).any((t) => t.toLowerCase().contains(w))))
+            words.every((w) => v.matchesWord(w) || tagsOf(v).any((t) => t.toLowerCase().contains(w))))
           v
     ];
     final counts = <String, int>{};
@@ -271,6 +382,27 @@ class AppState extends ChangeNotifier {
     search = value;
     listVersion++;
     applyFilter();
+  }
+
+  /// Called when a search led somewhere (the user pressed search, or opened a result).
+  void rememberSearch(String term) {
+    final next = rememberSearch_(recentSearches, term);
+    if (next.join('\n') == recentSearches.join('\n')) return;
+    recentSearches = next;
+    _prefs.setStringList('recent-searches', recentSearches);
+    notifyListeners();
+  }
+
+  void clearRecentSearches() {
+    recentSearches = [];
+    _prefs.setStringList('recent-searches', recentSearches);
+    notifyListeners();
+  }
+
+  void forgetSearch(String term) {
+    recentSearches = [for (final r in recentSearches) if (r != term) r];
+    _prefs.setStringList('recent-searches', recentSearches);
+    notifyListeners();
   }
 
   void setCategory(String value) {

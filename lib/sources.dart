@@ -257,12 +257,18 @@ List<ApiEntry> mergeEntries(Iterable<ApiEntry> entries, Knowledge knowledge) {
     have.health ??= e.health;
   }
   final list = byKey.values.toList();
+  recategorise(list, knowledge);
+  return list;
+}
+
+/// Categories from the current rules, then name order. Also run on a cached catalogue when the rules have changed
+/// since it was scanned - no network needed, the raw source categories are kept in every entry.
+void recategorise(List<ApiEntry> list, Knowledge knowledge) {
   for (final e in list) {
     knowledge.categorise(e);
   }
   knowledge.foldSmall(list);
   list.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
-  return list;
 }
 
 /// Runs in a background isolate (see AppState.scan): parse every downloaded source, merge, categorise.

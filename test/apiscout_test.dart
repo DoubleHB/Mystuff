@@ -5,10 +5,14 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:apiscout_mobile/az_rail.dart';
+import 'package:apiscout_mobile/changes.dart';
 import 'package:apiscout_mobile/docs_scanner.dart';
 import 'package:apiscout_mobile/insight.dart';
+import 'package:apiscout_mobile/json_tree.dart';
 import 'package:apiscout_mobile/knowledge.dart';
+import 'package:apiscout_mobile/links.dart';
 import 'package:apiscout_mobile/models.dart';
+import 'package:apiscout_mobile/search.dart';
 import 'package:apiscout_mobile/sources.dart';
 import 'package:apiscout_mobile/tester.dart';
 import 'package:apiscout_mobile/user_data.dart';
@@ -157,6 +161,88 @@ API | Description | Auth | HTTPS | CORS |
     expect(['apple', 'Zoo', '7digital', 'Éclair', ''].map(initialOf), ['A', 'Z', '#', '#', '#']);
     expect(firstIndexByInitial(['1st', 'Alpha', 'apex', 'Beta', 'beta 2', 'Zed']), [('#', 0), ('A', 1), ('B', 3), ('Z', 5)]);
     expect(firstIndexByInitial(const <String>[]), isEmpty);
+  });
+
+  test('search: one typo is forgiven from four letters, two from eight; recent list keeps the newest 8', () {
+    expect(editDistance('weather', 'wether', 1), 1);
+    expect(editDistance('cocktail', 'cocktial', 1), 1); // a swap is one edit
+    expect(editDistance('weather', 'water', 1), 2); // gave up: over the limit
+    final tokens = searchTokens('The Cocktail DB - drinks and recipes https://thecocktaildb.com');
+    expect(tokens, contains('cocktail'));
+    expect(wordMatches('the cocktail db', tokens, 'cocktial'), isTrue);
+    expect(wordMatches('the cocktail db', tokens, 'cok'), isFalse); // short words must be exact
+    expect(wordMatches('the cocktail db', tokens, 'drinkz'), isTrue);
+    expect(wordMatches('the cocktail db', tokens, 'weather'), isFalse);
+    final v = ApiView(ApiEntry(name: 'Weather Now', url: 'https://w.example', description: 'forecasts'), k);
+    expect(v.matchesWord('wether'), isTrue);
+    expect(v.matchesWord('forcast'), isTrue); // one edit from the start of "forecasts"
+    expect(v.matchesWord('forecasting'), isFalse); // longer than what is there
+    expect(rememberSearch_(['b', 'ab'], 'AB'), ['AB', 'b']);
+    expect(rememberSearch_(['b'], 'a'), ['b']); // one letter is not a search worth keeping
+    expect(rememberSearch_(List.generate(8, (i) => 's$i'), 'new').length, 8);
+    expect(rememberSearch_(['a'], ' '), ['a']);
+  });
+
+  test('JSON tree: flattened with ends, folded containers hide their children, a query keeps the way to each match', () {
+    final lines = flattenJson(jsonDecode('{"drinks":[{"name":"Margarita","abv":null},{"name":"Mojito","tags":["mint","rum"]}],"count":2}'));
+    expect(lines.length, 11);
+    expect(lines.first.end, 10);
+    expect(lines[1].key, 'drinks');
+    expect(lines[1].count, 2);
+    expect(lines[1].end, 9);
+    expect(visibleJsonLines(lines, {1}, '').map((l) => l.key), [null, 'drinks', 'count']);
+    final hits = visibleJsonLines(lines, {1}, 'moj');
+    expect(hits.map((l) => l.key), [null, 'drinks', '1', 'name']);
+    expect(visibleJsonLines(lines, {}, 'rum').last.valueText, '"rum"');
+    expect(jsonValueText(null), 'null');
+    expect(matchingLines(['a', 'Bee', 'b'], 'b'), [1, 2]);
+    expect(matchingLines(['a'], ''), isEmpty);
+  });
+
+  test('what changed: new, gone, and changed category or auth, in name order', () {
+    ApiEntry e(String key, String name, {String cat = 'Weather', AuthKind auth = AuthKind.none}) => ApiEntry(key: key, name: name, url: 'https://$key', category: cat, auth: auth);
+    final diff = diffCatalogues(
+      [e('a', 'Alpha'), e('b', 'Beta'), e('c', 'Gamma')],
+      [e('a', 'Alpha', cat: 'Sport'), e('c', 'Gamma', auth: AuthKind.apiKey), e('z', 'Zed'), e('d', 'Delta')],
+    );
+    expect(diff.added.map((p) => p.$2), ['Delta', 'Zed']);
+    expect(diff.gone.map((p) => p.$2), ['Beta']);
+    expect(diff.changed.map((c) => c.what), ['Category: Weather → Sport', 'Auth: none → apiKey']);
+    expect(diff.summary, '2 new, 1 gone, 2 changed');
+    final back = CatalogueDiff.fromJson(jsonDecode(jsonEncode(diff.toJson())) as Map<String, dynamic>);
+    expect(back.total, 5);
+    expect(back.seen, isFalse);
+    expect(diffCatalogues([], []).summary, 'Nothing changed');
+  });
+
+  test('auth presets: a header line is replaced or added, a query parameter likewise', () {
+    expect(withHeaderLine('', 'X-Api-Key', '{key}'), 'X-Api-Key: {key}');
+    expect(withHeaderLine('Accept: json\nauthorization: old', 'Authorization', 'Bearer {key}'), 'Accept: json\nAuthorization: Bearer {key}');
+    expect(withQueryParam('https://a.com/x', 'api_key', '{key}'), 'https://a.com/x?api_key={key}');
+    expect(withQueryParam('https://a.com/x?q=1&API_KEY=old', 'api_key', '{key}'), 'https://a.com/x?q=1&api_key={key}');
+  });
+
+  test('links: the key survives the trip through an apiscout:// route', () {
+    const key = 'thecocktaildb.com/api.php';
+    expect(deepLinkFor(key), 'apiscout://open/api/thecocktaildb.com%2Fapi.php');
+    expect(apiKeyFromRoute('/api/thecocktaildb.com%2Fapi.php'), key);
+    expect(apiKeyFromRoute('/api/thecocktaildb.com/api.php?x=1'), key); // Android hands the path decoded
+    expect(apiKeyFromRoute('/'), isNull);
+    expect(apiKeyFromRoute('/api/'), isNull);
+  });
+
+  test('cache versioning: the rules hash changes with the rules, and old entries take new categories without a scan', () {
+    expect(rulesHash(knowledgeJson), isNot(rulesHash('$knowledgeJson ')));
+    expect(rulesHash('abc').length, 8);
+    final stale = [
+      ApiEntry(name: 'Rain', url: 'https://rain.example', rawCategory: 'Weather', category: 'Wrong'),
+      ApiEntry(name: 'Aardvark facts', url: 'https://aard.example', rawCategory: 'Animals', category: 'Wrong'),
+    ];
+    recategorise(stale, k);
+    expect(stale.map((e) => e.name), ['Aardvark facts', 'Rain']); // name order
+    expect(stale.every((e) => e.category != 'Wrong'), isTrue);
+    final cat = Catalogue.fromJson(jsonDecode(jsonEncode(Catalogue(DateTime.now(), stale, rules: 'r1').toJson())) as Map<String, dynamic>);
+    expect(cat.rules, 'r1');
   });
 
   final desktopExport = File('test/fixtures/desktop-export.json').readAsStringSync();

@@ -83,11 +83,16 @@ class _AlphabetRailState extends State<AlphabetRail> {
                   final lit = _held ?? current;
                   return Column(children: [
                     for (final l in widget.letters)
-                      SizedBox(
-                        height: step,
-                        width: railWidth,
-                        child: Center(
-                          child: Text(l, style: TextStyle(fontSize: step < 12 ? 8.5 : 10, fontWeight: FontWeight.w800, height: 1, color: l == lit ? scheme.primary : scheme.onSurfaceVariant)),
+                      Semantics(
+                        button: true,
+                        label: 'Jump to $l',
+                        onTap: () => widget.onLetter(l),
+                        child: SizedBox(
+                          height: step,
+                          width: railWidth,
+                          child: Center(
+                            child: ExcludeSemantics(child: Text(l, style: TextStyle(fontSize: step < 12 ? 8.5 : 10, fontWeight: FontWeight.w800, height: 1, color: l == lit ? scheme.primary : scheme.onSurfaceVariant))),
+                          ),
                         ),
                       ),
                   ]);
@@ -98,13 +103,14 @@ class _AlphabetRailState extends State<AlphabetRail> {
               Positioned(
                 right: railWidth + 10,
                 top: _heldY - 24,
-                child: Container(
+                child: ExcludeSemantics(
+                    child: Container(
                   width: 48,
                   height: 48,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(color: scheme.onSurface, borderRadius: BorderRadius.circular(6)),
                   child: Text(_held!, style: TextStyle(color: scheme.surface, fontSize: 24, fontWeight: FontWeight.w800, height: 1)),
-                ),
+                )),
               ),
           ]),
         ),

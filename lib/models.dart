@@ -96,12 +96,16 @@ class Catalogue {
   final DateTime scannedAt;
   final List<ApiEntry> entries;
   final List<String> notes;
-  Catalogue(this.scannedAt, this.entries, [this.notes = const []]);
+  /// Fingerprint of the rules the categories were made with (see rulesHash): a new app with new rules
+  /// re-categorises the cached entries instead of showing stale categories or scanning again.
+  final String rules;
+  Catalogue(this.scannedAt, this.entries, {this.notes = const [], this.rules = ''});
 
-  Map<String, dynamic> toJson() => {'scannedAt': scannedAt.toIso8601String(), 'entries': [for (final e in entries) e.toJson()]};
+  Map<String, dynamic> toJson() => {'scannedAt': scannedAt.toIso8601String(), 'rules': rules, 'entries': [for (final e in entries) e.toJson()]};
 
   factory Catalogue.fromJson(Map<String, dynamic> j) => Catalogue(
         DateTime.tryParse(j['scannedAt'] as String? ?? '') ?? DateTime.now(),
         [for (final e in (j['entries'] as List? ?? [])) ApiEntry.fromJson(e as Map<String, dynamic>)],
+        rules: j['rules'] as String? ?? '',
       );
 }

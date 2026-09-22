@@ -1,6 +1,16 @@
 import 'dart:convert';
 
 import 'models.dart';
+import 'search.dart';
+
+/// FNV-1a over the knowledge file: the cached catalogue remembers which rules made its categories.
+String rulesHash(String knowledgeJson) {
+  var h = 0x811C9DC5;
+  for (final c in knowledgeJson.codeUnits) {
+    h = ((h ^ c) * 0x01000193) & 0xFFFFFFFF;
+  }
+  return h.toRadixString(16).padLeft(8, '0');
+}
 
 /// The rules the desktop app exports (assets/knowledge.json): category patterns, keyword patterns,
 /// provider key hints. Loading them from that file keeps both apps in step - nothing here is a copy made by hand.
@@ -144,6 +154,10 @@ class ApiView {
   AccessLevel docsAccess = AccessLevel.unknown;
   AccessLevel get access => _baseAccess == AccessLevel.unknown ? docsAccess : _baseAccess;
   late final String searchText = '${entry.name} ${entry.description} ${entry.category} ${entry.rawCategory} ${entry.url}'.toLowerCase();
+  late final List<String> _searchTokens = searchTokens(searchText);
+
+  /// The search word is in the text, or one typo away from a word of it.
+  bool matchesWord(String word) => wordMatches(searchText, _searchTokens, word);
 
   ApiView(this.entry, Knowledge k)
       : hint = k.findHint(entry),
