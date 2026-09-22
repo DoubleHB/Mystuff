@@ -1,4 +1,4 @@
-# ApiScout for Android - release notes
+# API Scout for Android - release notes
 
 ## 1.5.0
 

@@ -79,7 +79,7 @@ $shotsList = @(
     @('05-insight',  'insight',   'More about this API',                      'What the known facts mean for you, then the provider''s own words. Nothing is made up.'),
     @('06-filters',  'filter',    'Filter by what you need',                  'Auth, how much is free, HTTPS and CORS. Search forgives a typo; an A-Z rail jumps long lists.'),
     @('07-categories','drawer',   '42 categories, favourites, collections',   'Tag, note and group APIs, and move it all to and from the desktop app, keys encrypted.'),
-    @('08-dark',     'dark-home', 'Light, dark or system theme',              'API of the day as a 9:00 notification; share an API with a link that opens it in ApiScout.')
+    @('08-dark',     'dark-home', 'Light, dark or system theme',              'API of the day as a 9:00 notification; share an API with a link that opens it in API Scout.')
 )
 foreach ($s in $shotsList) { Frame-Shot $s[0] $s[1] $s[2] $s[3] }
 
@@ -92,7 +92,7 @@ $b = New-Object System.Drawing.SolidBrush $white
 $f1 = New-Object System.Drawing.Font 'Segoe UI', 96, 'Bold', ([System.Drawing.GraphicsUnit]::Pixel)
 $f2 = New-Object System.Drawing.Font 'Segoe UI', 40, 'Regular', ([System.Drawing.GraphicsUnit]::Pixel)
 $f3 = New-Object System.Drawing.Font 'Segoe UI', 30, 'Regular', ([System.Drawing.GraphicsUnit]::Pixel)
-$g.DrawString('ApiScout', $f1, $b, 400, 105)
+$g.DrawString('API Scout', $f1, $b, 400, 105)
 $g.DrawString('free API finder', $f2, $b, 408, 225)
 $g.DrawString("Thousands of free APIs, their demo keys,`na docs scanner and a request tester.", $f3, $b, 408, 300)
 $f1.Dispose(); $f2.Dispose(); $f3.Dispose(); $b.Dispose(); $g.Dispose()

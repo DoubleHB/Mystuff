@@ -1,4 +1,4 @@
-# ApiScout Mobile - free API finder for Android (Flutter)
+# API Scout Mobile - free API finder for Android (Flutter)
 
 The Android sister of the desktop app in `C:\Claude\ApiScout` (which is unchanged by it). Same job: scan the public
 API directories, merge and categorise a few thousand free APIs, and show whether each needs a key - with the provider's
@@ -86,7 +86,7 @@ own published demo key where there is one, or how to get a key.
     from the phone's catalogue with the same pick the card makes (`notify.dart`, `flutter_local_notifications`);
     tapping one opens the API.
   - Deep links: the shared text ends with `apiscout://open/api/<key>`, which opens that API on a phone with
-    ApiScout (Flutter's own deep-link handling, `links.dart`; an API not in the phone's catalogue gets a page saying
+    API Scout (Flutter's own deep-link handling, `links.dart`; an API not in the phone's catalogue gets a page saying
     so). There is no https domain to verify, so the link is plain text in most chat apps: copy and open it.
   - Rescan weekly on Wi-Fi (menu): Android WorkManager runs the same scan while the app is closed
     (`background.dart`, `workmanager`; unmetered network, battery not low). A thin result (fewer than three

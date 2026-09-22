@@ -1,5 +1,5 @@
 {
-  "exportedFrom": "ApiScout 1.6.0",
+  "exportedFrom": "API Scout 1.6.1",
   "categoryRules": [
     {
       "pattern": "(?<![\\p{L}])(?:misc|other(?![\\p{L}])|uncategor)",

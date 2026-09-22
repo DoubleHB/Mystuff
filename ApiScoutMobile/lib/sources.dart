@@ -5,7 +5,7 @@ import 'package:http/http.dart' as http;
 import 'knowledge.dart';
 import 'models.dart';
 
-/// The places ApiScout looks - the same five keyless directories as the desktop app's default set.
+/// The places API Scout looks - the same five keyless directories as the desktop app's default set.
 class SourceInfo {
   final String id, name, description, url;
   const SourceInfo(this.id, this.name, this.description, this.url);

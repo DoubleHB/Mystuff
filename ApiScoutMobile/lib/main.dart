@@ -156,7 +156,7 @@ class ApiScoutApp extends StatelessWidget {
   Widget build(BuildContext context) => ListenableBuilder(
         listenable: state,
         builder: (context, _) => MaterialApp(
-          title: 'ApiScout',
+          title: 'API Scout',
           debugShowCheckedModeBanner: false,
           navigatorKey: appNavigator,
           // apiscout://open/api/<key> arrives as the route "/api/<key>", at start-up or while the app is running
@@ -613,7 +613,7 @@ class EmptyState extends StatelessWidget {
             const Text('No APIs yet', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, letterSpacing: -0.4)),
             const SizedBox(height: 8),
             Text(
-              'ApiScout reads the big public API directories, merges them, works out what each API is for, and tells you whether you need a key - and how to get one.',
+              'API Scout reads the big public API directories, merges them, works out what each API is for, and tells you whether you need a key - and how to get one.',
               textAlign: TextAlign.center,
               style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, height: 1.45),
             ),
@@ -771,11 +771,11 @@ Future<String?> _askPassphrase(BuildContext context, {required String title, req
 /// Menu → Import: a file made by the desktop app's "Export my data" (or by this app).
 Future<void> importFromFile(BuildContext context) async {
   try {
-    final picked = await FilePicker.pickFile(dialogTitle: 'Pick the ApiScout export file', type: FileType.any);
+    final picked = await FilePicker.pickFile(dialogTitle: 'Pick the API Scout export file', type: FileType.any);
     if (picked == null || !context.mounted) return;
     final size = await picked.length() ?? 0;
     if (!context.mounted) return;
-    if (size > 20 * 1024 * 1024) return _say(context, 'That file is far too big to be an ApiScout export.');
+    if (size > 20 * 1024 * 1024) return _say(context, 'That file is far too big to be an API Scout export.');
     final json = utf8.decode(await picked.readAsBytes(), allowMalformed: true);
     final file = BackupFile.read(json); // throws when it is some other file
     String? passphrase;
@@ -840,7 +840,7 @@ Future<void> exportToFile(BuildContext context) async {
       bytes: Uint8List.fromList(utf8.encode(json)),
       mimeType: 'application/json',
     );
-    if (saved != null && context.mounted) _say(context, '✓ Exported. On the PC: ApiScout → About → Import…, and pick this file.');
+    if (saved != null && context.mounted) _say(context, '✓ Exported. On the PC: API Scout → About → Import…, and pick this file.');
   } catch (ex) {
     if (context.mounted) _say(context, 'Could not export: $ex');
   }
@@ -848,14 +848,14 @@ Future<void> exportToFile(BuildContext context) async {
 
 void showAbout(BuildContext context) => showAboutDialog(
       context: context,
-      applicationName: 'ApiScout',
+      applicationName: 'API Scout',
       applicationVersion: '1.5.0 (Android)',
       applicationLegalese: 'Free API finder. Rules and key knowledge: ${state.knowledge.exportedFrom}. Typefaces Manrope and JetBrains Mono, SIL Open Font License.',
       children: const [
         SizedBox(height: 12),
         Text('Scans five public API directories, merges and categorises them, and shows whether an API needs a key - with the '
             'provider\'s own published demo key where there is one, or how to get a key.\n\n'
-            'Demo keys shown are only ones the providers print in their own docs. ApiScout never looks for leaked or private keys.\n\n'
+            'Demo keys shown are only ones the providers print in their own docs. API Scout never looks for leaked or private keys.\n\n'
             'Your own keys are kept encrypted by the Android keystore, on this phone only. Favourites, tags, notes and collections move '
             'between the PC and the phone with Export / Import (this menu; on the PC: About → Export… / Import…) - keys travel only inside the file, encrypted with a passphrase you choose.'),
       ],
