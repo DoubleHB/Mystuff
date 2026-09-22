@@ -347,7 +347,7 @@ Check("403 with nothing left counts as limited; plain 200 says nothing", Rate(40
 var limitedRow = new ApiRow(new ApiEntry { Name = "L", Url = "https://l.example/" }) { LimitEstimated = true, LimitedUntil = DateTime.Now.AddMinutes(30) };
 Check("row shows the wait, and stops once it is over", limitedRow.IsLimited && limitedRow.LimitLabel.Contains("should work again around") && limitedRow.LimitLabel.Contains("estimate") && limitedRow.LimitShort.StartsWith("⏳ until ")
     && !new ApiRow(new ApiEntry { Name = "L", Url = "https://l.example/" }) { LimitedUntil = DateTime.Now.AddMinutes(-1) }.IsLimited);
-Check("version is 1.6.1", ApiScout.Views.AboutWindow.VersionText == "1.6.1", ApiScout.Views.AboutWindow.VersionText);
+Check("version is 1.6.2", ApiScout.Views.AboutWindow.VersionText == "1.6.2", ApiScout.Views.AboutWindow.VersionText);
 
 Console.WriteLine("== Pricing page ==");
 const string docsHtml = "<a href=\"https://twitter.com/foo/pricing\">Pricing</a> <a href=\"/docs\">Docs</a> <a href=\"https://www.foo.example/pricing?utm=1#top\">See our plans</a>";
