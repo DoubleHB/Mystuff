@@ -49,3 +49,4 @@ app.*.map.json
 
 # built APK
 /ApiScout.apk
+store/*.zip
