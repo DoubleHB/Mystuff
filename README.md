@@ -1,4 +1,4 @@
-# API Free - free API finder
+# API Free - find and test public APIs
 
 Find free public APIs and know, before you sign up for anything, whether you can call one right now and with
 what key. API Free scans the internet's public API directories, merges them into one catalogue of about 3,600
