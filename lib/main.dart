@@ -2,10 +2,12 @@ import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderAbstractViewport, RenderSliver;
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'app_state.dart';
+import 'az_rail.dart';
 import 'detail_page.dart';
 import 'knowledge.dart';
 import 'user_data.dart';
@@ -152,11 +154,64 @@ class _HomePageState extends State<HomePage> {
   final _list = ScrollController();
   int _listVersion = 0;
 
+  // the A-Z rail: which row each initial starts at (for the rows list it was built from), the sliver that holds the
+  // rows (its preceding scroll extent = header + API of the day, whatever they measure), and the initial at the top
+  final _rowsKey = GlobalKey();
+  List<ApiView> _railRows = const [];
+  List<(String, int)> _railFirst = const [];
+  final _atLetter = ValueNotifier<String?>(null);
+
+  @override
+  void initState() {
+    super.initState();
+    _list.addListener(_onScroll);
+  }
+
   @override
   void dispose() {
     _search.dispose();
     _list.dispose();
+    _atLetter.dispose();
     super.dispose();
+  }
+
+  /// A rail is worth having for a long list in name order - not for a collection, which keeps the order it was built in.
+  bool get _showRail => state.rows.length >= 40 && !state.category.startsWith(collectionPrefix);
+
+  List<(String, int)> get _letters {
+    if (!identical(_railRows, state.rows)) {
+      _railRows = state.rows;
+      _railFirst = firstIndexByInitial([for (final v in state.rows) v.name]);
+    }
+    return _railFirst;
+  }
+
+  double get _rowsBase {
+    final r = _rowsKey.currentContext?.findRenderObject();
+    if (r is! RenderSliver || !r.attached || r.geometry == null) return 0;
+    // the scroll offset that puts the rows sliver at the top = everything before it, at whatever height it measured
+    return RenderAbstractViewport.maybeOf(r)?.getOffsetToReveal(r, 0).offset ?? 0;
+  }
+
+  void _onScroll() {
+    if (!_list.hasClients || !_showRail) {
+      _atLetter.value = null;
+      return;
+    }
+    // the list runs edge to edge, so the first row the eye sees starts below the status bar
+    final i = ((_list.offset + _topInset - _rowsBase) / rowExtent).floor().clamp(0, state.rows.length - 1);
+    _atLetter.value = initialOf(state.rows[i].name);
+  }
+
+  double get _topInset => MediaQuery.viewPaddingOf(context).top;
+
+  void _jumpToLetter(String letter) {
+    if (!_list.hasClients) return;
+    for (final (l, i) in _letters) {
+      if (l != letter) continue;
+      _list.jumpTo((_rowsBase + i * rowExtent - _topInset).clamp(0.0, _list.position.maxScrollExtent));
+      return;
+    }
   }
 
   String get _subtitle {
@@ -179,133 +234,150 @@ class _HomePageState extends State<HomePage> {
             });
           }
           final showChips = state.all.isNotEmpty;
+          final showRail = _showRail;
+          if (showRail) WidgetsBinding.instance.addPostFrameCallback((_) => _onScroll());
           return Scaffold(
             drawer: const CategoryDrawer(),
-            body: CustomScrollView(
-              controller: _list,
-              slivers: [
-                // floating + snap: the header slides away as the list scrolls and comes back on a flick up
-                SliverAppBar(
-                  floating: true,
-                  snap: true,
-                  toolbarHeight: 66,
-                  titleSpacing: 0,
-                  title: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                    Text(plainCategory(state.category), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: -0.6, height: 1.1)),
-                    const SizedBox(height: 3),
-                    Text(_subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: scheme.onSurfaceVariant)),
-                  ]),
-                  actions: [
-                    IconButton(tooltip: 'Scan the internet', icon: const Icon(Icons.refresh), onPressed: state.busy ? null : state.scan),
-                    PopupMenuButton<String>(
-                      onSelected: (v) {
-                        if (v == 'about') {
-                          showAbout(context);
-                        } else if (v == 'import') {
-                          importFromFile(context);
-                        } else if (v == 'export') {
-                          exportToFile(context);
-                        } else {
-                          state.setTheme(ThemeModeSetting.values.byName(v));
-                        }
-                      },
-                      itemBuilder: (_) => [
-                        for (final t in ThemeModeSetting.values)
-                          CheckedPopupMenuItem(value: t.name, checked: state.theme == t, child: Text('Theme: ${t.name}')),
-                        const PopupMenuDivider(),
-                        const PopupMenuItem(value: 'import', child: Text('Import from the desktop app…')),
-                        const PopupMenuItem(value: 'export', child: Text('Export my data…')),
-                        const PopupMenuDivider(),
-                        const PopupMenuItem(value: 'about', child: Text('About')),
-                      ],
-                    ),
-                  ],
-                  bottom: PreferredSize(
-                    preferredSize: Size.fromHeight(54 + (showChips ? 44 : 0) + (state.busy ? 3 : 0)),
-                    child: Column(children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                        child: SizedBox(
-                          height: 46,
-                          child: TextField(
-                            controller: _search,
-                            onChanged: state.setSearch,
-                            textInputAction: TextInputAction.search,
-                            style: const TextStyle(fontSize: 15),
-                            decoration: InputDecoration(
-                              hintText: 'Search name, description, category or URL',
-                              hintStyle: TextStyle(color: scheme.onSurfaceVariant, fontSize: 14.5),
-                              prefixIcon: const Icon(Icons.search, size: 22),
-                              prefixIconConstraints: const BoxConstraints(minWidth: 34),
-                              suffixIcon: _search.text.isEmpty
-                                  ? null
-                                  : IconButton(
-                                      icon: const Icon(Icons.close, size: 20),
-                                      tooltip: 'Clear the search',
-                                      onPressed: () {
-                                        _search.clear();
-                                        state.setSearch('');
-                                      }),
-                              suffixIconConstraints: const BoxConstraints(minWidth: 34),
-                              contentPadding: const EdgeInsets.symmetric(vertical: 10),
-                              border: UnderlineInputBorder(borderSide: BorderSide(color: scheme.onSurface, width: 1.5)),
-                              enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: scheme.onSurface, width: 1.5)),
-                              focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: scheme.primary, width: 2)),
+            body: Stack(children: [
+              CustomScrollView(
+                controller: _list,
+                slivers: [
+                  // floating + snap: the header slides away as the list scrolls and comes back on a flick up
+                  SliverAppBar(
+                    floating: true,
+                    snap: true,
+                    toolbarHeight: 66,
+                    titleSpacing: 0,
+                    title: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                      Text(plainCategory(state.category), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: -0.6, height: 1.1)),
+                      const SizedBox(height: 3),
+                      Text(_subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: scheme.onSurfaceVariant)),
+                    ]),
+                    actions: [
+                      IconButton(tooltip: 'Scan the internet', icon: const Icon(Icons.refresh), onPressed: state.busy ? null : state.scan),
+                      PopupMenuButton<String>(
+                        onSelected: (v) {
+                          if (v == 'about') {
+                            showAbout(context);
+                          } else if (v == 'import') {
+                            importFromFile(context);
+                          } else if (v == 'export') {
+                            exportToFile(context);
+                          } else {
+                            state.setTheme(ThemeModeSetting.values.byName(v));
+                          }
+                        },
+                        itemBuilder: (_) => [
+                          for (final t in ThemeModeSetting.values)
+                            CheckedPopupMenuItem(value: t.name, checked: state.theme == t, child: Text('Theme: ${t.name}')),
+                          const PopupMenuDivider(),
+                          const PopupMenuItem(value: 'import', child: Text('Import from the desktop app…')),
+                          const PopupMenuItem(value: 'export', child: Text('Export my data…')),
+                          const PopupMenuDivider(),
+                          const PopupMenuItem(value: 'about', child: Text('About')),
+                        ],
+                      ),
+                    ],
+                    bottom: PreferredSize(
+                      preferredSize: Size.fromHeight(54 + (showChips ? 44 : 0) + (state.busy ? 3 : 0)),
+                      child: Column(children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                          child: SizedBox(
+                            height: 46,
+                            child: TextField(
+                              controller: _search,
+                              onChanged: state.setSearch,
+                              textInputAction: TextInputAction.search,
+                              style: const TextStyle(fontSize: 15),
+                              decoration: InputDecoration(
+                                hintText: 'Search name, description, category or URL',
+                                hintStyle: TextStyle(color: scheme.onSurfaceVariant, fontSize: 14.5),
+                                prefixIcon: const Icon(Icons.search, size: 22),
+                                prefixIconConstraints: const BoxConstraints(minWidth: 34),
+                                suffixIcon: _search.text.isEmpty
+                                    ? null
+                                    : IconButton(
+                                        icon: const Icon(Icons.close, size: 20),
+                                        tooltip: 'Clear the search',
+                                        onPressed: () {
+                                          _search.clear();
+                                          state.setSearch('');
+                                        }),
+                                suffixIconConstraints: const BoxConstraints(minWidth: 34),
+                                contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                                border: UnderlineInputBorder(borderSide: BorderSide(color: scheme.onSurface, width: 1.5)),
+                                enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: scheme.onSurface, width: 1.5)),
+                                focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: scheme.primary, width: 2)),
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                      if (showChips) SizedBox(height: 44, child: _filterBar(context)),
-                      if (state.busy) LinearProgressIndicator(minHeight: 3, value: state.progress == 0 ? null : state.progress),
-                    ]),
-                  ),
-                ),
-                if (state.all.isEmpty)
-                  SliverFillRemaining(hasScrollBody: false, child: state.busy ? const SkeletonRows() : EmptyState(onScan: state.scan))
-                else if (state.rows.isEmpty)
-                  SliverFillRemaining(
-                    hasScrollBody: false,
-                    child: Center(
-                      child: Column(mainAxisSize: MainAxisSize.min, children: [
-                        const Text('Nothing matches these filters', style: TextStyle(fontWeight: FontWeight.w600)),
-                        const SizedBox(height: 10),
-                        OutlinedButton(
-                            onPressed: () {
-                              _search.clear();
-                              state.clearFilters();
-                            },
-                            child: const Text('Clear filters')),
+                        if (showChips) SizedBox(height: 44, child: _filterBar(context)),
+                        if (state.busy) LinearProgressIndicator(minHeight: 3, value: state.progress == 0 ? null : state.progress),
                       ]),
                     ),
-                  )
-                else
-                  SliverList.builder(
-                    itemCount: state.rows.length + (state.showApiOfTheDay ? 1 : 0),
-                    itemBuilder: (context, i) {
-                      if (state.showApiOfTheDay) {
-                        if (i == 0) return const ApiOfTheDayCard();
-                        i--;
-                      }
-                      final v = state.rows[i];
-                      return SwipeActions(
-                        rowKey: ValueKey('row:${v.entry.key}'),
-                        favourite: state.isFavourite(v),
-                        onStar: () => state.toggleFavourite(v),
-                        onCollect: () => addToCollectionFor(context, v),
-                        child: ApiTile(
-                          view: v,
-                          favourite: state.isFavourite(v),
-                          tags: state.tagsOf(v),
-                          hasKey: state.hasKey(v),
-                          onTap: () => openDetail(context, v),
-                          onFavourite: () => state.toggleFavourite(v),
-                        ),
-                      );
-                    },
                   ),
-                SliverPadding(padding: EdgeInsets.only(bottom: 24 + MediaQuery.viewPaddingOf(context).bottom)),
-              ],
-            ),
+                  if (state.all.isEmpty)
+                    SliverFillRemaining(hasScrollBody: false, child: state.busy ? const SkeletonRows() : EmptyState(onScan: state.scan))
+                  else if (state.rows.isEmpty)
+                    SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: Center(
+                        child: Column(mainAxisSize: MainAxisSize.min, children: [
+                          const Text('Nothing matches these filters', style: TextStyle(fontWeight: FontWeight.w600)),
+                          const SizedBox(height: 10),
+                          OutlinedButton(
+                              onPressed: () {
+                                _search.clear();
+                                state.clearFilters();
+                              },
+                              child: const Text('Clear filters')),
+                        ]),
+                      ),
+                    )
+                  else ...[
+                    if (state.showApiOfTheDay) const SliverToBoxAdapter(child: ApiOfTheDayCard()),
+                    // fixed-height rows: the rail can then land on row i without ever laying out the rows before it
+                    SliverFixedExtentList.builder(
+                      key: _rowsKey,
+                      itemExtent: rowExtent,
+                      itemCount: state.rows.length,
+                      itemBuilder: (context, i) {
+                        final v = state.rows[i];
+                        return SwipeActions(
+                          rowKey: ValueKey('row:${v.entry.key}'),
+                          favourite: state.isFavourite(v),
+                          onStar: () => state.toggleFavourite(v),
+                          onCollect: () => addToCollectionFor(context, v),
+                          child: ApiTile(
+                            view: v,
+                            favourite: state.isFavourite(v),
+                            tags: state.tagsOf(v),
+                            hasKey: state.hasKey(v),
+                            rightInset: showRail ? railWidth : 0,
+                            onTap: () => openDetail(context, v),
+                            onFavourite: () => state.toggleFavourite(v),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                  SliverPadding(padding: EdgeInsets.only(bottom: 24 + MediaQuery.viewPaddingOf(context).bottom)),
+                ],
+              ),
+              // once the header has floated away the rows would run under the clock: a band in the ground colour
+              Positioned(top: 0, left: 0, right: 0, height: MediaQuery.viewPaddingOf(context).top, child: IgnorePointer(child: ColoredBox(color: scheme.surface))),
+              if (showRail)
+                Positioned(
+                  right: 0,
+                  width: railWidth,
+                  // below the header at its full height, so the letters never sit over the search or the chips
+                  top: MediaQuery.viewPaddingOf(context).top + 66 + 54 + (showChips ? 44 : 0) + 8,
+                  bottom: MediaQuery.viewPaddingOf(context).bottom + 8,
+                  child: AlphabetRail(letters: [for (final (l, _) in _letters) l], current: _atLetter, onLetter: _jumpToLetter),
+                ),
+            ]),
           );
         },
       );
@@ -640,7 +712,7 @@ Future<void> exportToFile(BuildContext context) async {
 void showAbout(BuildContext context) => showAboutDialog(
       context: context,
       applicationName: 'ApiScout',
-      applicationVersion: '1.3.1 (Android)',
+      applicationVersion: '1.3.2 (Android)',
       applicationLegalese: 'Free API finder. Rules and key knowledge: ${state.knowledge.exportedFrom}. Typefaces Manrope and JetBrains Mono, SIL Open Font License.',
       children: const [
         SizedBox(height: 12),

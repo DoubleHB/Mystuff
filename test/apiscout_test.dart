@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:apiscout_mobile/az_rail.dart';
 import 'package:apiscout_mobile/docs_scanner.dart';
 import 'package:apiscout_mobile/insight.dart';
 import 'package:apiscout_mobile/knowledge.dart';
@@ -150,6 +151,12 @@ API | Description | Auth | HTTPS | CORS |
     expect(u.tagCounts.first, ('Maps', 2));
     expect(UserData.fromJson(jsonDecode(jsonEncode(u.toJson())) as Map<String, dynamic>).tags['a'], ['Maps', 'x']);
     expect(UserData.fromJson({'favourites': null, 'tags': {'a': 'not a list'}, 'notes': 5}).tags, isEmpty); // a damaged file must not stop the app
+  });
+
+  test('A-Z rail: initials bucket A-Z and #, first row per initial in list order', () {
+    expect(['apple', 'Zoo', '7digital', 'Éclair', ''].map(initialOf), ['A', 'Z', '#', '#', '#']);
+    expect(firstIndexByInitial(['1st', 'Alpha', 'apex', 'Beta', 'beta 2', 'Zed']), [('#', 0), ('A', 1), ('B', 3), ('Z', 5)]);
+    expect(firstIndexByInitial(const <String>[]), isEmpty);
   });
 
   final desktopExport = File('test/fixtures/desktop-export.json').readAsStringSync();

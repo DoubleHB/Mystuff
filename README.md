@@ -59,6 +59,11 @@ own published demo key where there is one, or how to get a key.
   HTTPS and CORS toggle; Clear appears while anything is set; the user's #tags follow a divider) - the filter sheet is
   gone. Swipe a row right to star it, left to file it in a collection (`SwipeActions`, a Dismissible that always
   slides back).
+- 1.3.2: an A–Z rail at the right edge of any list of 40 or more APIs (`az_rail.dart`): tap or drag a letter to jump
+  to the first API starting with it, a bubble shows the letter under your finger, and the letter of the row at the
+  top is lit while you scroll. Rows are now a fixed 76 dp (tags moved onto the status line; an API with no
+  description shows its category there), which is what lets the rail land on a row by index. Collections have no
+  rail - they keep the order you built them in.
 
 ## One source of truth
 
@@ -80,7 +85,7 @@ Keys policy is the desktop's: only demo keys the providers print in their own do
 - `lib/user_data.dart` - favourites/tags/notes/collections, the desktop export format and its encryption (pointycastle)
 - `lib/vault.dart` - My key storage (Android keystore)
 - `lib/app_state.dart` - catalogue, filters, favourites, theme (ChangeNotifier)
-- `lib/main.dart`, `detail_page.dart`, `widgets.dart` - the screens
+- `lib/main.dart`, `detail_page.dart`, `widgets.dart`, `az_rail.dart` - the screens
 - `test/apiscout_test.dart` - self-check (`--dart-define=LIVE=true` adds the real scan). `test/fixtures/desktop-export.json` is a real
   file from the desktop's Backup code (`ApiScout.Tests -- --phone-fixture <file>`, passphrase in the test); the other direction is
   `ApiScout.Tests -- --phone-import <file> <passphrase>` on the file the test writes when APISCOUT_PHONE_EXPORT is set.

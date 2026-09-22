@@ -20,14 +20,17 @@ Color badgeColor(BuildContext context, String label) {
 }
 
 /// "Demo key · Free tier (limited)" as two coloured words - the ledger uses colour only where it means something.
+/// The user's #tags follow on the same line, so a row stays one fixed height.
 class StatusLine extends StatelessWidget {
   final ApiView view;
   final bool hasKey;
-  const StatusLine(this.view, {super.key, this.hasKey = false});
+  final List<String> tags;
+  const StatusLine(this.view, {super.key, this.hasKey = false, this.tags = const []});
 
   @override
   Widget build(BuildContext context) {
-    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+    final scheme = Theme.of(context).colorScheme;
+    final muted = scheme.onSurfaceVariant;
     return Row(children: [
       Flexible(
         child: Text.rich(
@@ -35,6 +38,10 @@ class StatusLine extends StatelessWidget {
             TextSpan(text: view.keyBadge, style: TextStyle(color: badgeColor(context, view.keyBadge))),
             TextSpan(text: '  ·  ', style: TextStyle(color: muted)),
             TextSpan(text: view.accessLabel, style: TextStyle(color: badgeColor(context, view.accessLabel))),
+            if (tags.isNotEmpty) ...[
+              TextSpan(text: '  ·  ', style: TextStyle(color: muted)),
+              TextSpan(text: tags.map((t) => '#$t').join(' '), style: TextStyle(color: scheme.primary)),
+            ],
           ]),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
@@ -91,6 +98,10 @@ class BrandTile extends StatelessWidget {
 }
 
 /// One row of the list: a hairline below, colour only in the status words.
+/// Every list row is exactly this tall (the tile centres its three lines in it), so the A-Z rail can jump to a row
+/// by index alone: name, description (or the category when there is none), status words + tags.
+const rowExtent = 76.0;
+
 class ApiTile extends StatelessWidget {
   final ApiView view;
   final bool favourite;
@@ -98,31 +109,29 @@ class ApiTile extends StatelessWidget {
   final VoidCallback onFavourite;
   final List<String> tags;
   final bool hasKey;
-  const ApiTile({super.key, required this.view, required this.favourite, required this.onTap, required this.onFavourite, this.tags = const [], this.hasKey = false});
+  /// Extra room kept clear on the right, for the A-Z rail.
+  final double rightInset;
+  const ApiTile({super.key, required this.view, required this.favourite, required this.onTap, required this.onFavourite, this.tags = const [], this.hasKey = false, this.rightInset = 0});
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final d = view.entry.description;
     return InkWell(
       onTap: onTap,
       child: Container(
+        height: rowExtent,
         decoration: BoxDecoration(border: Border(bottom: BorderSide(color: scheme.outlineVariant))),
-        padding: const EdgeInsets.fromLTRB(16, 10, 4, 10),
+        padding: EdgeInsets.fromLTRB(16, 0, 4 + rightInset, 0),
         child: Row(children: [
           BrandTile(view, hero: true),
           const SizedBox(width: 12),
           Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(view.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15, height: 1.2)),
-              if (view.entry.description.isNotEmpty)
-                Text(view.entry.description, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12.5)),
+              Text(d.isEmpty ? view.entry.category : d, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12.5)),
               const SizedBox(height: 4),
-              StatusLine(view, hasKey: hasKey),
-              if (tags.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 3),
-                  child: Text(tags.map((t) => '#$t').join('  '), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: scheme.primary)),
-                ),
+              StatusLine(view, hasKey: hasKey, tags: tags),
             ]),
           ),
           IconButton(
