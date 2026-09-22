@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>ApiScout</AssemblyName>
+    <RootNamespace>ApiScout</RootNamespace>
+    <Product>ApiScout</Product>
+    <Version>1.6.1</Version>
+    <ApplicationIcon>Assets\apiscout.ico</ApplicationIcon>
+    <!-- WPF0001: Fluent ThemeMode API is flagged experimental -->
+    <NoWarn>$(NoWarn);WPF0001</NoWarn>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Using Include="System.Net.Http" />
+    <Using Include="System.IO" />
+    <!-- WinForms is only used for the background-scan notification; keep its namespaces out of the global usings -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\apiscout.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="ApiScout.Tests" />
+    <!-- "Check for updates" defaults to the version tags of the repository this build came from -->
+    <AssemblyMetadata Include="UpdateFeed" Value="$(MSBuildProjectDirectory)" />
+  </ItemGroup>
+
+</Project>

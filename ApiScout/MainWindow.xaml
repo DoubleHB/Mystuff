@@ -1,0 +1,919 @@
+<Window x:Class="ApiScout.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:ApiScout.ViewModels"
+        Title="ApiScout - free API finder" Width="1500" Height="900" MinWidth="1100" MinHeight="640"
+        Background="{DynamicResource BgBrush}" Foreground="{DynamicResource TextBrush}"
+        WindowStartupLocation="CenterScreen">
+    <Window.InputBindings>
+        <KeyBinding Key="F5" Command="{Binding ScanCommand}" />
+        <KeyBinding Key="Escape" Command="{Binding CancelCommand}" />
+        <KeyBinding Key="D" Modifiers="Ctrl" Command="{Binding ToggleFavouriteCommand}" />
+        <KeyBinding Key="K" Modifiers="Ctrl" Command="{Binding CopyCommand}" CommandParameter="key" />
+        <KeyBinding Key="U" Modifiers="Ctrl" Command="{Binding CopyCommand}" CommandParameter="url" />
+        <KeyBinding Key="T" Modifiers="Ctrl" Command="{Binding TestApiCommand}" />
+    </Window.InputBindings>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- ===== Header ===== -->
+        <Border Grid.Row="0" Background="{DynamicResource NavBrush}" BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="0,0,0,1" Padding="18,12">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Border Width="34" Height="34" CornerRadius="9" Background="{StaticResource HeaderGradient}">
+                        <TextBlock Text="{}{ }" FontFamily="Cascadia Mono, Consolas" FontWeight="Bold" FontSize="14" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <StackPanel Margin="10,0,24,0" VerticalAlignment="Center">
+                        <TextBlock Text="ApiScout" FontSize="18" FontWeight="Bold" />
+                        <TextBlock Text="free API finder" Style="{StaticResource Muted}" FontSize="11" />
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- grows to 620 and stays at the left; in a narrow window it shrinks instead of being clipped -->
+                <Grid Grid.Column="1" VerticalAlignment="Center" Margin="0,0,16,0">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" MaxWidth="620" />
+                    <ColumnDefinition Width="0" />
+                  </Grid.ColumnDefinitions>
+                  <Grid>
+                    <TextBox x:Name="SearchBox" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" MinWidth="220" Padding="34,7,10,7" FontSize="14"
+                             AutomationProperties.Name="Search" />
+                    <TextBlock Text="&#xE721;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Margin="12,0,0,0" VerticalAlignment="Center" HorizontalAlignment="Left"
+                               Foreground="{DynamicResource MutedBrush}" IsHitTestVisible="False" />
+                    <TextBlock Text="Search name, description, category or URL   (Ctrl+F)" Margin="36,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"
+                               Foreground="{DynamicResource MutedBrush}" Visibility="{Binding SearchText, Converter={StaticResource EmptyTextToVis}}" TextTrimming="CharacterEllipsis" />
+                  </Grid>
+                </Grid>
+
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="ScanButton" Content="⟳  Scan the internet" Command="{Binding ScanCommand}" Style="{DynamicResource AccentButtonStyle}" Padding="16,7" FontWeight="SemiBold"
+                            Visibility="{Binding IsBusy, Converter={StaticResource InvBoolToVis}}" ToolTip="Fetch every ticked source, merge and categorise (F5)" />
+                    <Button Content="■  Stop" Command="{Binding CancelCommand}" Padding="16,7" Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}" />
+                    <ToggleButton x:Name="ShortlistButton" Content="★ My shortlist" IsChecked="{Binding ShowShortlist}" Margin="8,0,0,0" Padding="12,7" AutomationProperties.Name="My shortlist"
+                                  ToolTip="Your favourites and tagged APIs as cards, with their keys and last test result (Ctrl+L)" />
+                    <!-- not clickable while its popup is open: the click that closes the popup would otherwise open it again -->
+                    <ToggleButton x:Name="SourcesButton" Content="Sources ▾" Margin="8,0,0,0" Padding="12,7" IsHitTestVisible="{Binding IsOpen, ElementName=SourcesPopup, Converter={StaticResource InvBool}}" />
+                    <Button Content="Check links" Command="{Binding CheckLinksCommand}" Margin="8,0,0,0" Padding="12,7" IsEnabled="{Binding IsIdle}"
+                            ToolTip="Test whether the docs site of every listed API still answers" />
+                    <Button x:Name="ThemeButton" Content="Theme" Click="ThemeButton_Click" Margin="8,0,0,0" Padding="12,7" ToolTip="Switch light / dark" />
+                    <Button Click="About_Click" Margin="8,0,0,0" Padding="12,7" AutomationProperties.Name="About" ToolTip="Version, updates, keyboard shortcuts, data folder, export / import your data (F1)">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="About" />
+                            <!-- a newer version was found at start-up -->
+                            <TextBlock Text="  ⬆" Foreground="{DynamicResource WarnBrush}" FontWeight="Bold" ToolTip="{Binding UpdateNote}" Visibility="{Binding UpdateNote, Converter={StaticResource TextToVis}}" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Sources popup -->
+        <Popup x:Name="SourcesPopup" PreviewKeyDown="SourcesPopup_PreviewKeyDown" IsOpen="{Binding IsChecked, ElementName=SourcesButton, Mode=TwoWay}" PlacementTarget="{Binding ElementName=SourcesButton}" Placement="Bottom"
+               StaysOpen="False" AllowsTransparency="True" Closed="SourcesPopup_Closed" HorizontalOffset="-330" VerticalOffset="6">
+            <Border Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="1" CornerRadius="10" Padding="16" Width="460">
+                <StackPanel>
+                    <TextBlock Text="Where to look" Style="{StaticResource CardTitle}" />
+                    <ItemsControl ItemsSource="{Binding SourceToggles}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="{x:Type vm:SourceToggle}">
+                                <CheckBox IsChecked="{Binding IsOn}" Margin="0,2">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Info.Name}" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold" />
+                                        <TextBlock Text="{Binding Info.Description}" Style="{StaticResource Muted}" TextWrapping="Wrap" MaxWidth="390" />
+                                    </StackPanel>
+                                </CheckBox>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Text="YOUR OWN LISTS - one URL per line (GitHub repo / README, or publicapis.dev-style JSON)" Style="{StaticResource Label}" TextWrapping="Wrap" />
+                    <TextBox Text="{Binding CustomSources, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" Height="70" VerticalScrollBarVisibility="Auto"
+                             FontFamily="Cascadia Mono, Consolas" FontSize="12" />
+                    <TextBlock Text="RE-SCAN AUTOMATICALLY" Style="{StaticResource Label}" />
+                    <DockPanel>
+                        <ComboBox DockPanel.Dock="Left" ItemsSource="{Binding AutoRescanOptions}" SelectedItem="{Binding AutoRescan}" Width="120" AutomationProperties.Name="Auto re-scan" />
+                        <TextBlock Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="10,0,0,0" VerticalAlignment="Center"
+                                   Text="When the last scan is that old, ApiScout re-scans on start-up (or while open) and marks what is NEW." />
+                    </DockPanel>
+                    <CheckBox IsChecked="{Binding BackgroundScan}" Margin="0,8,0,0" AutomationProperties.Name="Background scan">
+                        <StackPanel>
+                            <TextBlock Text="Also when ApiScout is closed" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold" />
+                            <TextBlock Style="{StaticResource Muted}" TextWrapping="Wrap" MaxWidth="390"
+                                       Text="Adds a Windows scheduled task (09:00, daily or Mondays, or as soon as the PC is next on) that re-scans quietly and shows a notification when new APIs appear. Untick to remove it." />
+                        </StackPanel>
+                    </CheckBox>
+                    <CheckBox IsChecked="{Binding TrayMode}" Margin="0,10,0,0" AutomationProperties.Name="Tray mode">
+                        <StackPanel>
+                            <TextBlock Text="Keep ApiScout in the tray when minimised" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold" />
+                            <TextBlock Style="{StaticResource Muted}" TextWrapping="Wrap" MaxWidth="390"
+                                       Text="Minimising hides the window; the tray icon opens it again and has Scan now, API of the day and My shortlist. Automatic re-scans keep running and new APIs are announced with a notification." />
+                        </StackPanel>
+                    </CheckBox>
+                    <CheckBox IsChecked="{Binding ShowDashboard}" Margin="0,10,0,0" AutomationProperties.Name="Show the dashboard">
+                        <TextBlock Text="Show the dashboard tiles above the list" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold" />
+                    </CheckBox>
+                    <CheckBox IsChecked="{Binding ShowLogos}" Margin="0,10,0,0" AutomationProperties.Name="Show brand logos">
+                        <StackPanel>
+                            <TextBlock Text="Show brand logos" Foreground="{DynamicResource TextBrush}" FontWeight="SemiBold" />
+                            <TextBlock Style="{StaticResource Muted}" TextWrapping="Wrap" MaxWidth="390"
+                                       Text="Site icons come from a public icon service (Google, then DuckDuckGo); only the provider&apos;s domain name is sent, once, and the icon is kept on disk. Off = coloured initials." />
+                        </StackPanel>
+                    </CheckBox>
+                    <TextBlock Text="Source changes apply on the next scan." Style="{StaticResource Muted}" Margin="0,8,0,0" />
+                </StackPanel>
+            </Border>
+        </Popup>
+
+        <!-- ===== Body ===== -->
+        <!-- collapsed while the shortlist page is up, so Tab and the arrow keys cannot wander into controls nobody can see -->
+        <Grid Grid.Row="1" Margin="14,14,14,8" Visibility="{Binding ShowShortlist, Converter={StaticResource InvBoolToVis}}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="236" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="430" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- Dashboard: the whole catalogue at a glance; every tile is a shortcut to its filter -->
+            <DockPanel x:Name="DashboardPanel" Grid.ColumnSpan="3" Margin="0,0,0,12" Visibility="{Binding ShowDashboard, Converter={StaticResource BoolToVis}}">
+            <!-- API of the day: keyless or demo-key, with an example request that is known to work -->
+            <Border DockPanel.Dock="Right" Style="{StaticResource Card}" Margin="0" Padding="10,6,8,6" Width="410" AutomationProperties.Name="API of the day"
+                    Visibility="{Binding ApiOfTheDay, Converter={StaticResource NullToCollapsed}}">
+                <DockPanel DataContext="{Binding ApiOfTheDay}">
+                    <ContentControl DockPanel.Dock="Left" Content="{Binding}" ContentTemplate="{StaticResource BrandTile}" VerticalAlignment="Center" Margin="0,0,9,0" Focusable="False" />
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button Content="▶ Test" Style="{DynamicResource AccentButtonStyle}" Padding="9,3" FontSize="12" MinHeight="26" AutomationProperties.Name="Test the API of the day"
+                                Command="{Binding DataContext.TestApiOfTheDayCommand, RelativeSource={RelativeSource AncestorType=Window}}" ToolTip="Send its example request - no key or sign-up needed" />
+                        <Button Content="Details" Style="{StaticResource Mini}" AutomationProperties.Name="Show the API of the day"
+                                Command="{Binding DataContext.ShowApiOfTheDayCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                        <Button Content="↻" Style="{StaticResource Mini}" AutomationProperties.Name="Another API of the day" ToolTip="Show another one"
+                                Command="{Binding DataContext.AnotherApiOfTheDayCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                    </StackPanel>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock TextTrimming="CharacterEllipsis"><Run Text="API of the day  ·  " Foreground="{DynamicResource MutedBrush}" FontSize="11.5" /><Run Text="{Binding Name, Mode=OneWay}" FontWeight="SemiBold" /></TextBlock>
+                        <TextBlock Text="{Binding Description}" Style="{StaticResource Muted}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Description}"
+                                   Visibility="{Binding HasLastTest, Converter={StaticResource InvBoolToVis}}" />
+                        <TextBlock Text="{Binding LastTestLabel}" FontSize="12" TextTrimming="CharacterEllipsis" ToolTip="{Binding LastTestLabel}" AutomationProperties.Name="API of the day result"
+                                   Visibility="{Binding HasLastTest, Converter={StaticResource BoolToVis}}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="{DynamicResource WarnBrush}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding LastTestOk}" Value="True"><Setter Property="Foreground" Value="{DynamicResource UpBrush}" /></DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+            <ItemsControl ItemsSource="{Binding Dashboard}" Focusable="False" AutomationProperties.Name="Dashboard">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate><UniformGrid Rows="1" /></ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="{x:Type vm:DashTile}">
+                        <Button Margin="0,0,8,0" HorizontalAlignment="Stretch" Cursor="Hand" CommandParameter="{Binding Id}" ToolTip="{Binding Tip}" AutomationProperties.Name="{Binding Title}" AutomationProperties.HelpText="{Binding Value}"
+                                Command="{Binding DataContext.DashboardTileCommand, RelativeSource={RelativeSource AncestorType=Window}}" HorizontalContentAlignment="Stretch">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="Tile" Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="1" CornerRadius="10" Padding="12,8,12,9">
+                                        <ContentPresenter />
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Tile" Property="Background" Value="{DynamicResource CardAltBrush}" />
+                                        </Trigger>
+                                        <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                            <Setter TargetName="Tile" Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                                            <Setter TargetName="Tile" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                                        </DataTrigger>
+                                        <Trigger Property="IsKeyboardFocused" Value="True">
+                                            <Setter TargetName="Tile" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                            <StackPanel>
+                                <StackPanel.Resources>
+                                    <!-- tile colour -> theme brush, so a theme switch recolours it -->
+                                    <Style x:Key="Tint" TargetType="Control">
+                                        <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Colour}" Value="Up"><Setter Property="Foreground" Value="{DynamicResource UpBrush}" /></DataTrigger>
+                                            <DataTrigger Binding="{Binding Colour}" Value="Accent"><Setter Property="Foreground" Value="{DynamicResource AccentBrush}" /></DataTrigger>
+                                            <DataTrigger Binding="{Binding Colour}" Value="Warn"><Setter Property="Foreground" Value="{DynamicResource WarnBrush}" /></DataTrigger>
+                                            <DataTrigger Binding="{Binding Colour}" Value="Violet"><Setter Property="Foreground" Value="{DynamicResource VioletBrush}" /></DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </StackPanel.Resources>
+                                <TextBlock Text="{Binding Title}" Style="{StaticResource Muted}" FontSize="11.5" TextTrimming="CharacterEllipsis" />
+                                <DockPanel Margin="0,1,0,0">
+                                    <!-- the number first: in a narrow window it is the small text that gives way -->
+                                    <ContentControl DockPanel.Dock="Left" Style="{StaticResource Tint}" Focusable="False" FontSize="20" FontWeight="Bold" Content="{Binding Value}" />
+                                    <TextBlock Text="{Binding Sub}" Style="{StaticResource Muted}" FontSize="11.5" VerticalAlignment="Bottom" HorizontalAlignment="Right" Margin="6,0,0,3" TextTrimming="CharacterEllipsis" />
+                                </DockPanel>
+                                <!-- an explicit style drops the Fluent template for the classic flat bar, which takes the tint as its fill -->
+                                <ProgressBar Style="{StaticResource Tint}" Height="3" Margin="0,5,0,0" Minimum="0" Maximum="100" Value="{Binding Percent, Mode=OneWay}" BorderThickness="0"
+                                             Background="{DynamicResource CardBorderBrush}" Focusable="False" Opacity="{Binding BarOpacity}" />
+                            </StackPanel>
+                        </Button>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            </DockPanel>
+
+            <!-- Categories -->
+            <Border Grid.Row="1" Style="{StaticResource Card}" Padding="6" Margin="0,0,12,0">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="CATEGORIES" Style="{StaticResource Label}" Margin="10,8,0,6" />
+                    <ListBox x:Name="CategoryList" ItemsSource="{Binding Categories}" SelectedItem="{Binding SelectedCategory}" Background="Transparent" BorderThickness="0"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled" AutomationProperties.Name="Categories" HorizontalContentAlignment="Stretch">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                                <Setter Property="AutomationProperties.Name" Value="{Binding Name}" />
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Count}" Value="0">
+                                        <Setter Property="Opacity" Value="0.4" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate DataType="{x:Type vm:CategoryItem}">
+                                <DockPanel Margin="0,0,14,0">
+                                    <TextBlock DockPanel.Dock="Right" Text="{Binding Count, StringFormat=N0}" Style="{StaticResource Muted}" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                                </DockPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </DockPanel>
+            </Border>
+
+            <!-- Results -->
+            <DockPanel Grid.Row="1" Grid.Column="1" Margin="0,0,12,0">
+                <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+                    <WrapPanel.Resources>
+                        <Style TargetType="CheckBox" BasedOn="{StaticResource {x:Type CheckBox}}">
+                            <Setter Property="MinWidth" Value="0" />
+                            <Setter Property="VerticalAlignment" Value="Center" />
+                            <Setter Property="Margin" Value="12,0,0,4" />
+                        </Style>
+                    </WrapPanel.Resources>
+                    <ComboBox ItemsSource="{Binding AuthFilters}" SelectedItem="{Binding AuthFilter}" MinWidth="170" Margin="0,0,0,4" AutomationProperties.Name="Auth filter" ToolTip="What you need before you can call it" />
+                    <ComboBox ItemsSource="{Binding AccessFilters}" SelectedItem="{Binding AccessFilter}" MinWidth="176" Margin="8,0,0,4" AutomationProperties.Name="Free access filter"
+                              ToolTip="How much is free: everything, a limited free plan, or only a demo / trial" />
+                    <ComboBox ItemsSource="{Binding TagFilters}" SelectedItem="{Binding TagFilter}" MinWidth="120" Margin="8,0,0,4" AutomationProperties.Name="Tag filter"
+                              ToolTip="Your own tags" Visibility="{Binding HasAnyTags, Converter={StaticResource BoolToVis}}" />
+                    <CheckBox Content="HTTPS only" IsChecked="{Binding HttpsOnly}" />
+                    <CheckBox Content="CORS" IsChecked="{Binding CorsOnly}" ToolTip="Callable straight from browser JavaScript" />
+                    <CheckBox Content="Online only" IsChecked="{Binding OnlineOnly}" ToolTip="Only APIs that passed 'Check links'" />
+                    <Button Content="Clear filters" Command="{Binding ClearFiltersCommand}" Style="{StaticResource Mini}" Margin="12,0,0,4" />
+                    <Button Content="Scan docs for 'Not stated'" Command="{Binding ScanDocsBatchCommand}" Style="{StaticResource Mini}" Margin="8,0,0,4" IsEnabled="{Binding IsIdle}"
+                            AutomationProperties.Name="Scan docs for Not stated"
+                            ToolTip="Reads the docs and pricing page of every listed API whose free access is 'Not stated', to fill it in. Stop with Esc." />
+                </WrapPanel>
+
+                <Grid>
+                    <DataGrid x:Name="ResultsGrid" ItemsSource="{Binding Rows}" SelectedItem="{Binding Selected}" AutoGenerateColumns="False" IsReadOnly="True"
+                              SelectionMode="Extended" SelectionUnit="FullRow" HeadersVisibility="Column" GridLinesVisibility="None" CanUserResizeRows="False"
+                              EnableRowVirtualization="True" VirtualizingPanel.VirtualizationMode="Recycling" RowHeight="48"
+                              MouseDoubleClick="Grid_MouseDoubleClick" AutomationProperties.Name="Results" ClipboardCopyMode="None">
+                        <DataGrid.CellStyle>
+                            <Style TargetType="DataGridCell" BasedOn="{StaticResource {x:Type DataGridCell}}">
+                                <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                                <Style.Triggers>
+                                    <Trigger Property="IsSelected" Value="True">
+                                        <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                                        <Setter Property="BorderBrush" Value="Transparent" />
+                                        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </DataGrid.CellStyle>
+                        <DataGrid.CommandBindings>
+                            <CommandBinding Command="Copy" Executed="Grid_Copy" />
+                        </DataGrid.CommandBindings>
+                        <DataGrid.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Copy details" Command="{Binding CopyCommand}" CommandParameter="text" InputGestureText="Ctrl+C" />
+                                <MenuItem Header="Copy name" Command="{Binding CopyCommand}" CommandParameter="name" />
+                                <MenuItem Header="Copy docs URL" Command="{Binding CopyCommand}" CommandParameter="url" InputGestureText="Ctrl+U" />
+                                <MenuItem Header="Copy key (yours, else the demo key)" Command="{Binding CopyCommand}" CommandParameter="key" InputGestureText="Ctrl+K" />
+                                <MenuItem Header="Copy sign-up link" Command="{Binding CopyCommand}" CommandParameter="signup" />
+                                <Separator />
+                                <MenuItem Header="Copy as Markdown" Command="{Binding CopyCommand}" CommandParameter="markdown" />
+                                <MenuItem Header="Copy as JSON" Command="{Binding CopyCommand}" CommandParameter="json" />
+                                <MenuItem Header="Copy as cURL" Command="{Binding CopyCommand}" CommandParameter="curl" />
+                                <MenuItem Header="Copy as C#" Command="{Binding CopyCommand}" CommandParameter="csharp" />
+                                <Separator />
+                                <MenuItem Header="More about this API…" Click="Insight_Click" InputGestureText="Ctrl+I" />
+                                <MenuItem Header="Open docs in browser" Command="{Binding OpenCommand}" CommandParameter="docs" />
+                                <MenuItem Header="Add / remove favourite" Command="{Binding ToggleFavouriteCommand}" InputGestureText="Ctrl+D" />
+                                <MenuItem Header="Tag the selected rows…" Click="TagSelected_Click" InputGestureText="Ctrl+G" />
+                                <MenuItem Header="Add the selected rows to a collection…" Click="AddToCollection_Click" InputGestureText="Ctrl+E" />
+                                <MenuItem Header="Compare the selected rows (2-4)" Click="Compare_Click" InputGestureText="Ctrl+M" />
+                            </ContextMenu>
+                        </DataGrid.ContextMenu>
+                        <DataGrid.Columns>
+                            <DataGridTemplateColumn Header="★" Width="38" SortMemberPath="IsFavourite">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding IsFavourite, Converter={StaticResource Star}}" Foreground="{DynamicResource WarnBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="15" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTemplateColumn Header="API" Width="*" MinWidth="220" SortMemberPath="Name">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <DockPanel Margin="4,0,8,0">
+                                          <ContentControl DockPanel.Dock="Left" Content="{Binding}" ContentTemplate="{StaticResource BrandTile}" VerticalAlignment="Center" Margin="0,0,10,0" Focusable="False" ToolTip="{Binding BrandDomain}" />
+                                          <StackPanel VerticalAlignment="Center">
+                                            <DockPanel LastChildFill="False">
+                                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                                <Border CornerRadius="7" Padding="6,0" Margin="8,0,0,0" VerticalAlignment="Center" Background="{DynamicResource AccentBrush}"
+                                                        Visibility="{Binding IsNew, Converter={StaticResource BoolToVis}}" ToolTip="{Binding FirstSeenLabel}">
+                                                    <TextBlock Text="NEW" FontSize="10" FontWeight="Bold" Foreground="White" />
+                                                </Border>
+                                                <TextBlock Text="{Binding LimitShort}" FontSize="11" Margin="10,0,0,0" VerticalAlignment="Center" Foreground="{DynamicResource WarnBrush}"
+                                                           Visibility="{Binding IsLimited, Converter={StaticResource BoolToVis}}" ToolTip="{Binding LimitLabel}" />
+                                                <TextBlock Text="{Binding TagsLabel}" FontSize="11" Margin="10,0,0,0" VerticalAlignment="Center" Foreground="{DynamicResource VioletBrush}"
+                                                           Visibility="{Binding HasTags, Converter={StaticResource BoolToVis}}" />
+                                            </DockPanel>
+                                            <TextBlock Text="{Binding Description}" Style="{StaticResource Muted}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Description}" />
+                                          </StackPanel>
+                                        </DockPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTemplateColumn Header="Key / free access" Width="138" SortMemberPath="AccessLabel">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel VerticalAlignment="Center">
+                                            <Border CornerRadius="9" Padding="8,1" HorizontalAlignment="Left"
+                                                    Background="{Binding KeyBadge, Converter={StaticResource BadgeSoftBrush}}">
+                                                <TextBlock Text="{Binding KeyBadge}" FontSize="11.5" FontWeight="SemiBold" Foreground="{Binding KeyBadge, Converter={StaticResource BadgeBrush}}" />
+                                            </Border>
+                                            <TextBlock Text="{Binding AccessLabel}" FontSize="11" Margin="2,2,0,0" Foreground="{Binding AccessLabel, Converter={StaticResource BadgeBrush}}" ToolTip="{Binding AccessNote}" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTemplateColumn Header="Category" Width="150" SortMemberPath="Category">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Category}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="4,0" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTemplateColumn Header="Link" Width="104" SortMemberPath="Status">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding StatusLabel}" Foreground="{Binding Status, Converter={StaticResource StatusBrush}}" VerticalAlignment="Center" FontSize="12" Margin="4,0" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <!-- First-run empty state -->
+                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVis}}" MaxWidth="460">
+                        <TextBlock Text="No APIs yet" FontSize="22" FontWeight="Bold" HorizontalAlignment="Center" />
+                        <TextBlock TextWrapping="Wrap" TextAlignment="Center" Margin="0,8,0,16" Foreground="{DynamicResource MutedBrush}"
+                                   Text="ApiScout reads the big public API directories, merges them, works out what each API is for, and tells you whether you need a key - and how to get one." />
+                        <Button Content="⟳  Scan the internet" Command="{Binding ScanCommand}" Style="{DynamicResource AccentButtonStyle}" Padding="18,9" HorizontalAlignment="Center" FontWeight="SemiBold" />
+                    </StackPanel>
+                </Grid>
+            </DockPanel>
+
+            <!-- Details -->
+            <Grid x:Name="DetailArea" Grid.Row="1" Grid.Column="2">
+                <TextBlock Text="Select an API to see its key details" Style="{StaticResource Muted}" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center"
+                           Visibility="{Binding HasSelection, Converter={StaticResource InvBoolToVis}}" />
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Visibility="{Binding HasSelection, Converter={StaticResource BoolToVis}}" Padding="0,0,6,0">
+                    <StackPanel DataContext="{Binding}" x:Name="DetailPanel">
+                        <!-- Title card -->
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <DockPanel>
+                                    <Button DockPanel.Dock="Right" Content="{Binding Selected.IsFavourite, Converter={StaticResource Star}}" Command="{Binding ToggleFavouriteCommand}"
+                                            FontSize="18" Padding="8,2" Foreground="{DynamicResource WarnBrush}" VerticalAlignment="Top" ToolTip="Favourite (Ctrl+D)" AutomationProperties.Name="Favourite" />
+                                    <ContentControl DockPanel.Dock="Left" Content="{Binding Selected}" ContentTemplate="{StaticResource BrandTile}" VerticalAlignment="Top" Margin="0,2,12,0" Focusable="False">
+                                        <ContentControl.LayoutTransform>
+                                            <ScaleTransform ScaleX="1.35" ScaleY="1.35" />
+                                        </ContentControl.LayoutTransform>
+                                    </ContentControl>
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Selected.Name}" FontSize="20" FontWeight="Bold" TextWrapping="Wrap" />
+                                        <TextBlock Text="{Binding Selected.BrandDomain}" Style="{StaticResource Muted}" />
+                                    </StackPanel>
+                                </DockPanel>
+                                <TextBlock Style="{StaticResource Muted}" Margin="0,2,0,8" TextWrapping="Wrap">
+                                    <Run Text="{Binding Selected.Category, Mode=OneWay}" /><Run Text="  ·  found in " /><Run Text="{Binding Selected.SourcesLabel, Mode=OneWay}" /><Run Text="  ·  " /><Run Text="{Binding Selected.FirstSeenLabel, Mode=OneWay}" />
+                                </TextBlock>
+                                <TextBlock Text="{Binding Selected.Description}" TextWrapping="Wrap" />
+                                <Button Content="More about this API…" Click="Insight_Click" Style="{DynamicResource AccentButtonStyle}" Padding="12,4" FontSize="12.5" HorizontalAlignment="Left" Margin="0,8,0,0"
+                                        AutomationProperties.Name="More about this API" ToolTip="What it offers and what that means for you: the key facts, plus the summary and feature list from the provider's own page (Ctrl+I)" />
+
+                                <TextBlock Text="DOCS" Style="{StaticResource Label}" />
+                                <DockPanel>
+                                    <Button DockPanel.Dock="Right" Content="Open" Command="{Binding OpenCommand}" CommandParameter="docs" Style="{StaticResource Mini}" />
+                                    <Button DockPanel.Dock="Right" Content="Copy" Command="{Binding CopyCommand}" CommandParameter="url" Style="{StaticResource Mini}" AutomationProperties.Name="Copy docs URL" />
+                                    <TextBox Text="{Binding Selected.Url, Mode=OneWay}" Style="{StaticResource Value}" />
+                                </DockPanel>
+
+                                <StackPanel Visibility="{Binding Selected.HasSpec, Converter={StaticResource BoolToVis}}">
+                                    <TextBlock Text="OPENAPI SPEC" Style="{StaticResource Label}" />
+                                    <DockPanel>
+                                        <Button DockPanel.Dock="Right" Content="Open" Command="{Binding OpenCommand}" CommandParameter="spec" Style="{StaticResource Mini}" />
+                                        <Button DockPanel.Dock="Right" Content="Copy" Command="{Binding CopyCommand}" CommandParameter="spec" Style="{StaticResource Mini}" />
+                                        <TextBox Text="{Binding Selected.SpecUrl, Mode=OneWay}" Style="{StaticResource Value}" />
+                                    </DockPanel>
+                                </StackPanel>
+
+                                <WrapPanel Margin="0,10,0,0">
+                                    <TextBlock Style="{StaticResource Muted}" Margin="0,0,14,0"><Run Text="Auth: " /><Run Text="{Binding Selected.AuthLabel, Mode=OneWay}" Foreground="{DynamicResource TextBrush}" /></TextBlock>
+                                    <TextBlock Style="{StaticResource Muted}" Margin="0,0,14,0"><Run Text="HTTPS: " /><Run Text="{Binding Selected.HttpsLabel, Mode=OneWay}" Foreground="{DynamicResource TextBrush}" /></TextBlock>
+                                    <TextBlock Style="{StaticResource Muted}" Margin="0,0,14,0"><Run Text="CORS: " /><Run Text="{Binding Selected.Cors, Mode=OneWay}" Foreground="{DynamicResource TextBrush}" /></TextBlock>
+                                    <TextBlock Style="{StaticResource Muted}" Visibility="{Binding Selected.HealthLabel, Converter={StaticResource TextToVis}}"><Run Text="Health: " /><Run Text="{Binding Selected.HealthLabel, Mode=OneWay}" Foreground="{DynamicResource TextBrush}" /></TextBlock>
+                                </WrapPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Keys card -->
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="Keys &amp; access" Style="{StaticResource CardTitle}" />
+                                <Border CornerRadius="8" Padding="10,7" Background="{Binding Selected.KeyBadge, Converter={StaticResource BadgeSoftBrush}}">
+                                    <TextBlock Text="{Binding Selected.KeyHeadline}" FontWeight="SemiBold" TextWrapping="Wrap"
+                                               Foreground="{Binding Selected.KeyBadge, Converter={StaticResource BadgeBrush}}" />
+                                </Border>
+
+                                <TextBlock Text="WHAT IS FREE" Style="{StaticResource Label}" />
+                                <TextBlock TextWrapping="Wrap">
+                                    <Run Text="{Binding Selected.AccessLabel, Mode=OneWay}" FontWeight="SemiBold" Foreground="{Binding Selected.AccessLabel, Converter={StaticResource BadgeBrush}}" /><Run Text="  -  " /><Run Text="{Binding Selected.AccessNote, Mode=OneWay}" />
+                                </TextBlock>
+
+                                <StackPanel Visibility="{Binding Selected.HasDemoKey, Converter={StaticResource BoolToVis}}">
+                                    <TextBlock Text="DEMO KEY  (published by the provider - shared and rate limited)" Style="{StaticResource Label}" TextWrapping="Wrap" />
+                                    <DockPanel>
+                                        <Button DockPanel.Dock="Right" Content="Copy key" Command="{Binding CopyCommand}" CommandParameter="demokey" Style="{DynamicResource AccentButtonStyle}"
+                                                Padding="12,4" Margin="8,0,0,0" AutomationProperties.Name="Copy demo key" ToolTip="Ctrl+K" />
+                                        <TextBox Text="{Binding Selected.DemoKey, Mode=OneWay}" Style="{StaticResource Value}" FontSize="16" FontWeight="Bold" />
+                                    </DockPanel>
+                                </StackPanel>
+
+                                <StackPanel Visibility="{Binding Selected.HasKeyUsage, Converter={StaticResource BoolToVis}}">
+                                    <TextBlock Text="HOW THE KEY IS SENT" Style="{StaticResource Label}" />
+                                    <DockPanel>
+                                        <Button DockPanel.Dock="Right" Content="Copy" Command="{Binding CopyCommand}" CommandParameter="usage" Style="{StaticResource Mini}" />
+                                        <TextBox Text="{Binding Selected.KeyUsage, Mode=OneWay}" Style="{StaticResource Value}" />
+                                    </DockPanel>
+                                </StackPanel>
+
+                                <StackPanel Visibility="{Binding Selected.HasExample, Converter={StaticResource BoolToVis}}">
+                                    <TextBlock Text="EXAMPLE REQUEST  (works as is)" Style="{StaticResource Label}" />
+                                    <DockPanel>
+                                        <Button DockPanel.Dock="Right" Content="Try" Command="{Binding OpenCommand}" CommandParameter="example" Style="{StaticResource Mini}" ToolTip="Open in the browser" />
+                                        <Button DockPanel.Dock="Right" Content="Copy" Command="{Binding CopyCommand}" CommandParameter="example" Style="{StaticResource Mini}" />
+                                        <TextBox Text="{Binding Selected.Example, Mode=OneWay}" Style="{StaticResource Value}" />
+                                    </DockPanel>
+                                </StackPanel>
+
+                                <TextBlock Text="HOW TO GET A KEY" Style="{StaticResource Label}" />
+                                <TextBlock Text="{Binding Selected.HowTo}" TextWrapping="Wrap" LineHeight="19" />
+
+                                <StackPanel Visibility="{Binding Selected.HasSignupUrl, Converter={StaticResource BoolToVis}}">
+                                    <TextBlock Text="GET YOUR OWN KEY HERE" Style="{StaticResource Label}" />
+                                    <DockPanel>
+                                        <Button DockPanel.Dock="Right" Content="Open" Command="{Binding OpenCommand}" CommandParameter="signup" Style="{StaticResource Mini}" />
+                                        <Button DockPanel.Dock="Right" Content="Copy" Command="{Binding CopyCommand}" CommandParameter="signup" Style="{StaticResource Mini}" />
+                                        <TextBox Text="{Binding Selected.SignupUrl, Mode=OneWay}" Style="{StaticResource Value}" />
+                                    </DockPanel>
+                                </StackPanel>
+
+                                <Button Content="Copy these instructions" Command="{Binding CopyCommand}" CommandParameter="howto" Style="{StaticResource Mini}" Margin="0,10,0,0" HorizontalAlignment="Left" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Test card -->
+                        <Border x:Name="TestCard" Style="{StaticResource Card}">
+                            <StackPanel>
+                                <DockPanel>
+                                    <Button DockPanel.Dock="Right" Content="▶  Test this API" Command="{Binding TestApiCommand}" Style="{DynamicResource AccentButtonStyle}" Padding="14,5" FontWeight="SemiBold"
+                                            AutomationProperties.Name="Test this API" ToolTip="Send the request below and show the response (Ctrl+T)"
+                                            Visibility="{Binding Selected.IsTesting, Converter={StaticResource InvBoolToVis}}" />
+                                    <TextBlock DockPanel.Dock="Right" Text="Sending…" Style="{StaticResource Muted}" VerticalAlignment="Center"
+                                               Visibility="{Binding Selected.IsTesting, Converter={StaticResource BoolToVis}}" />
+                                    <TextBlock Text="Try it" Style="{StaticResource CardTitle}" VerticalAlignment="Center" Margin="0" />
+                                </DockPanel>
+                                <TextBlock Text="{Binding Selected.TestHint}" Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,6,0,0" />
+                                <Border CornerRadius="8" Padding="10,6" Margin="0,8,0,0" Background="{DynamicResource CardAltBrush}" Visibility="{Binding Selected.IsLimited, Converter={StaticResource BoolToVis}}">
+                                    <TextBlock Text="{Binding Selected.LimitLabel}" Foreground="{DynamicResource WarnBrush}" FontWeight="SemiBold" FontSize="12.5" TextWrapping="Wrap"
+                                               AutomationProperties.Name="Rate limit notice" />
+                                </Border>
+
+                                <TextBlock Text="REQUEST" Style="{StaticResource Label}" />
+                                <DockPanel>
+                                    <ComboBox DockPanel.Dock="Left" ItemsSource="{Binding TestMethods}" SelectedItem="{Binding Selected.TestMethod}" Width="104" Margin="0,0,6,0" VerticalAlignment="Top"
+                                              FontWeight="SemiBold" AutomationProperties.Name="Test method" />
+                                    <TextBox Text="{Binding Selected.TestUrl, UpdateSourceTrigger=PropertyChanged}" TextWrapping="Wrap" FontFamily="Cascadia Mono, Consolas" FontSize="12.5"
+                                             AutomationProperties.Name="Test URL">
+                                        <TextBox.InputBindings>
+                                            <KeyBinding Key="Enter" Command="{Binding TestApiCommand}" />
+                                        </TextBox.InputBindings>
+                                    </TextBox>
+                                </DockPanel>
+                                <TextBlock Text="HEADERS  (optional, one Name: value per line)" Style="{StaticResource Label}" TextWrapping="Wrap" />
+                                <TextBox Text="{Binding Selected.TestHeader, UpdateSourceTrigger=PropertyChanged}" FontFamily="Cascadia Mono, Consolas" FontSize="12.5"
+                                         AcceptsReturn="True" TextWrapping="NoWrap" MaxHeight="90" VerticalScrollBarVisibility="Auto" AutomationProperties.Name="Test headers" />
+
+                                <TextBlock Text="VARIABLES  (optional: name = value per line - {name} in the URL, headers or body is replaced)" Style="{StaticResource Label}" TextWrapping="Wrap"
+                                           ToolTip="Always there without a line of their own: {today}, {yesterday}, {tomorrow}, {now}, {timestamp}. Values are URL-encoded in the address. {key} stays your saved key." />
+                                <TextBox Text="{Binding Selected.VariablesText, UpdateSourceTrigger=LostFocus}" FontFamily="Cascadia Mono, Consolas" FontSize="12.5"
+                                         AcceptsReturn="True" TextWrapping="NoWrap" MaxHeight="90" VerticalScrollBarVisibility="Auto" AutomationProperties.Name="Test variables" />
+
+                                <StackPanel Visibility="{Binding Selected.ShowTestBody, Converter={StaticResource BoolToVis}}">
+                                    <DockPanel Margin="0,10,0,3">
+                                        <Button DockPanel.Dock="Right" Content="Tidy JSON" Command="{Binding TidyBodyCommand}" Style="{StaticResource Mini}" ToolTip="Check and indent the JSON body" />
+                                        <TextBlock Text="BODY  (JSON, form a=b&amp;c=d, XML or text - Content-Type is set to match)" Style="{StaticResource Label}" Margin="0" VerticalAlignment="Center" TextWrapping="Wrap" />
+                                    </DockPanel>
+                                    <TextBox Text="{Binding Selected.TestBody, UpdateSourceTrigger=PropertyChanged}" FontFamily="Cascadia Mono, Consolas" FontSize="12.5"
+                                             AcceptsReturn="True" AcceptsTab="True" TextWrapping="NoWrap" MinHeight="84" MaxHeight="220"
+                                             VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" AutomationProperties.Name="Test body" />
+                                </StackPanel>
+
+                                <DockPanel Margin="0,8,0,0">
+                                    <Button DockPanel.Dock="Right" Content="Reset" Command="{Binding ResetTestCommand}" Style="{StaticResource Mini}" ToolTip="Back to the suggested request" />
+                                    <Button DockPanel.Dock="Right" Content="Copy as cURL" Command="{Binding CopyCommand}" CommandParameter="testcurl" Style="{StaticResource Mini}" AutomationProperties.Name="Copy test as cURL" />
+                                    <TextBlock Text="{}{key} inserts your saved key; {name} a variable from the box above." Style="{StaticResource Muted}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                                </DockPanel>
+
+                                <StackPanel Visibility="{Binding Selected.HasHistory, Converter={StaticResource BoolToVis}}">
+                                    <TextBlock Text="HISTORY  (last 8 results, newest first - pick one to see it again)" Style="{StaticResource Label}" TextWrapping="Wrap" />
+                                    <ComboBox ItemsSource="{Binding Selected.History}" SelectedItem="{Binding Selected.SelectedHistory}" DisplayMemberPath="Label"
+                                              HorizontalAlignment="Stretch" FontSize="12" AutomationProperties.Name="Test history" />
+                                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                        <Button Content="Compare with latest" Command="{Binding CompareHistoryCommand}" Style="{StaticResource Mini}" Margin="0"
+                                                ToolTip="Line-by-line diff of the picked result against the newest one (or newest against the one before)" />
+                                        <Button Content="Reuse request" Command="{Binding ReuseRequestCommand}" Style="{StaticResource Mini}" ToolTip="Put the picked result's request back in the boxes above" />
+                                        <Button Content="Clear history" Command="{Binding ClearHistoryCommand}" Style="{StaticResource Mini}" />
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <StackPanel Visibility="{Binding Selected.TestSummary, Converter={StaticResource TextToVis}}" Margin="0,12,0,0">
+                                    <TextBlock Text="{Binding Selected.TestSummary}" TextWrapping="Wrap" FontWeight="SemiBold" FontSize="12.5" AutomationProperties.Name="Test summary">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Foreground" Value="{DynamicResource WarnBrush}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Selected.TestOk}" Value="True">
+                                                        <Setter Property="Foreground" Value="{DynamicResource UpBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    <StackPanel Visibility="{Binding Selected.TestResponse, Converter={StaticResource TextToVis}}">
+                                        <DockPanel Margin="0,8,0,4">
+                                            <Button DockPanel.Dock="Right" Content="Copy response" Command="{Binding CopyCommand}" CommandParameter="response" Style="{StaticResource Mini}"
+                                                    AutomationProperties.Name="Copy response" />
+                                            <Button DockPanel.Dock="Right" Content="C# client" Command="{Binding GenerateClientCommand}" Style="{StaticResource Mini}"
+                                                    AutomationProperties.Name="Generate C# client" ToolTip="A small typed HttpClient class: one method for every request in the history that worked, with response classes" />
+                                            <Button DockPanel.Dock="Right" Content="C# classes" Command="{Binding GenerateClassesCommand}" Style="{StaticResource Mini}"
+                                                    AutomationProperties.Name="Generate C# classes" ToolTip="Generate C# classes (System.Text.Json) that fit this JSON" />
+                                            <TextBlock Text="RESPONSE" Style="{StaticResource Label}" Margin="0" VerticalAlignment="Center" />
+                                        </DockPanel>
+                                        <TextBox Text="{Binding Selected.TestResponse, Mode=OneWay}" IsReadOnly="True" MaxHeight="340" MinHeight="60"
+                                                 FontFamily="Cascadia Mono, Consolas" FontSize="12" TextWrapping="NoWrap" AcceptsReturn="True"
+                                                 VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" AutomationProperties.Name="Response" />
+                                    </StackPanel>
+                                    <StackPanel Visibility="{Binding Selected.TestClasses, Converter={StaticResource TextToVis}}">
+                                        <DockPanel Margin="0,10,0,4">
+                                            <Button DockPanel.Dock="Right" Content="Save as .cs…" Command="{Binding SaveCodeCommand}" Style="{StaticResource Mini}" AutomationProperties.Name="Save code as file" />
+                                            <Button DockPanel.Dock="Right" Content="Copy code" Command="{Binding CopyCommand}" CommandParameter="classes" Style="{DynamicResource AccentButtonStyle}"
+                                                    Padding="10,3" FontSize="12" AutomationProperties.Name="Copy classes" />
+                                            <TextBlock Text="{Binding Selected.TestCodeTitle}" Style="{StaticResource Label}" Margin="0" VerticalAlignment="Center" TextWrapping="Wrap" />
+                                        </DockPanel>
+                                        <TextBox Text="{Binding Selected.TestClasses, Mode=OneWay}" IsReadOnly="True" MaxHeight="340" MinHeight="60"
+                                                 FontFamily="Cascadia Mono, Consolas" FontSize="12" TextWrapping="NoWrap" AcceptsReturn="True"
+                                                 VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" AutomationProperties.Name="Classes" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Docs scan card -->
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <DockPanel>
+
+                                    <Button DockPanel.Dock="Right" Content="Scan docs for key info" Command="{Binding ScanDocsCommand}" Padding="12,5"
+                                            Visibility="{Binding Selected.IsScanningDocs, Converter={StaticResource InvBoolToVis}}" />
+                                    <TextBlock DockPanel.Dock="Right" Text="Reading the docs…" Style="{StaticResource Muted}" VerticalAlignment="Center"
+                                               Visibility="{Binding Selected.IsScanningDocs, Converter={StaticResource BoolToVis}}" />
+                                    <TextBlock Text="Live look at the docs" Style="{StaticResource CardTitle}" VerticalAlignment="Center" Margin="0" />
+                                </DockPanel>
+                                <TextBlock Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,6,0,0"
+                                           Text="Reads this API's public docs and pricing pages for sign-up links, free-tier limits, the auth scheme, sample keys and example endpoints you can test with one click."
+                                           Visibility="{Binding Selected.HasDocsScan, Converter={StaticResource InvBoolToVis}}" />
+                                <TextBlock Text="{Binding Selected.DocsScanSummary}" Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,6,0,4"
+                                           Visibility="{Binding Selected.HasDocsScan, Converter={StaticResource BoolToVis}}" />
+                                <!-- the card has no room beside its title, so the button sits under the result - where a failed scan says "open it in the browser" -->
+                                <Button Content="Open in browser" Command="{Binding OpenCommand}" CommandParameter="docs" Style="{DynamicResource AccentButtonStyle}" Padding="12,4" FontSize="12.5"
+                                        HorizontalAlignment="Left" Margin="0,4,0,6" AutomationProperties.Name="Open docs in browser" ToolTip="Open this API's docs page in your browser"
+                                        Visibility="{Binding Selected.HasDocsScan, Converter={StaticResource BoolToVis}}" />
+                                <ItemsControl ItemsSource="{Binding Selected.DocsScan.Items}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="0,1,0,0" Padding="0,8,0,6">
+                                                <StackPanel>
+                                                    <DockPanel>
+                                                        <Button DockPanel.Dock="Right" Content="▶ Test" Style="{DynamicResource AccentButtonStyle}" Padding="9,3" FontSize="12" Margin="6,0,0,0" MinHeight="26"
+                                                                CommandParameter="{Binding}" AutomationProperties.Name="Test endpoint" ToolTip="Load this request into Try it and send it"
+                                                                Command="{Binding DataContext.UseEndpointCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                Visibility="{Binding IsEndpoint, Converter={StaticResource BoolToVis}}" />
+                                                        <Button DockPanel.Dock="Right" Content="Open" Style="{StaticResource Mini}" CommandParameter="{Binding Value}"
+                                                                Command="{Binding DataContext.OpenUrlCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                Visibility="{Binding IsLink, Converter={StaticResource BoolToVis}}" />
+                                                        <Button DockPanel.Dock="Right" Content="Copy" Style="{StaticResource Mini}" CommandParameter="{Binding Value}"
+                                                                Command="{Binding DataContext.CopyValueCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                                                        <Border CornerRadius="8" Padding="7,1" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                                                Background="{Binding Kind, Converter={StaticResource BadgeSoftBrush}}">
+                                                            <TextBlock Text="{Binding Kind}" FontSize="11" FontWeight="SemiBold" Foreground="{Binding Kind, Converter={StaticResource BadgeBrush}}" />
+                                                        </Border>
+                                                    </DockPanel>
+                                                    <TextBox Text="{Binding Value, Mode=OneWay}" Style="{StaticResource Value}" Margin="0,5,0,0" BorderThickness="0" Background="Transparent" Padding="0" />
+                                                    <TextBlock Text="{Binding Note}" Style="{StaticResource Muted}" TextWrapping="Wrap" Visibility="{Binding Note, Converter={StaticResource TextToVis}}" />
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- My key card -->
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="My key &amp; notes" Style="{StaticResource CardTitle}" />
+                                <TextBlock Style="{StaticResource Muted}" TextWrapping="Wrap" Text="Keep the key you signed up for next to the API. Stored encrypted for your Windows account only." />
+                                <!-- local tab order: Show, the box, Save, Copy - not the order the dock panel needs them declared in -->
+                                <DockPanel Margin="0,8,0,0" KeyboardNavigation.TabNavigation="Local">
+                                    <Button DockPanel.Dock="Right" Content="Copy" Command="{Binding CopyCommand}" CommandParameter="mykey" Style="{StaticResource Mini}" AutomationProperties.Name="Copy my key" TabIndex="3" />
+                                    <Button DockPanel.Dock="Right" Content="Save" Command="{Binding SaveMyKeyCommand}" Style="{StaticResource Mini}" AutomationProperties.Name="Save my key" TabIndex="2"
+                                            ToolTip="Also saved by Enter, and when you move to another API or close ApiScout" />
+                                    <ToggleButton DockPanel.Dock="Right" Content="Show" IsChecked="{Binding ShowMyKey}" Margin="6,0,0,0" Padding="9,3" FontSize="12" MinHeight="26" AutomationProperties.Name="Show my key" TabIndex="0" />
+                                    <Grid>
+                                        <TextBox Text="{Binding Selected.MyKey, UpdateSourceTrigger=PropertyChanged}" FontFamily="Cascadia Mono, Consolas" FontSize="12.5"
+                                                 Visibility="{Binding ShowMyKey, Converter={StaticResource BoolToVis}}" AutomationProperties.Name="My key" TabIndex="1">
+                                            <TextBox.InputBindings>
+                                                <KeyBinding Key="Enter" Command="{Binding SaveMyKeyCommand}" />
+                                            </TextBox.InputBindings>
+                                        </TextBox>
+                                        <Border Visibility="{Binding ShowMyKey, Converter={StaticResource InvBoolToVis}}" Background="{DynamicResource CardAltBrush}" CornerRadius="4" Padding="10,6">
+                                            <Grid>
+                                                <TextBlock Text="●●●●●●●●●●●●  (hidden)" Foreground="{DynamicResource MutedBrush}" Visibility="{Binding Selected.MyKey, Converter={StaticResource TextToVis}}" />
+                                                <TextBlock Text="No key saved - press Show to type one" Foreground="{DynamicResource MutedBrush}" Visibility="{Binding Selected.MyKey, Converter={StaticResource EmptyTextToVis}}" />
+                                            </Grid>
+                                        </Border>
+                                    </Grid>
+                                </DockPanel>
+                                <TextBlock Text="TAGS  (your own labels, comma separated - filter by them above the list)" Style="{StaticResource Label}" TextWrapping="Wrap" />
+                                <TextBox Text="{Binding Selected.TagsText, UpdateSourceTrigger=LostFocus}" AutomationProperties.Name="Tags" />
+                                <TextBlock Text="COLLECTIONS" Style="{StaticResource Label}" />
+                                <DockPanel>
+                                    <Button DockPanel.Dock="Right" Content="Add to a collection…" Click="AddToCollection_Click" Style="{StaticResource Mini}" ToolTip="Ctrl+E - also works on several selected rows" />
+                                    <Grid VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding Selected.CollectionsLabel}" TextWrapping="Wrap" Foreground="{DynamicResource VioletBrush}" AutomationProperties.Name="Collections of this API" />
+                                        <TextBlock Text="In none yet - collections are named groups with their own page under My shortlist" Style="{StaticResource Muted}" TextWrapping="Wrap"
+                                                   Visibility="{Binding Selected.HasCollections, Converter={StaticResource InvBoolToVis}}" />
+                                    </Grid>
+                                </DockPanel>
+                                <TextBlock Text="NOTES" Style="{StaticResource Label}" />
+                                <TextBox Text="{Binding Selected.Note, UpdateSourceTrigger=LostFocus}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="54" AutomationProperties.Name="Notes" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Copy as card -->
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="Copy this API as…" Style="{StaticResource CardTitle}" />
+                                <WrapPanel>
+                                    <Button Content="Details" Command="{Binding CopyCommand}" CommandParameter="text" Margin="0,0,6,6" Padding="12,5" />
+                                    <Button Content="Markdown" Command="{Binding CopyCommand}" CommandParameter="markdown" Margin="0,0,6,6" Padding="12,5" />
+                                    <Button Content="JSON" Command="{Binding CopyCommand}" CommandParameter="json" Margin="0,0,6,6" Padding="12,5" />
+                                    <Button Content="cURL" Command="{Binding CopyCommand}" CommandParameter="curl" Margin="0,0,6,6" Padding="12,5" />
+                                    <Button Content="C# snippet" Command="{Binding CopyCommand}" CommandParameter="csharp" Margin="0,0,6,6" Padding="12,5" />
+                                </WrapPanel>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+        </Grid>
+
+        <!-- ===== My shortlist page ===== -->
+        <Grid Grid.Row="1" Background="{DynamicResource BgBrush}" Visibility="{Binding ShowShortlist, Converter={StaticResource BoolToVis}}">
+            <DockPanel Margin="18,14,18,8">
+                <StackPanel DockPanel.Dock="Top" Margin="0,0,0,12">
+                    <DockPanel>
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="Page" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <ComboBox ItemsSource="{Binding ShortlistPages}" SelectedItem="{Binding ShortlistPage}" MinWidth="260" AutomationProperties.Name="Shortlist page"
+                                      ToolTip="My shortlist, or one of your collections (right-click rows in the list → Add to a collection)" />
+                        </StackPanel>
+                        <TextBlock Text="{Binding ShortlistTitle}" FontSize="22" FontWeight="Bold" TextTrimming="CharacterEllipsis" />
+                    </DockPanel>
+                    <TextBlock Text="{Binding ShortlistSummary}" Style="{StaticResource Muted}" FontSize="13" TextWrapping="Wrap" AutomationProperties.Name="Shortlist summary" />
+                    <TextBlock Text="Arrow keys move  ·  Enter details  ·  T test  ·  K copy key  ·  O open docs  ·  U copy docs URL  ·  D favourite on / off  ·  R remove from the collection  ·  Esc back to the list"
+                               Style="{StaticResource Muted}" Margin="0,4,0,0" TextWrapping="Wrap" Visibility="{Binding ShortlistSelected, Converter={StaticResource NullToCollapsed}}" />
+                    <WrapPanel Margin="0,10,0,0">
+                        <Button Content="▶ Test all" Command="{Binding TestPageCommand}" IsEnabled="{Binding CanTestPage}" Style="{DynamicResource AccentButtonStyle}" Padding="12,3" FontSize="12" MinHeight="26" Margin="0,0,14,4"
+                                AutomationProperties.Name="Test all" ToolTip="Send every card's saved or suggested request, three at a time, and sum up what passed" />
+                        <Button Content="Copy page as Markdown" Command="{Binding CopyCollectionMarkdownCommand}" Style="{StaticResource Mini}" Margin="0,0,6,4" />
+                        <Button Content="Copy C# client" Command="{Binding CopyPageClientCommand}" Style="{StaticResource Mini}" Margin="0,0,6,4" AutomationProperties.Name="Copy page C# client"
+                                ToolTip="One file: a typed client for every API on this page that has a test that worked, and a class that builds them all from one HttpClient" />
+                        <Button Content="Save C# client…" Command="{Binding SavePageClientCommand}" Style="{StaticResource Mini}" Margin="0,0,18,4" />
+                        <Button Content="Rename collection…" Click="RenameCollection_Click" Style="{StaticResource Mini}" Margin="0,0,6,4" Visibility="{Binding IsCollectionPage, Converter={StaticResource BoolToVis}}" />
+                        <Button Content="Delete collection" Click="DeleteCollection_Click" Style="{StaticResource Mini}" Margin="0,0,6,4" Visibility="{Binding IsCollectionPage, Converter={StaticResource BoolToVis}}" />
+                        <TextBlock Text="Drag cards to reorder (or Ctrl+← / Ctrl+→)" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="10,0,0,4" Visibility="{Binding IsCollectionPage, Converter={StaticResource BoolToVis}}" />
+                    </WrapPanel>
+                    <TextBlock Text="{Binding PageTestSummary}" FontSize="12.5" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,6,0,0" AutomationProperties.Name="Test all result"
+                               Visibility="{Binding PageTestSummary, Converter={StaticResource TextToVis}}">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Foreground" Value="{DynamicResource WarnBrush}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding PageTestOk}" Value="True"><Setter Property="Foreground" Value="{DynamicResource UpBrush}" /></DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </StackPanel>
+                    <ListBox x:Name="ShortlistBox" ItemsSource="{Binding ShortlistRows}" SelectedItem="{Binding ShortlistSelected}" AutomationProperties.Name="Shortlist"
+                             Background="Transparent" BorderThickness="0" Padding="0" IsTextSearchEnabled="False" PreviewKeyDown="Shortlist_PreviewKeyDown"
+                             AllowDrop="True" PreviewMouseLeftButtonDown="Shortlist_MouseDown" PreviewMouseMove="Shortlist_MouseMove" DragOver="Shortlist_DragOver" Drop="Shortlist_Drop"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.CanContentScroll="False">
+                        <ListBox.ItemsPanel>
+                            <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                        </ListBox.ItemsPanel>
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="AutomationProperties.Name" Value="{Binding Name}" />
+                                <Setter Property="Margin" Value="0,0,10,10" />
+                                <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ListBoxItem">
+                                            <Border x:Name="Ring" BorderThickness="2" BorderBrush="Transparent" CornerRadius="12" Background="Transparent">
+                                                <ContentPresenter />
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsSelected" Value="True">
+                                                    <Setter TargetName="Ring" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate DataType="{x:Type vm:ApiRow}">
+                                <Border Style="{StaticResource Card}" Width="400" Margin="0">
+                                    <StackPanel>
+                                        <DockPanel>
+                                            <ContentControl DockPanel.Dock="Left" Content="{Binding}" ContentTemplate="{StaticResource BrandTile}" Margin="0,0,10,0" VerticalAlignment="Top" Focusable="False" />
+                                            <Button DockPanel.Dock="Right" Content="{Binding IsFavourite, Converter={StaticResource Star}}" FontSize="16" Padding="7,1" VerticalAlignment="Top"
+                                                    Foreground="{DynamicResource WarnBrush}" ToolTip="Favourite on / off" AutomationProperties.Name="Favourite" CommandParameter="{Binding}"
+                                                    Command="{Binding DataContext.ToggleRowFavouriteCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="Bold" TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Style="{StaticResource Muted}" TextTrimming="CharacterEllipsis"><Run Text="{Binding BrandDomain, Mode=OneWay}" /><Run Text="  ·  " /><Run Text="{Binding Category, Mode=OneWay}" /></TextBlock>
+                                            </StackPanel>
+                                        </DockPanel>
+
+                                        <WrapPanel Margin="0,10,0,0">
+                                            <Border CornerRadius="9" Padding="8,1" Margin="0,0,8,0" Background="{Binding KeyBadge, Converter={StaticResource BadgeSoftBrush}}">
+                                                <TextBlock Text="{Binding KeyBadge}" FontSize="11.5" FontWeight="SemiBold" Foreground="{Binding KeyBadge, Converter={StaticResource BadgeBrush}}" />
+                                            </Border>
+                                            <TextBlock Text="{Binding AccessLabel}" FontSize="12" VerticalAlignment="Center" Margin="0,0,10,0" Foreground="{Binding AccessLabel, Converter={StaticResource BadgeBrush}}" />
+                                            <TextBlock Text="{Binding TagsLabel}" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource VioletBrush}" />
+                                        </WrapPanel>
+
+                                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0" Visibility="{Binding HasDemoKey, Converter={StaticResource BoolToVis}}">
+                                            <TextBlock Text="Demo key  " Style="{StaticResource Muted}" VerticalAlignment="Center" />
+                                            <TextBlock Text="{Binding DemoKey}" FontFamily="Cascadia Mono, Consolas" FontWeight="Bold" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                        <TextBlock Text="My key  ●●●●●●●●  saved" Style="{StaticResource Muted}" Margin="0,6,0,0" Visibility="{Binding HasMyKey, Converter={StaticResource BoolToVis}}" />
+
+                                        <TextBlock Text="{Binding LimitLabel}" Foreground="{DynamicResource WarnBrush}" FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,8,0,0"
+                                                   Visibility="{Binding IsLimited, Converter={StaticResource BoolToVis}}" />
+
+                                        <TextBlock Text="LAST TEST" Style="{StaticResource Label}" />
+                                        <TextBlock Text="Not tested yet" Style="{StaticResource Muted}" Visibility="{Binding LastTestLabel, Converter={StaticResource EmptyTextToVis}}" />
+                                        <TextBlock Text="{Binding LastTestLabel}" FontSize="12" TextWrapping="Wrap" Visibility="{Binding HasLastTest, Converter={StaticResource BoolToVis}}">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Foreground" Value="{DynamicResource WarnBrush}" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding LastTestOk}" Value="True">
+                                                            <Setter Property="Foreground" Value="{DynamicResource UpBrush}" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+
+                                        <TextBlock Text="{Binding NoteShort}" Style="{StaticResource Muted}" FontStyle="Italic" TextWrapping="Wrap" Margin="0,8,0,0"
+                                                   Visibility="{Binding NoteShort, Converter={StaticResource TextToVis}}" />
+
+                                        <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                                            <Button Content="▶ Test" Style="{DynamicResource AccentButtonStyle}" Padding="10,3" FontSize="12" MinHeight="26" CommandParameter="{Binding}"
+                                                    Command="{Binding DataContext.TestRowCommand, RelativeSource={RelativeSource AncestorType=Window}}" ToolTip="Send this API's saved or suggested request again" />
+                                            <Button Content="Copy key" Style="{StaticResource Mini}" CommandParameter="{Binding}" Command="{Binding DataContext.CopyRowKeyCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                    ToolTip="Your own saved key, otherwise the demo key" />
+                                            <Button Content="Docs" Style="{StaticResource Mini}" CommandParameter="{Binding}" Command="{Binding DataContext.OpenRowCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+                                            <Button Content="Details" Style="{StaticResource Mini}" CommandParameter="{Binding}" Command="{Binding DataContext.ShowRowCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                    ToolTip="Back to the list with this API selected" />
+                                            <Button Content="Remove" Style="{StaticResource Mini}" CommandParameter="{Binding}" ToolTip="Take it out of this collection (R)"
+                                                    Command="{Binding DataContext.RemoveFromCollectionCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                    Visibility="{Binding DataContext.IsCollectionPage, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVis}}" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+            </DockPanel>
+        </Grid>
+
+        <!-- ===== Status bar ===== -->
+        <Border Grid.Row="2" Background="{DynamicResource NavBrush}" BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="0,1,0,0" Padding="16,8">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <TextBlock Text="{Binding CountText}" VerticalAlignment="Center" FontWeight="SemiBold" Margin="0,0,14,0" />
+                    <Button Content="What changed" Click="Changes_Click" Style="{StaticResource Mini}" Margin="0,0,6,0" AutomationProperties.Name="What changed"
+                            ToolTip="What the last scans found: new APIs, APIs that are gone, and changed auth or free access (Ctrl+H)" />
+                    <Button Content="Compare selected" Click="Compare_Click" Style="{StaticResource Mini}" Margin="0,0,14,0" AutomationProperties.Name="Compare selected"
+                            ToolTip="Select 2 to 4 rows (Ctrl+click, or Shift+arrows) to see them side by side (Ctrl+M)" />
+                    <TextBlock Text="Copy list as" Style="{StaticResource Muted}" VerticalAlignment="Center" />
+                    <Button Content="Markdown" Command="{Binding CopyListCommand}" CommandParameter="markdown" Style="{StaticResource Mini}" />
+                    <Button Content="CSV" Command="{Binding CopyListCommand}" CommandParameter="csv" Style="{StaticResource Mini}" />
+                    <Button Content="JSON" Command="{Binding CopyListCommand}" CommandParameter="json" Style="{StaticResource Mini}" />
+                    <Button Content="URLs" Command="{Binding CopyListCommand}" CommandParameter="urls" Style="{StaticResource Mini}" />
+                    <Button Content="Export…" Command="{Binding ExportCommand}" Style="{StaticResource Mini}" Margin="14,0,0,0" />
+                </StackPanel>
+                <ProgressBar DockPanel.Dock="Right" Width="150" Height="6" Margin="0,0,18,0" Value="{Binding Progress}" Maximum="100" VerticalAlignment="Center"
+                             Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}" />
+                <TextBlock Text="{Binding StatusText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Foreground="{DynamicResource MutedBrush}" ToolTip="{Binding StatusText}" />
+            </DockPanel>
+        </Border>
+
+        <!-- First-run tour: the window dimmed except for the thing being explained, and a callout beside it -->
+        <Canvas x:Name="TourLayer" Grid.RowSpan="3" Visibility="Collapsed" Background="Transparent" Focusable="True" FocusVisualStyle="{x:Null}" PreviewKeyDown="Tour_KeyDown"
+                AutomationProperties.Name="Tour">
+            <Path x:Name="TourDim" Fill="#B0000000" />
+            <Border x:Name="TourRing" BorderBrush="{DynamicResource AccentBrush}" BorderThickness="2" CornerRadius="10" IsHitTestVisible="False" />
+            <Border x:Name="TourCallout" Width="380" Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource AccentBrush}" BorderThickness="1" CornerRadius="12" Padding="18,14">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="24" ShadowDepth="3" Opacity="0.5" />
+                </Border.Effect>
+                <StackPanel>
+                    <TextBlock x:Name="TourStep" Style="{StaticResource Muted}" />
+                    <TextBlock x:Name="TourTitle" FontSize="17" FontWeight="Bold" Margin="0,2,0,6" TextWrapping="Wrap" />
+                    <TextBlock x:Name="TourText" TextWrapping="Wrap" LineHeight="20" />
+                    <DockPanel Margin="0,14,0,0" LastChildFill="False">
+                        <Button x:Name="TourNext" DockPanel.Dock="Right" Content="Next" Click="TourNext_Click" Style="{DynamicResource AccentButtonStyle}" Padding="16,5" AutomationProperties.Name="Tour next" />
+                        <Button x:Name="TourBack" DockPanel.Dock="Right" Content="Back" Click="TourBack_Click" Padding="12,5" Margin="0,0,8,0" AutomationProperties.Name="Tour back" />
+                        <Button Content="Skip the tour" Click="TourSkip_Click" Padding="12,5" AutomationProperties.Name="Skip the tour" ToolTip="Esc - About has it again whenever you like" />
+                    </DockPanel>
+                </StackPanel>
+            </Border>
+        </Canvas>
+
+        <!-- Toast -->
+        <Border Grid.Row="1" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,26" CornerRadius="18" Padding="18,9"
+                Background="{DynamicResource AccentBrush}" Visibility="{Binding Toast, Converter={StaticResource TextToVis}}" IsHitTestVisible="False">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="18" ShadowDepth="2" Opacity="0.4" />
+            </Border.Effect>
+            <TextBlock Text="{Binding Toast}" Foreground="White" FontWeight="SemiBold" AutomationProperties.Name="Toast" x:Name="ToastText" />
+        </Border>
+    </Grid>
+</Window>
