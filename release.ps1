@@ -18,8 +18,9 @@ function Publish-Release([string]$tag, [string]$title, [string]$notes, [string]$
     if (-not (Test-Path -LiteralPath $file)) { throw "Missing $file - build it first." }
     $notesFile = Join-Path $env:TEMP "apiscout-release-notes.md"
     Set-Content -Path $notesFile -Value $notes -Encoding utf8
-    gh release view $tag *> $null
-    if ($LASTEXITCODE -eq 0) {
+    # existence via the list, not `gh release view`: its "release not found" on stderr is a terminating error under Stop
+    $exists = @(gh release list --json tagName --jq '.[].tagName') -contains $tag
+    if ($exists) {
         gh release upload $tag $file --clobber
         gh release edit $tag --title $title --notes-file $notesFile | Out-Null
         "refreshed $tag"
