@@ -24,6 +24,9 @@ API Free shows only demo keys that providers print in their own public documenta
 keys. Keys you save are encrypted on your device (Windows DPAPI on the desktop, the Android keystore on the phone),
 never appear in what you copy or share, and leave a device only inside an export's passphrase-protected section.
 
+[Privacy policy](PRIVACY.md): nothing is collected; the apps talk only to the public directories, the providers'
+own pages and the APIs you choose to test.
+
 ## Releases
 
 - Desktop: tags `desktop-vX.Y.Z`; each release carries `ApiScout-X.Y.Z-portable.zip` - unzip and run `ApiScout.exe`,
