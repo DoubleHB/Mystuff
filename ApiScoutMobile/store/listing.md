@@ -73,7 +73,8 @@ ALSO
 
 ## Privacy policy (Play requires a URL for every app)
 
-Suggested text to host on a page and link from the listing:
+The policy lives at `PRIVACY.md` in the root of the combined GitHub repository; once pushed, the URL to give Play is
+`https://github.com/<owner>/<repo>/blob/main/PRIVACY.md`. The short form of it:
 
 > API Free does not collect, store or share personal data. It has no accounts, analytics or advertising. The app
 > downloads public API directory listings and, when you ask it to, the documentation pages of an API and the
