@@ -18,10 +18,21 @@ import 'package:apiscout_mobile/sources.dart';
 import 'package:apiscout_mobile/tester.dart';
 import 'package:apiscout_mobile/user_data.dart';
 import 'package:apiscout_mobile/variables.dart';
+import 'package:apiscout_mobile/widgets.dart';
+import 'package:flutter/painting.dart' show TextScaler;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pointycastle/export.dart';
 
 const live = bool.fromEnvironment('LIVE');
+
+/// Android's large-text scaling in miniature: small sizes grow by 1.3, sizes from 24 up are left as they are.
+class _SmallOnlyScaler extends TextScaler {
+  const _SmallOnlyScaler();
+  @override
+  double scale(double fontSize) => fontSize >= 24 ? fontSize : fontSize * 1.3;
+  @override
+  double get textScaleFactor => 1.3;
+}
 
 void main() {
   final knowledgeJson = File('assets/knowledge.json').readAsStringSync();
@@ -114,6 +125,30 @@ API | Description | Auth | HTTPS | CORS |
     expect(plain.howTo, contains('Create a free account'));
     expect(ApiView(ApiEntry(name: 'T', url: 'https://t.example', auth: AuthKind.apiKey, description: 'Has a free tier'), k).access, AccessLevel.freeTier);
     expect(ApiView(ApiEntry(name: 'P', url: 'https://p.example', auth: AuthKind.apiKey, pricing: 'paid'), k).access, AccessLevel.trialOnly);
+  });
+
+  test('the Auth fact: the key knowledge answers when the directory says nothing', () {
+    // the directory that lists NASA does not say how it authenticates; the knowledge holds a demo key for it
+    final nasa = ApiView(ApiEntry(name: 'NASA', url: 'https://api.nasa.gov'), k);
+    expect([nasa.authLabel, nasa.authFact], ['Unknown', 'API key']);
+    // what a directory does say is kept, and an API nobody knows anything about stays unknown
+    expect(ApiView(ApiEntry(name: 'NASA', url: 'https://api.nasa.gov', auth: AuthKind.oauth), k).authFact, 'OAuth');
+    expect(ApiView(ApiEntry(name: 'Foo', url: 'https://foo.example/docs'), k).authFact, 'Unknown');
+    expect(ApiView(ApiEntry(name: 'Open', url: 'https://open.example', auth: AuthKind.none), k).authFact, 'No key');
+  });
+
+  test('list rows: 76 at the usual text size, taller with the text - line by line', () {
+    expect(rowExtentAt(TextScaler.noScaling), 76);
+    expect(rowExtentAt(const TextScaler.linear(1.3)), greaterThan(90));
+    // a scaler that leaves large sizes alone (Android's, from 1.3 up) must still grow the row
+    expect(rowExtentAt(const _SmallOnlyScaler()), greaterThan(90));
+  });
+
+  test('an empty list says what is in the way: the words typed, the filters, or both', () {
+    expect(noMatchText('', filtered: true), 'Nothing matches these filters');
+    expect(noMatchText(' zzzqqq ', filtered: false), 'Nothing matches "zzzqqq"');
+    expect(noMatchText('weather', filtered: true), 'Nothing matches "weather" with these filters');
+    expect(noMatchText('a' * 40, filtered: false), 'Nothing matches "${'a' * 30}…"');
   });
 
   test('tester helpers: headers, content type, pretty JSON, curl', () {

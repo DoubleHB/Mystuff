@@ -48,6 +48,14 @@ int editDistance(String a, String b, int max) {
   return prev[m];
 }
 
+/// The line shown over an empty list: what was typed, the filters, or both.
+String noMatchText(String search, {required bool filtered}) {
+  final s = search.trim();
+  if (s.isEmpty) return 'Nothing matches these filters';
+  final shown = s.length > 30 ? '${s.substring(0, 30)}…' : s;
+  return filtered ? 'Nothing matches "$shown" with these filters' : 'Nothing matches "$shown"';
+}
+
 /// The recent list with [term] at the front: no duplicates (whatever the case), at most [keep] entries.
 List<String> rememberSearch_(List<String> recent, String term, {int keep = 8}) {
   term = term.trim();

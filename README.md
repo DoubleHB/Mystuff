@@ -113,6 +113,11 @@ own published demo key where there is one, or how to get a key.
   - Play screenshots redone with the 1.5 look (`store/`).
 - **1.5.1 - renamed API Free.** The app, the listing and the desktop app are now called API Free (the ApiScout name
   was taken). Package id, files, data and keys are untouched, so 1.5.1 installs over 1.5.0.
+- **1.5.2 - polish pass.** Found by walking every screen on an emulator: list rows keep clear of their hairlines
+  and the detail tabs scroll at a large text size (`rowExtentFor`, `_largeText`); an empty list names the search
+  that found nothing (`noMatchText` in `search.dart`); the header's Auth fact uses the key knowledge when the
+  directory says nothing (`ApiView.authFact`); short labels with hints in Try it; one dialog / sheet / menu style
+  in `ledgerTheme` and `menuRow` so every menu line starts at the same place; exports are named `apifree-phone-…`.
 
 ## One source of truth
 

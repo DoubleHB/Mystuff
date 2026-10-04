@@ -355,7 +355,7 @@ class _DetailPageState extends State<DetailPage> with SingleTickerProviderStateM
               ]),
               const SizedBox(height: 12),
               Wrap(spacing: 18, runSpacing: 6, children: [
-                _Fact('Auth', v.authLabel),
+                _Fact('Auth', v.authFact),
                 _Fact('HTTPS', e.https == null ? '?' : e.https! ? 'Yes' : 'No'),
                 _Fact('CORS', e.cors.isEmpty ? '?' : e.cors),
                 if (e.health != null) _Fact('Health', '${e.health}%'),
@@ -365,7 +365,10 @@ class _DetailPageState extends State<DetailPage> with SingleTickerProviderStateM
           ),
           TabBar(
             controller: _tabs,
-            labelPadding: const EdgeInsets.symmetric(horizontal: 6),
+            // five tabs share the width at the usual text size; at a large one they scroll rather than clip "Overview"
+            isScrollable: _largeText(context),
+            tabAlignment: _largeText(context) ? TabAlignment.start : TabAlignment.fill,
+            labelPadding: EdgeInsets.symmetric(horizontal: _largeText(context) ? 14 : 6),
             tabs: [
               const Tab(text: 'Overview'),
               Tab(child: _tabLabel(context, 'Keys', _keysCount)),
@@ -381,6 +384,8 @@ class _DetailPageState extends State<DetailPage> with SingleTickerProviderStateM
       ),
     );
   }
+
+  static bool _largeText(BuildContext context) => MediaQuery.textScalerOf(context).scale(10) / 10 > 1.15;
 
   /// "Keys (3)": the count tells which tabs hold anything before they are opened. Nothing is shown for zero.
   Widget _tabLabel(BuildContext context, String text, int n) => n == 0
@@ -586,7 +591,8 @@ class _DetailPageState extends State<DetailPage> with SingleTickerProviderStateM
         maxLines: 4,
         autocorrect: false,
         style: mono,
-        decoration: const InputDecoration(labelText: 'Headers (optional, one Name: value per line)'),
+        // short labels: the long ones were cut off on a narrow phone or at a large text size
+        decoration: const InputDecoration(labelText: 'Headers (optional)', hintText: 'Name: value, one per line'),
       ),
       if (methodHasBody(_method)) ...[
         const SizedBox(height: 12),
@@ -613,7 +619,8 @@ class _DetailPageState extends State<DetailPage> with SingleTickerProviderStateM
           _saveVariables();
         },
         decoration: const InputDecoration(
-          labelText: 'Variables (optional, one name = value per line)',
+          labelText: 'Variables (optional)',
+          hintText: 'name = value, one per line',
           helperText: '{name} in the URL, headers or body is replaced. Always there: {today} {yesterday} {tomorrow} {now} {timestamp}',
           helperMaxLines: 3,
         ),
@@ -635,7 +642,8 @@ class _DetailPageState extends State<DetailPage> with SingleTickerProviderStateM
       Wrap(spacing: 8, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
         FilledButton.icon(
           onPressed: _sending ? null : _send,
-          icon: _sending ? SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: scheme.surface)) : const Icon(Icons.play_arrow),
+          // the button is greyed while sending, so the spinner is drawn in ink to stay visible
+          icon: _sending ? SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2.5, color: scheme.onSurface)) : const Icon(Icons.play_arrow),
           label: Text(_sending ? 'Sending…' : 'Test this API'),
         ),
         OutlinedButton(

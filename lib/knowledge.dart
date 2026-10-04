@@ -192,6 +192,16 @@ class ApiView {
         AuthKind.unknown => 'Unknown',
       };
 
+  /// The Auth fact in the detail header. A directory that says nothing leaves [authLabel] at "Unknown" even when the
+  /// key knowledge knows better (NASA: a demo key and where it goes) - then the knowledge answers.
+  String get authFact => entry.auth != AuthKind.unknown || hint == null
+      ? authLabel
+      : hint!.keylessWorks
+          ? 'Key optional'
+          : hasDemoKey || hint!.keyUsage != null || hint!.signupUrl != null
+              ? 'API key'
+              : authLabel;
+
   /// Short badge: what it takes to start calling this API.
   String get keyBadge => hasDemoKey
       ? 'Demo key'

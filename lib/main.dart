@@ -15,6 +15,7 @@ import 'detail_page.dart';
 import 'knowledge.dart';
 import 'links.dart';
 import 'notify.dart';
+import 'search.dart';
 import 'user_data.dart';
 import 'widgets.dart';
 
@@ -115,7 +116,15 @@ ThemeData ledgerTheme(Brightness brightness) {
     fontFamily: 'Manrope',
     scaffoldBackgroundColor: ground,
     splashFactory: InkSparkle.splashFactory,
-    appBarTheme: AppBarTheme(backgroundColor: ground, foregroundColor: ink, elevation: 0, scrolledUnderElevation: 0, surfaceTintColor: Colors.transparent, systemOverlayStyle: overlay),
+    appBarTheme: AppBarTheme(
+        backgroundColor: ground,
+        foregroundColor: ink,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
+        systemOverlayStyle: overlay,
+        // every page title in the ledger's heavy weight, whether or not the page styles it itself
+        titleTextStyle: TextStyle(fontFamily: 'Manrope', fontSize: 17, fontWeight: FontWeight.w800, letterSpacing: -0.2, color: ink)),
     dividerTheme: DividerThemeData(color: line, thickness: 1, space: 1),
     cardTheme: CardThemeData(color: ground, elevation: 0, surfaceTintColor: Colors.transparent, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6), side: BorderSide(color: line))),
     filledButtonTheme: FilledButtonThemeData(style: FilledButton.styleFrom(backgroundColor: ink, foregroundColor: ground, shape: const StadiumBorder(), textStyle: bold)),
@@ -141,9 +150,15 @@ ThemeData ledgerTheme(Brightness brightness) {
     tabBarTheme: TabBarThemeData(labelColor: ink, unselectedLabelColor: muted, indicatorColor: ink, indicatorSize: TabBarIndicatorSize.label, dividerColor: line, labelStyle: bold.copyWith(fontSize: 13), unselectedLabelStyle: bold.copyWith(fontSize: 13, fontWeight: FontWeight.w600)),
     listTileTheme: ListTileThemeData(selectedColor: ink, selectedTileColor: tint),
     drawerTheme: DrawerThemeData(backgroundColor: ground, surfaceTintColor: Colors.transparent, shape: const RoundedRectangleBorder()),
-    bottomSheetTheme: BottomSheetThemeData(backgroundColor: ground, surfaceTintColor: Colors.transparent),
-    dialogTheme: DialogThemeData(backgroundColor: ground, surfaceTintColor: Colors.transparent),
-    popupMenuTheme: PopupMenuThemeData(color: ground, surfaceTintColor: Colors.transparent),
+    // the ledger's small radii and heavy titles, instead of Material's 28 dp pillows
+    bottomSheetTheme: BottomSheetThemeData(backgroundColor: ground, surfaceTintColor: Colors.transparent, shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(12)))),
+    dialogTheme: DialogThemeData(
+        backgroundColor: ground,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: line)),
+        titleTextStyle: TextStyle(fontFamily: 'Manrope', fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: -0.3, color: ink),
+        contentTextStyle: TextStyle(fontFamily: 'Manrope', fontSize: 14, height: 1.45, color: ink)),
+    popupMenuTheme: PopupMenuThemeData(color: ground, surfaceTintColor: Colors.transparent, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6), side: BorderSide(color: line))),
     progressIndicatorTheme: ProgressIndicatorThemeData(color: accent, linearTrackColor: tint),
     switchTheme: SwitchThemeData(thumbColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? ground : muted), trackColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? ink : tint)),
   );
@@ -201,6 +216,20 @@ Future<void> openUrl(BuildContext context, String? url) async {
   if (!ok && context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not open the browser')));
 }
 
+/// One line of a menu. Every line keeps the same slot for a tick, so ticked, unticked and plain lines start at the
+/// same place (Material's CheckedPopupMenuItem indents only its own kind).
+PopupMenuItem<String> menuRow(String value, String text, {bool checked = false, bool enabled = true}) => PopupMenuItem(
+      value: value,
+      enabled: enabled,
+      child: Semantics(
+        checked: checked ? true : null,
+        child: Row(children: [
+          SizedBox(width: 30, child: checked ? const Icon(Icons.check, size: 18) : null),
+          Flexible(child: Text(text)),
+        ]),
+      ),
+    );
+
 /// "★ Favourites" → "Favourites", "📁 Side projects" → "Side projects": the headline carries the name, not the marker.
 String plainCategory(String category) => category == allCategory ? 'All APIs' : category.replaceFirst(RegExp(r'^[^\p{L}\p{N}]+', unicode: true), '');
 
@@ -239,6 +268,9 @@ class _HomePageState extends State<HomePage> {
     _atLetter.dispose();
     super.dispose();
   }
+
+  /// A category, tag or filter chip is narrowing the list (the search box is separate).
+  bool get _filtered => state.activeFilterCount > 0 || state.category != allCategory || state.tagFilter != null;
 
   bool get _showRecent => _searchFocus.hasFocus && _search.text.trim().isEmpty && state.recentSearches.isNotEmpty;
 
@@ -354,17 +386,16 @@ class _HomePageState extends State<HomePage> {
                           }
                         },
                         itemBuilder: (_) => [
-                          for (final t in ThemeModeSetting.values)
-                            CheckedPopupMenuItem(value: t.name, checked: state.theme == t, child: Text('Theme: ${t.name}')),
+                          for (final t in ThemeModeSetting.values) menuRow(t.name, 'Theme: ${t.name}', checked: state.theme == t),
                           const PopupMenuDivider(),
-                          CheckedPopupMenuItem(value: 'notice', checked: state.dailyNotice, child: const Text('API of the day at 9:00 (notification)')),
-                          CheckedPopupMenuItem(value: 'weekly', checked: state.weeklyRescan, child: const Text('Rescan weekly on Wi-Fi')),
-                          PopupMenuItem(value: 'changes', enabled: state.changes != null, child: const Text('What the last scan changed…')),
+                          menuRow('notice', 'API of the day at 9:00 (notification)', checked: state.dailyNotice),
+                          menuRow('weekly', 'Rescan weekly on Wi-Fi', checked: state.weeklyRescan),
+                          menuRow('changes', 'What the last scan changed…', enabled: state.changes != null),
                           const PopupMenuDivider(),
-                          const PopupMenuItem(value: 'import', child: Text('Import from the desktop app…')),
-                          const PopupMenuItem(value: 'export', child: Text('Export my data…')),
+                          menuRow('import', 'Import from the desktop app…'),
+                          menuRow('export', 'Export my data…'),
                           const PopupMenuDivider(),
-                          const PopupMenuItem(value: 'about', child: Text('About')),
+                          menuRow('about', 'About'),
                         ],
                       ),
                     ],
@@ -425,16 +456,24 @@ class _HomePageState extends State<HomePage> {
                     SliverFillRemaining(
                       hasScrollBody: false,
                       child: Center(
-                        child: Column(mainAxisSize: MainAxisSize.min, children: [
-                          const Text('Nothing matches these filters', style: TextStyle(fontWeight: FontWeight.w600)),
-                          const SizedBox(height: 10),
-                          OutlinedButton(
-                              onPressed: () {
-                                _search.clear();
-                                state.clearFilters();
-                              },
-                              child: const Text('Clear filters')),
-                        ]),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 32),
+                          child: Column(mainAxisSize: MainAxisSize.min, children: [
+                            // say what is in the way: the words typed, the filters, or both
+                            Text(noMatchText(state.search, filtered: _filtered), textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w600)),
+                            const SizedBox(height: 10),
+                            OutlinedButton(
+                                onPressed: () {
+                                  _search.clear();
+                                  state.clearFilters();
+                                },
+                                child: Text(state.search.trim().isEmpty
+                                    ? 'Clear filters'
+                                    : _filtered
+                                        ? 'Clear search and filters'
+                                        : 'Clear the search')),
+                          ]),
+                        ),
                       ),
                     )
                   else ...[
@@ -522,7 +561,7 @@ extension on _HomePageState {
     return PopupMenuButton<String>(
       tooltip: name,
       onSelected: pick,
-      itemBuilder: (_) => [for (final c in choices) CheckedPopupMenuItem(value: c, checked: c == current, child: Text(c))],
+      itemBuilder: (_) => [for (final c in choices) menuRow(c, c, checked: c == current)],
       child: FilterPill('${active ? current : name} ▾', selected: active),
     );
   }
@@ -836,7 +875,7 @@ Future<void> exportToFile(BuildContext context) async {
     }
     final now = DateTime.now();
     final saved = await FilePicker.saveFile(
-      fileName: 'apiscout-phone-${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}.json',
+      fileName: 'apifree-phone-${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}.json',
       bytes: Uint8List.fromList(utf8.encode(json)),
       mimeType: 'application/json',
     );
@@ -849,7 +888,17 @@ Future<void> exportToFile(BuildContext context) async {
 void showAbout(BuildContext context) => showAboutDialog(
       context: context,
       applicationName: 'API Free',
-      applicationVersion: '1.5.1 (Android)',
+      applicationVersion: '1.5.2 (Android)',
+      // the launcher icon, drawn: the blue-to-teal tile with the braces
+      applicationIcon: Container(
+        width: 44,
+        height: 44,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF4A8CF5), Color(0xFF3ECDB8)])),
+        child: const Text('{ }', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700, height: 1)),
+      ),
       applicationLegalese: 'Find and test public APIs. Rules and key knowledge: ${state.knowledge.exportedFrom}. Typefaces Manrope and JetBrains Mono, SIL Open Font License.',
       children: const [
         SizedBox(height: 12),

@@ -215,7 +215,7 @@ bool isPublicWebUrl(String url) {
   return !((b[0] & 0xfe) == 0xfc || b.every((x) => x == 0)); // unique-local, unspecified
 }
 
-const _userAgent = 'Mozilla/5.0 (Android) ApiScoutMobile/1.1';
+const _userAgent = 'Mozilla/5.0 (Android) APIFree/1.5';
 
 Future<String> fetchPage(String url, int maxBytes) async {
   final client = http.Client();

@@ -106,7 +106,13 @@ class BrandTile extends StatelessWidget {
 /// Every list row is exactly this tall (the tile centres its three lines in it), so the A-Z rail can jump to a row
 /// by index alone: name, description (or the category when there is none), status words + tags. The three lines
 /// grow with the phone's text size, so the row does too.
-double rowExtentFor(BuildContext context) => 20 + MediaQuery.textScalerOf(context).scale(56);
+/// Each line is scaled at its own size: Android scales large sizes less than small ones, so scaling the sum of
+/// the three (56) as one number came back unchanged and the lines touched the hairline at a large text size.
+double rowExtentFor(BuildContext context) => rowExtentAt(MediaQuery.textScalerOf(context));
+
+/// 76 at the usual text size: the name (15, line height 1.2), the description (12.5) and the status words (11.5)
+/// at the fonts' own line height, the 4 between them, and room above and below.
+double rowExtentAt(TextScaler ts) => (24 + ts.scale(15) * 1.2 + (ts.scale(12.5) + ts.scale(11.5)) * 1.4).ceilToDouble();
 
 class ApiTile extends StatelessWidget {
   final ApiView view;
