@@ -108,7 +108,7 @@ Future<TestResult> sendTest(String method, String url, String headerText, String
   try {
     final req = http.Request(method, uri)..followRedirects = headers.isEmpty;
     req.headers['Accept'] = 'application/json, text/plain;q=0.8, */*;q=0.5';
-    req.headers['User-Agent'] = 'ApiScoutMobile/1.0';
+    req.headers['User-Agent'] = 'APIFree/1.5 (Android)';
     req.headers.addAll(headers);
     if (methodHasBody(method)) {
       req.headers.putIfAbsent('Content-Type', () => '${guessContentType(body)}; charset=utf-8');

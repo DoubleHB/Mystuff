@@ -1,5 +1,31 @@
 # API Free for Android - release notes
 
+## 1.5.3
+
+- **The app's own typefaces, at last.** Manrope for text and JetBrains Mono for hosts, keys, URLs and responses
+  have been part of the design since 1.3, but the font files in the app were in a web-only wrapper that Android
+  skips without a word, so every screen was drawn in the phone's system font. The files are now real TrueType:
+  headings look as designed and everything a machine would read lines up in a fixed-width face.
+- Includes everything in 1.5.2.
+
+## 1.5.2
+
+A polish pass over every screen, from a walk through the app during the closed test.
+
+- **Large text.** At a large system text size the list rows no longer touch their dividing lines, and the five
+  tabs on an API's page scroll instead of cutting off "Overview".
+- **Clearer empty list.** A search with no matches now says `Nothing matches "…"` and offers to clear the
+  search, instead of blaming filters that were not set.
+- **Auth fact.** An API whose directory entry does not say how it authenticates no longer shows "Unknown" in the
+  header when the key knowledge knows the answer (NASA now reads "API key").
+- **Try it.** The Headers and Variables boxes have short labels that fit a narrow screen, with the format as a
+  hint; the spinner on the greyed "Sending…" button is visible.
+- **One look.** Dialogs, the history sheet and menus use the same small corners and heavy titles as the rest of
+  the app; every menu line starts at the same place, ticked or not; page titles share one style; About shows
+  the icon.
+- **Name.** Exports are now called `apifree-phone-<date>.json`, and requests the app sends identify it as
+  API Free. Older export files still import.
+
 ## 1.5.1
 
 The app is now called **API Free** (it was ApiScout; that name was already taken). Nothing else changes: the
