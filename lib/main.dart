@@ -888,7 +888,7 @@ Future<void> exportToFile(BuildContext context) async {
 void showAbout(BuildContext context) => showAboutDialog(
       context: context,
       applicationName: 'API Free',
-      applicationVersion: '1.5.2 (Android)',
+      applicationVersion: '1.5.3 (Android)',
       // the launcher icon, drawn: the blue-to-teal tile with the braces
       applicationIcon: Container(
         width: 44,
