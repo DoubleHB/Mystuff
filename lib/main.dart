@@ -640,7 +640,7 @@ extension on _HomePageState {
     final filtered = state.activeFilterCount > 0 || state.category != allCategory || state.tagFilter != null;
     return ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 12), children: [
       // its own Builder: the drawer belongs to the Scaffold below the outer builder's context
-      Builder(builder: (ctx) => FilterPill('${plainCategory(state.category)} ▾', selected: state.category != allCategory, onTap: () => Scaffold.of(ctx).openDrawer())),
+      Builder(builder: (ctx) => FilterPill(plainCategory(state.category), menu: true, selected: state.category != allCategory, onTap: () => Scaffold.of(ctx).openDrawer())),
       _menuPill(context, 'Auth', authFilters, state.authFilter, (v) => state.setFilters(auth: v)),
       _menuPill(context, 'Free', accessFilters, state.accessFilter, (v) => state.setFilters(access: v)),
       FilterPill('HTTPS', selected: state.httpsOnly, onTap: () => state.setFilters(https: !state.httpsOnly)),
@@ -667,7 +667,7 @@ extension on _HomePageState {
       tooltip: name,
       onSelected: pick,
       itemBuilder: (_) => [for (final c in choices) menuRow(c, c, checked: c == current)],
-      child: FilterPill('${active ? current : name} ▾', selected: active),
+      child: FilterPill(active ? current : name, menu: true, selected: active),
     );
   }
 }
@@ -679,7 +679,10 @@ class FilterPill extends StatelessWidget {
   final IconData? icon;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
-  const FilterPill(this.label, {super.key, this.selected = false, this.icon, this.onTap, this.onLongPress});
+
+  /// The pill opens a list of choices: a small arrow follows the label (an icon - the typeface has no ▾ of its own).
+  final bool menu;
+  const FilterPill(this.label, {super.key, this.selected = false, this.icon, this.onTap, this.onLongPress, this.menu = false});
 
   @override
   Widget build(BuildContext context) {
@@ -696,10 +699,11 @@ class FilterPill extends StatelessWidget {
           child: Semantics(
             selected: selected,
             child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+            padding: EdgeInsets.fromLTRB(12, 5, menu ? 6 : 12, 5),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               if (icon != null) Padding(padding: const EdgeInsets.only(right: 4), child: Icon(icon, size: 14, color: selected ? scheme.surface : scheme.onSurface)),
               Text(label, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: selected ? scheme.surface : scheme.onSurface)),
+              if (menu) Icon(Icons.arrow_drop_down, size: 18, color: selected ? scheme.surface : scheme.onSurface),
             ]),
           ),
           ),
