@@ -1,5 +1,13 @@
 # API Free for Android - release notes
 
+## 1.5.3
+
+- **The app's own typefaces, at last.** Manrope for text and JetBrains Mono for hosts, keys, URLs and responses
+  have been part of the design since 1.3, but the font files in the app were in a web-only wrapper that Android
+  skips without a word, so every screen was drawn in the phone's system font. The files are now real TrueType:
+  headings look as designed and everything a machine would read lines up in a fixed-width face.
+- Includes everything in 1.5.2.
+
 ## 1.5.2
 
 A polish pass over every screen, from a walk through the app during the closed test.

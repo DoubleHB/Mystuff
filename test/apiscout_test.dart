@@ -22,7 +22,8 @@ import 'package:apiscout_mobile/tester.dart';
 import 'package:apiscout_mobile/user_data.dart';
 import 'package:apiscout_mobile/variables.dart';
 import 'package:apiscout_mobile/widgets.dart';
-import 'package:flutter/painting.dart' show TextScaler;
+import 'package:flutter/painting.dart' show TextDirection, TextPainter, TextScaler, TextSpan, TextStyle;
+import 'package:flutter/services.dart' show FontLoader;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pointycastle/export.dart';
 
@@ -46,6 +47,29 @@ void main() {
     expect(k.keywordRules.length, greaterThan(30));
     expect(k.hints.length, greaterThan(60));
     expect(k.exportedFrom, startsWith('API Free '));
+  });
+
+  test('the bundled typefaces are real TrueType files that load and draw', () async {
+    // 1.3 to 1.5.2 shipped these as EOT (a web wrapper round the same font): Android skipped them without a word
+    // and every screen was drawn in the system font. A TrueType file starts 00 01 00 00.
+    final fonts = [for (final f in Directory('assets/fonts').listSync().whereType<File>()) if (f.path.endsWith('.ttf')) f];
+    expect(fonts.length, 8);
+    for (final f in fonts) {
+      expect(f.readAsBytesSync().sublist(0, 4), [0, 1, 0, 0], reason: f.path);
+    }
+    // and the engine takes them: text measures differently from the test font, whose every glyph is a 1 em square
+    TestWidgetsFlutterBinding.ensureInitialized();
+    double width(String family) => (TextPainter(text: TextSpan(text: 'Hello world', style: TextStyle(fontFamily: family, fontSize: 20)), textDirection: TextDirection.ltr)..layout()).width;
+    for (final family in ['Manrope', 'JetBrainsMono']) {
+      final loader = FontLoader(family);
+      for (final f in fonts.where((f) => f.uri.pathSegments.last.startsWith(family))) {
+        loader.addFont(Future.value(ByteData.sublistView(f.readAsBytesSync())));
+      }
+      await loader.load();
+      expect(width(family), isNot(220), reason: '$family did not load');
+    }
+    // a monospace face: eleven characters, eleven equal advances
+    expect(width('JetBrainsMono') / 11, closeTo((TextPainter(text: const TextSpan(text: 'iiiiiiiiiii', style: TextStyle(fontFamily: 'JetBrainsMono', fontSize: 20)), textDirection: TextDirection.ltr)..layout()).width / 11, 0.01));
   });
 
   test('categories: source names fold into the canonical set, stems stay strict', () {
