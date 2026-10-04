@@ -110,6 +110,7 @@ void main() {
     await tester.tap(row('TheCocktailDB'));
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.textContaining('2 picked'), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 300)); // the Compare button finishes fading in
     await _shot(tester, '2-picking-two');
 
     await tester.tap(find.text('Compare'));
