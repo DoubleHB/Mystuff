@@ -58,6 +58,52 @@ if (args.SkipWhile(a => a != "--phone-import").Skip(1).Take(2).ToArray() is { Le
     Directory.Delete(tempDir, true);
     return 0;
 }
+if (args.SkipWhile(a => a != "--codegen-fixture").Skip(1).FirstOrDefault() is { } codegenDir)
+{
+    // What the desktop's code generators write for a fixed set of inputs. The Android app's port of them
+    // (json_to_csharp.dart, client_generator.dart) must write the same, to the letter: its tests compare with these files.
+    Directory.CreateDirectory(codegenDir);
+    var cgT0 = new DateTime(2026, 9, 21, 12, 0, 0);
+    var cgHist = new List<TestHistoryEntry>
+    {
+        new() { At = cgT0, Method = "GET", Ok = true, Url = "https://api.example.com/v1/users/2?api_key={key}&lang=en&limit=5&lat=52.52&in=x",
+                Headers = "X-Trace: on\nAuthorization: Bearer {key}", Response = "{\"data\":{\"id\":2,\"first_name\":\"Janet\"},\"tags\":[\"a\"]}" },
+        new() { At = cgT0.AddMinutes(-1), Method = "GET", Ok = true, Url = "https://api.example.com/v1/users/7?api_key={key}&lang=de&limit=1&lat=1.5&in=y", Response = "{\"older\":true}" },
+        new() { At = cgT0.AddMinutes(-2), Method = "POST", Ok = true, Url = "https://api.example.com/v1/users", Body = "{\"name\":\"morpheus\",\"job\":\"leader\"}", Response = "{\"id\":\"12\",\"data\":{\"x\":1}}" },
+        new() { At = cgT0.AddMinutes(-3), Method = "GET", Ok = true, Url = "https://api.example.com/api/json/v1/1/search.php?s=margarita \"quoted\"", Response = "not json <html>" },
+        new() { At = cgT0.AddMinutes(-4), Method = "DELETE", Ok = true, Url = "https://api.example.com/v1/users/2", Response = "" },
+        new() { At = cgT0.AddMinutes(-5), Method = "GET", Ok = false, Url = "https://api.example.com/v1/broken", Response = "{\"error\":1}" },
+        new() { At = cgT0.AddMinutes(-6), Method = "GET", Ok = true, Url = "https://api.example.com/planetary/apod?api_key=DEMO_KEY&date=2024-01-01", Response = "[{\"title\":\"x\"}]" },
+        new() { At = cgT0.AddMinutes(-7), Method = "PUT", Ok = true, Url = "https://api.example.com/v1/items/9999999999/tags?force=true&ratio=0.50&zip=01234&neg=-3",
+                Headers = "Content-Type: application/x-www-form-urlencoded\nX-Api-Key: {key}", Body = "a=b&c=d",
+                Response = "{\"ok\":true,\"count\":3,\"ratio\":0.5,\"when\":\"2026-09-21T10:00:00Z\",\"list\":[{\"a\":1},{\"a\":2,\"b\":null}]}" },
+        new() { At = cgT0.AddMinutes(-8), Method = "PATCH", Ok = true, Url = "https://api.example.com/v1/tokens", Body = "{\"token\":\"{key}\"}", Response = "[1,2,3]" },
+        new() { At = cgT0.AddMinutes(-9), Method = "GET", Ok = true, Url = "https://X.example.com:8443/Public/Cities/new%20york/weather.json?q=a+b%26c&class=1&q=again&flag",
+                Response = "{\"class\":\"x\",\"2d\":[[1,2],[3,4]],\"big\":9999999999,\"mixed\":[1,\"a\"],\"empty\":[],\"obj\":{},\"people\":[{\"first name\":\"A\"}],\"statuses\":[{\"ok\":true}]}" },
+    };
+    var cgJson = new System.Text.Json.JsonSerializerOptions { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+    void CgPut(string name, string? text) => File.WriteAllText(Path.Combine(codegenDir, name), (text ?? "(null)").Replace("\r\n", "\n"));
+    CgPut("history.json", System.Text.Json.JsonSerializer.Serialize(cgHist.Select(h => new { at = h.At.ToString("s"), method = h.Method, url = h.Url, headers = h.Headers, body = h.Body, ok = h.Ok, response = h.Response }), cgJson));
+    CgPut("client.cs", ClientGenerator.Generate("Example API", cgHist, "DEMO_KEY"));
+    CgPut("client-many.cs", ClientGenerator.GenerateMany("Side project!", [("Example API", cgHist, "DEMO_KEY", null), ("Dogs", cgHist.Where(h => h.Method == "DELETE"), null, null), ("Dogs", cgHist.Where(h => h.Method == "POST"), null, null), ("Untested", [], null, null)]));
+    CgPut("client-vars.cs", ClientGenerator.Generate("Weather", [new TestHistoryEntry { At = cgT0, Method = "GET", Ok = true, Url = "https://a.example/v1/forecast/{city}/days/{days}?units={units}&from={today}&api_key={key}", Headers = "X-Lang: {lang}", Response = "{\"t\":1}" }],
+        null, new Dictionary<string, string> { ["city"] = "New York", ["days"] = "3", ["units"] = "metric", ["lang"] = "en" }));
+    CgPut("client-short.cs", ClientGenerator.Generate("The Cocktail DB", [new TestHistoryEntry { At = cgT0, Method = "GET", Ok = true, Url = "https://www.thecocktaildb.com/api/json/v1/1/search.php?s=margarita&api_key=1&page=1", Response = "{\"drinks\":[{\"idDrink\":\"11007\",\"dateModified\":\"2015-08-18 14:42:59\"}]}" }], "1"));
+    CgPut("client-picked.cs", ClientGenerator.Generate("Example API", ClientGenerator.NewestOfEach(cgHist).Where(h => h.Method is "DELETE" or "PUT"), "DEMO_KEY"));
+    const string cgSample = """
+        {"id": 1, "big": 9999999999, "price": 1.5, "mixed": [1, 2.5], "name": "x", "when": "2026-09-21T17:22:01.142Z", "ok": true, "nothing": null,
+         "owner": {"login": "me", "site-url": null},
+         "tags": ["a", "b"],
+         "items": [{"sku": "a", "qty": 1}, {"sku": "b", "qty": 2, "note": "fragile"}],
+         "class": "reserved", "2fa": false, "entries": [{"x": 1}], "boxes": [{"w": 1.0}], "addresses": [{"zip": "1"}], "glass": [{"g": true}], "owner2": {"login": 5}}
+        """;
+    CgPut("classes.json", cgSample);
+    CgPut("classes.cs", JsonToCSharp.Generate(cgSample, "OrderResponse"));
+    CgPut("classes-array.cs", JsonToCSharp.Generate("[{\"a\":1}]", "Thing"));
+    CgPut("shapes.txt", string.Join("\n", cgHist.Select(h => ClientGenerator.ShapeOf(h) ?? "(null)")));
+    Console.WriteLine($"codegen fixtures written to {codegenDir}: {ClientGenerator.Usable(cgHist).Count} usable, {ClientGenerator.NewestOfEach(cgHist).Count} newest of each");
+    return 0;
+}
 if (args.Contains("--extra"))
 {
     // Evaluation run for the two opt-in sources: how much do they add and how clean is it?
