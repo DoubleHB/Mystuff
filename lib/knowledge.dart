@@ -184,6 +184,9 @@ class ApiView {
   String? get example => hint?.example;
   String get host => Uri.tryParse(entry.url)?.host.replaceFirst(RegExp(r'^www\.'), '') ?? '';
 
+  /// The header line that goes with [example]: "Header: X-Api-Key: abc" in the key knowledge means the key travels in a header.
+  String get exampleHeader => (hint?.keyUsage ?? '').startsWith('Header: ') ? hint!.keyUsage!.substring(8) : '';
+
   String get authLabel => switch (entry.auth) {
         AuthKind.none => 'No key',
         AuthKind.apiKey => 'API key',

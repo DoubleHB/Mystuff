@@ -3,6 +3,8 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 
+import 'code_page.dart';
+import 'json_to_csharp.dart';
 import 'json_tree.dart';
 import 'main.dart';
 import 'widgets.dart';
@@ -24,6 +26,9 @@ class _ResponsePageState extends State<ResponsePage> {
   late final List<String> _lines = widget.body.split('\n');
   late final int _longest = _lines.fold(0, (m, l) => max(m, l.length));
   List<JsonLine>? _json;
+  // "TheCocktailDBResponse": classes for System.Text.Json, when the response is JSON with an object in it
+  late final String _rootName = csPascal('${widget.title} response').replaceFirst(RegExp('^[@_]+'), '');
+  late final String? _classes = widget.isJson ? generateCSharp(widget.body, rootName: _rootName) : null;
   final _collapsed = <int>{};
   bool _tree = false;
   List<int> _matches = const [];
@@ -106,6 +111,12 @@ class _ResponsePageState extends State<ResponsePage> {
               tooltip: _tree ? 'Show as text' : 'Show as a tree',
               icon: Icon(_tree ? Icons.notes : Icons.account_tree_outlined),
               onPressed: () => setState(() => _tree = !_tree),
+            ),
+          if (_classes != null)
+            IconButton(
+              tooltip: 'C# classes for this response',
+              icon: const Icon(Icons.data_object),
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => CodePage(title: 'C# classes', fileName: '$_rootName.cs', code: _classes))),
             ),
           IconButton(tooltip: 'Copy the response', icon: const Icon(Icons.copy), onPressed: () => copyText(context, widget.body, 'Response')),
         ],

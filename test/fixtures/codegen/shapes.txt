@@ -1,0 +1,10 @@
+GET api.example.com/v1/users/#?api_key&in&lang&lat&limit
+GET api.example.com/v1/users/#?api_key&in&lang&lat&limit
+POST api.example.com/v1/users?
+GET api.example.com/api/json/v1/#/search.php?s
+DELETE api.example.com/v1/users/#?
+GET api.example.com/v1/broken?
+GET api.example.com/planetary/apod?api_key&date
+PUT api.example.com/v1/items/#/tags?force&neg&ratio&zip
+PATCH api.example.com/v1/tokens?
+GET x.example.com/Public/Cities/new%20york/weather.json?class&flag&q&q

@@ -190,6 +190,13 @@ class AppState extends ChangeNotifier {
     applyFilter();
   }
 
+  /// For widget tests: a catalogue without a scan or a file.
+  @visibleForTesting
+  void useCatalogue(Catalogue cat) {
+    _use(cat);
+    notifyListeners();
+  }
+
   Map<String, ApiView> _byKey = {};
   ApiView? find(String key) => _byKey[key];
 

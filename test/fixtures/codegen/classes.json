@@ -1,0 +1,5 @@
+{"id": 1, "big": 9999999999, "price": 1.5, "mixed": [1, 2.5], "name": "x", "when": "2026-09-21T17:22:01.142Z", "ok": true, "nothing": null,
+ "owner": {"login": "me", "site-url": null},
+ "tags": ["a", "b"],
+ "items": [{"sku": "a", "qty": 1}, {"sku": "b", "qty": 2, "note": "fragile"}],
+ "class": "reserved", "2fa": false, "entries": [{"x": 1}], "boxes": [{"w": 1.0}], "addresses": [{"zip": "1"}], "glass": [{"g": true}], "owner2": {"login": 5}}

@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 
+import 'client_generator.dart';
+import 'code_page.dart';
 import 'docs_scanner.dart';
 import 'insight_page.dart';
 import 'knowledge.dart';
@@ -192,7 +194,7 @@ class _DetailPageState extends State<DetailPage> with SingleTickerProviderStateM
   }
 
   /// "Header: X-Api-Key: abc" in the key knowledge means the key travels in a header.
-  String get _defaultHeader => (v.hint?.keyUsage ?? '').startsWith('Header: ') ? v.hint!.keyUsage!.substring(8) : '';
+  String get _defaultHeader => v.exampleHeader;
 
   /// One tap writes the usual place for a key, with {key} standing for the saved one.
   void _applyPreset(String preset) => setState(() {
@@ -420,15 +422,23 @@ class _DetailPageState extends State<DetailPage> with SingleTickerProviderStateM
       const FieldLabel('DOCS'),
       ValueRow(v.url, onCopy: () => copyText(context, v.url, 'Docs URL'), onOpen: () => openUrl(context, v.url)),
       const SizedBox(height: 16),
-      Align(
-        alignment: Alignment.centerLeft,
-        child: FilledButton.tonalIcon(
+      Wrap(spacing: 8, runSpacing: 4, children: [
+        FilledButton.tonalIcon(
           style: tonalStyle(context),
           onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => InsightPage(view: v))),
           icon: const Icon(Icons.info_outline, size: 18),
           label: const Text('More about this API'),
         ),
-      ),
+        // back to the list with this API ticked; the list then lets up to three more be ticked
+        OutlinedButton.icon(
+          onPressed: () {
+            comparePick.value = v.entry.key;
+            Navigator.of(context).popUntil((r) => r.isFirst);
+          },
+          icon: const Icon(Icons.compare_arrows, size: 18),
+          label: const Text('Compare with…'),
+        ),
+      ]),
       const FieldLabel('COPY THIS API AS'),
       Wrap(spacing: 8, runSpacing: 4, children: [
         OutlinedButton(onPressed: () => copyText(context, _asText(), 'Details'), child: const Text('Details')),
@@ -655,6 +665,12 @@ class _DetailPageState extends State<DetailPage> with SingleTickerProviderStateM
             child: const Text('Copy as cURL')),
         if (state.historyOf(v).isNotEmpty)
           OutlinedButton.icon(onPressed: _showHistory, icon: const Icon(Icons.history, size: 18), label: Text('History (${state.historyOf(v).length})')),
+        // once a request has worked: a small typed C# client made from what was tested
+        if (usableRequests(state.historyOf(v)).isNotEmpty)
+          OutlinedButton.icon(
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ClientPage(view: v))),
+              icon: const Icon(Icons.data_object, size: 18),
+              label: const Text('C# client…')),
         if (!_isSuggested || state.savedRequestOf(v) != null)
           TextButton.icon(onPressed: _resetRequest, icon: const Icon(Icons.restart_alt, size: 18), label: const Text('Reset')),
       ]),

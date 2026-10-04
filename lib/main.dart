@@ -11,6 +11,10 @@ import 'app_state.dart';
 import 'az_rail.dart';
 import 'background.dart';
 import 'changes_page.dart';
+import 'client_generator.dart';
+import 'code_page.dart';
+import 'compare.dart';
+import 'compare_page.dart';
 import 'detail_page.dart';
 import 'knowledge.dart';
 import 'links.dart';
@@ -23,6 +27,9 @@ final state = AppState();
 
 /// The app's navigator, for pages opened from outside a screen: a notification tap or an apiscout:// link.
 final appNavigator = GlobalKey<NavigatorState>();
+
+/// "Compare with…" on an API's page: its key is put here, and the list picks it up and starts picking.
+final comparePick = ValueNotifier<String?>(null);
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -253,15 +260,50 @@ class _HomePageState extends State<HomePage> {
   List<(String, int)> _railFirst = const [];
   final _atLetter = ValueNotifier<String?>(null);
 
+  /// The APIs picked for a comparison, by key, in the order they were picked. Not empty = picking: a tap ticks.
+  List<String> _picked = const [];
+
   @override
   void initState() {
     super.initState();
     _list.addListener(_onScroll);
     _searchFocus.addListener(() => setState(() {})); // the recent searches show while the box is focused and empty
+    comparePick.addListener(_onComparePick);
+  }
+
+  void _onComparePick() {
+    final key = comparePick.value;
+    if (key == null) return;
+    comparePick.value = null;
+    if (!_picked.contains(key)) {
+      final next = togglePick(_picked, key);
+      if (next != null) setState(() => _picked = next);
+    }
+  }
+
+  void _togglePick(ApiView v) {
+    final next = togglePick(_picked, v.entry.key);
+    if (next == null) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(content: Text('A comparison takes up to $compareMax APIs'), duration: Duration(seconds: 2)));
+      return;
+    }
+    HapticFeedback.selectionClick();
+    setState(() => _picked = next);
+  }
+
+  void _compare() {
+    // a rescan may have dropped a picked API
+    final apis = [for (final k in _picked) ?state.find(k)];
+    if (apis.length < compareMin) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => ComparePage(apis: apis)));
   }
 
   @override
   void dispose() {
+    comparePick.removeListener(_onComparePick);
     _search.dispose();
     _searchFocus.dispose();
     _list.dispose();
@@ -348,7 +390,14 @@ class _HomePageState extends State<HomePage> {
           final toolbarH = 20 + 46 * ts, searchH = 8 + 46 * ts, chipsH = 44 * ts, recentH = 40 * ts;
           final headerH = toolbarH + searchH + (showChips ? chipsH : 0) + (showRecent ? recentH : 0) + (state.busy ? 3 : 0);
           _rowExtent = rowExtentFor(context);
-          return Scaffold(
+          final picking = _picked.isNotEmpty;
+          // Back ends the picking before it leaves the app
+          return PopScope(
+            canPop: !picking,
+            onPopInvokedWithResult: (didPop, _) {
+              if (!didPop) setState(() => _picked = const []);
+            },
+            child: Scaffold(
             drawer: const CategoryDrawer(),
             body: Stack(children: [
               CustomScrollView(
@@ -379,6 +428,8 @@ class _HomePageState extends State<HomePage> {
                             state.setDailyNotice(!state.dailyNotice);
                           } else if (v == 'weekly') {
                             state.setWeeklyRescan(!state.weeklyRescan);
+                          } else if (v == 'client') {
+                            collectionClient(context);
                           } else if (v == 'changes') {
                             Navigator.of(context).push(MaterialPageRoute(builder: (_) => ChangesPage(diff: state.changes!)));
                           } else {
@@ -392,6 +443,8 @@ class _HomePageState extends State<HomePage> {
                           menuRow('weekly', 'Rescan weekly on Wi-Fi', checked: state.weeklyRescan),
                           menuRow('changes', 'What the last scan changed…', enabled: state.changes != null),
                           const PopupMenuDivider(),
+                          // only while a collection is on screen: one C# file with a client per tested API in it
+                          if (state.category.startsWith(collectionPrefix)) menuRow('client', 'C# client for this collection…'),
                           menuRow('import', 'Import from the desktop app…'),
                           menuRow('export', 'Export my data…'),
                           const PopupMenuDivider(),
@@ -491,13 +544,18 @@ class _HomePageState extends State<HomePage> {
                           favourite: state.isFavourite(v),
                           onStar: () => state.toggleFavourite(v),
                           onCollect: () => addToCollectionFor(context, v),
+                          onPick: () => _togglePick(v),
                           child: ApiTile(
                             view: v,
                             favourite: state.isFavourite(v),
                             tags: state.tagsOf(v),
                             hasKey: state.hasKey(v),
                             rightInset: showRail ? railWidth : 0,
+                            picked: picking ? _picked.contains(v.entry.key) : null,
+                            // a long press starts picking APIs to compare; while picking, a tap ticks
+                            onLongPress: () => _togglePick(v),
                             onTap: () {
+                              if (picking) return _togglePick(v);
                               // a search that led to an API is one worth offering again
                               if (state.search.trim().isNotEmpty) state.rememberSearch(state.search);
                               openDetail(context, v);
@@ -508,7 +566,8 @@ class _HomePageState extends State<HomePage> {
                       },
                     ),
                   ],
-                  SliverPadding(padding: EdgeInsets.only(bottom: 24 + MediaQuery.viewPaddingOf(context).bottom)),
+                  // while picking, the last rows must be able to scroll clear of the bar
+                  SliverPadding(padding: EdgeInsets.only(bottom: (picking ? 96 : 24) + MediaQuery.viewPaddingOf(context).bottom)),
                 ],
               ),
               // once the header has floated away the rows would run under the clock: a band in the ground colour
@@ -522,10 +581,56 @@ class _HomePageState extends State<HomePage> {
                   bottom: MediaQuery.viewPaddingOf(context).bottom + 8,
                   child: AlphabetRail(letters: [for (final (l, _) in _letters) l], current: _atLetter, onLetter: _jumpToLetter),
                 ),
+              if (picking)
+                Positioned(
+                  left: 12,
+                  right: 12,
+                  bottom: 12 + MediaQuery.viewPaddingOf(context).bottom,
+                  child: PickBar(count: _picked.length, onCompare: _picked.length >= compareMin ? _compare : null, onCancel: () => setState(() => _picked = const [])),
+                ),
             ]),
+          ),
           );
         },
       );
+}
+
+/// The bar that floats over the list while APIs are being picked: how many, Compare, and a way out.
+class PickBar extends StatelessWidget {
+  final int count;
+  final VoidCallback? onCompare;
+  final VoidCallback onCancel;
+  const PickBar({super.key, required this.count, required this.onCompare, required this.onCancel});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final more = compareMin - count;
+    return Material(
+      color: scheme.onSurface,
+      elevation: 4,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(4, 6, 8, 6),
+        child: Row(children: [
+          IconButton(tooltip: 'Stop picking', icon: Icon(Icons.close, color: scheme.surface), onPressed: onCancel),
+          Expanded(
+            child: Text(
+              more > 0 ? '$count picked  ·  tap ${more == 1 ? 'one more' : '$more more'} to compare' : '$count picked${count < compareMax ? '  ·  up to $compareMax' : ''}',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: scheme.surface, fontWeight: FontWeight.w700, fontSize: 13),
+            ),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: scheme.surface, foregroundColor: scheme.onSurface, disabledBackgroundColor: scheme.surface.withValues(alpha: 0.25), disabledForegroundColor: scheme.surface.withValues(alpha: 0.6)),
+            onPressed: onCompare,
+            child: const Text('Compare'),
+          ),
+        ]),
+      ),
+    );
+  }
 }
 
 extension on _HomePageState {
@@ -885,10 +990,32 @@ Future<void> exportToFile(BuildContext context) async {
   }
 }
 
+/// Menu → C# client for this collection: one file, a client class per API that has a request that worked.
+Future<void> collectionClient(BuildContext context) async {
+  final name = state.category.substring(collectionPrefix.length);
+  await state.ensureHistory();
+  final sources = [
+    for (final key in state.user.collections[name] ?? const <String>[])
+      if (state.find(key) case final v?) ClientSource(v.name, state.historyOf(v), demoKey: v.demoKey, variables: state.variablesOf(v)),
+  ];
+  final code = generateCollectionClient(name, sources);
+  if (!context.mounted) return;
+  if (code == null) return _say(context, 'No API in "$name" has a request that worked yet. Test one in Try it, then come back.');
+  // the first line names the class: "// SideProjectApis - generated by …"
+  final facade = code.substring(3, code.indexOf(' - '));
+  Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => CodePage(
+            title: 'C# client',
+            fileName: '$facade.cs',
+            code: code,
+            note: 'One client class per API of "$name" that has a request that worked in Try it, and $facade to build them all from one HttpClient. Your keys are not in the code.',
+          )));
+}
+
 void showAbout(BuildContext context) => showAboutDialog(
       context: context,
       applicationName: 'API Free',
-      applicationVersion: '1.5.2 (Android)',
+      applicationVersion: '1.6.0 (Android)',
       // the launcher icon, drawn: the blue-to-teal tile with the braces
       applicationIcon: Container(
         width: 44,

@@ -1,0 +1,92 @@
+[
+  {
+    "at": "2026-09-21T12:00:00",
+    "method": "GET",
+    "url": "https://api.example.com/v1/users/2?api_key={key}&lang=en&limit=5&lat=52.52&in=x",
+    "headers": "X-Trace: on\nAuthorization: Bearer {key}",
+    "body": "",
+    "ok": true,
+    "response": "{\"data\":{\"id\":2,\"first_name\":\"Janet\"},\"tags\":[\"a\"]}"
+  },
+  {
+    "at": "2026-09-21T11:59:00",
+    "method": "GET",
+    "url": "https://api.example.com/v1/users/7?api_key={key}&lang=de&limit=1&lat=1.5&in=y",
+    "headers": "",
+    "body": "",
+    "ok": true,
+    "response": "{\"older\":true}"
+  },
+  {
+    "at": "2026-09-21T11:58:00",
+    "method": "POST",
+    "url": "https://api.example.com/v1/users",
+    "headers": "",
+    "body": "{\"name\":\"morpheus\",\"job\":\"leader\"}",
+    "ok": true,
+    "response": "{\"id\":\"12\",\"data\":{\"x\":1}}"
+  },
+  {
+    "at": "2026-09-21T11:57:00",
+    "method": "GET",
+    "url": "https://api.example.com/api/json/v1/1/search.php?s=margarita \"quoted\"",
+    "headers": "",
+    "body": "",
+    "ok": true,
+    "response": "not json <html>"
+  },
+  {
+    "at": "2026-09-21T11:56:00",
+    "method": "DELETE",
+    "url": "https://api.example.com/v1/users/2",
+    "headers": "",
+    "body": "",
+    "ok": true,
+    "response": ""
+  },
+  {
+    "at": "2026-09-21T11:55:00",
+    "method": "GET",
+    "url": "https://api.example.com/v1/broken",
+    "headers": "",
+    "body": "",
+    "ok": false,
+    "response": "{\"error\":1}"
+  },
+  {
+    "at": "2026-09-21T11:54:00",
+    "method": "GET",
+    "url": "https://api.example.com/planetary/apod?api_key=DEMO_KEY&date=2024-01-01",
+    "headers": "",
+    "body": "",
+    "ok": true,
+    "response": "[{\"title\":\"x\"}]"
+  },
+  {
+    "at": "2026-09-21T11:53:00",
+    "method": "PUT",
+    "url": "https://api.example.com/v1/items/9999999999/tags?force=true&ratio=0.50&zip=01234&neg=-3",
+    "headers": "Content-Type: application/x-www-form-urlencoded\nX-Api-Key: {key}",
+    "body": "a=b&c=d",
+    "ok": true,
+    "response": "{\"ok\":true,\"count\":3,\"ratio\":0.5,\"when\":\"2026-09-21T10:00:00Z\",\"list\":[{\"a\":1},{\"a\":2,\"b\":null}]}"
+  },
+  {
+    "at": "2026-09-21T11:52:00",
+    "method": "PATCH",
+    "url": "https://api.example.com/v1/tokens",
+    "headers": "",
+    "body": "{\"token\":\"{key}\"}",
+    "ok": true,
+    "response": "[1,2,3]"
+  },
+  {
+    "at": "2026-09-21T11:51:00",
+    "method": "GET",
+    "url": "https://X.example.com:8443/Public/Cities/new%20york/weather.json?q=a+b%26c&class=1&q=again&flag",
+    "headers": "",
+    "body": "",
+    "ok": true,
+    "response": "{\"class\":\"x\",\"2d\":[[1,2],[3,4]],\"big\":9999999999,\"mixed\":[1,\"a\"],\"empty\":[],\"obj\":{},\"people\":[{\"first name\":\"A\"}],\"statuses\":[{\"ok\":true}]}"
+  }
+]

@@ -6,8 +6,11 @@ import 'dart:typed_data';
 
 import 'package:apiscout_mobile/az_rail.dart';
 import 'package:apiscout_mobile/changes.dart';
+import 'package:apiscout_mobile/client_generator.dart';
+import 'package:apiscout_mobile/compare.dart';
 import 'package:apiscout_mobile/docs_scanner.dart';
 import 'package:apiscout_mobile/insight.dart';
+import 'package:apiscout_mobile/json_to_csharp.dart';
 import 'package:apiscout_mobile/json_tree.dart';
 import 'package:apiscout_mobile/knowledge.dart';
 import 'package:apiscout_mobile/links.dart';
@@ -530,6 +533,71 @@ POST /v1/cats</pre>
       expect(isPublicWebUrl(bad), isFalse, reason: bad);
     }
     expect(isPublicWebUrl('https://api.nasa.gov/planetary'), isTrue);
+  });
+
+  test('compare: the facts, the Markdown table the desktop writes, and picking up to four', () {
+    final nasa = ApiView(ApiEntry(name: 'NASA', url: 'https://api.nasa.gov', auth: AuthKind.apiKey, https: true, cors: 'No', health: 97, sources: ['a', 'b']), k);
+    final t = ApiView(ApiEntry(name: 'T', url: 'https://t.example/'), k);
+    final md = compareMarkdown([nasa, t], [('Free', (a) => a.accessLabel), ('Multi|line', (a) => 'x|y\nz')]);
+    expect(md, startsWith('| | [NASA](https://api.nasa.gov) | [T](https://t.example/) |\n|---|---|---|\n'));
+    expect(md, contains('| **Free** | Full free access |'));
+    expect(md, contains('x\\|y<br>z'));
+
+    final facts = compareFacts(tagsOf: (a) => a == nasa ? ['space', 'side project'] : [], noteOf: (a) => a == nasa ? ' APOD first ' : '', docsNow: (_) => notMeasured, exampleNow: (a) => a.example == null ? noExample : notMeasured);
+    String fact(String label, ApiView a) => facts.firstWhere((f) => f.$1 == label).$2(a);
+    expect(facts.length, 16);
+    expect([fact('Demo key', nasa), fact('Demo key', t)], ['DEMO_KEY', '-']);
+    expect([fact('HTTPS / CORS', nasa), fact('HTTPS / CORS', t)], ['Yes / No', '? / ?']);
+    expect([fact('Health (freepublicapis)', nasa), fact('Health (freepublicapis)', t)], ['97%', '-']);
+    expect([fact('My tags', nasa), fact('My notes', nasa), fact('My notes', t)], ['space, side project', 'APOD first', '-']);
+    expect([fact(exampleNowLabel, nasa), fact(exampleNowLabel, t), fact('Found in', nasa)], [notMeasured, noExample, 'a, b']);
+    expect(nasa.exampleHeader, '');
+
+    expect(togglePick(const [], 'a'), ['a']);
+    expect(togglePick(const ['a', 'b'], 'a'), ['b']);
+    expect(togglePick(const ['a', 'b', 'c', 'd'], 'e'), isNull);
+    expect(togglePick(const ['a', 'b', 'c', 'd'], 'd'), ['a', 'b', 'c']);
+  });
+
+  test('C# classes and clients: the port writes what the desktop app writes, to the letter', () {
+    // test/fixtures/codegen is written by the desktop: dotnet run --project C:\Claude\ApiScout.Tests -- --codegen-fixture <dir>
+    String fx(String name) => File('test/fixtures/codegen/$name').readAsStringSync().replaceAll('\r\n', '\n');
+    final hist = [
+      for (final j in jsonDecode(fx('history.json')) as List)
+        TestHistoryEntry(at: DateTime.parse(j['at'] as String), method: j['method'] as String, url: j['url'] as String, headers: j['headers'] as String, body: j['body'] as String, ok: j['ok'] as bool, summary: '', response: j['response'] as String)
+    ];
+    expect(generateCSharp(fx('classes.json'), rootName: 'OrderResponse'), fx('classes.cs'));
+    expect(generateCSharp('[{"a":1}]', rootName: 'Thing'), fx('classes-array.cs'));
+    expect([generateCSharp('<html>'), generateCSharp('[1,2,3]')], [null, null]);
+
+    expect([for (final h in hist) requestShapeOf(h) ?? '(null)'].join('\n'), fx('shapes.txt'));
+    expect([usableRequests(hist).length, newestOfEachRequest(hist).length], [9, 8]);
+    expect(newestOfEachRequest(hist).any((h) => h.response.contains('older')), isFalse);
+
+    expect(generateClient('Example API', hist, demoKey: 'DEMO_KEY'), fx('client.cs'));
+    expect(
+        generateCollectionClient('Side project!', [
+          ClientSource('Example API', hist, demoKey: 'DEMO_KEY'),
+          ClientSource('Dogs', hist.where((h) => h.method == 'DELETE')),
+          ClientSource('Dogs', hist.where((h) => h.method == 'POST')),
+          const ClientSource('Untested', []),
+        ]),
+        fx('client-many.cs'));
+    expect(
+        generateClient('Weather', [TestHistoryEntry(at: DateTime(2026, 9, 21, 12), method: 'GET', ok: true, summary: '', url: 'https://a.example/v1/forecast/{city}/days/{days}?units={units}&from={today}&api_key={key}', headers: 'X-Lang: {lang}', response: '{"t":1}')],
+            variables: {'city': 'New York', 'days': '3', 'units': 'metric', 'lang': 'en'}),
+        fx('client-vars.cs'));
+    expect(
+        generateClient('The Cocktail DB', [TestHistoryEntry(at: DateTime(2026, 9, 21, 12), method: 'GET', ok: true, summary: '', url: 'https://www.thecocktaildb.com/api/json/v1/1/search.php?s=margarita&api_key=1&page=1', response: '{"drinks":[{"idDrink":"11007","dateModified":"2015-08-18 14:42:59"}]}')], demoKey: '1'),
+        fx('client-short.cs'));
+    expect(generateClient('Example API', newestOfEachRequest(hist).where((h) => h.method == 'DELETE' || h.method == 'PUT'), demoKey: 'DEMO_KEY'), fx('client-picked.cs'));
+
+    // nothing to build from, and the user's key never in the code
+    expect(generateClient('X', hist.where((h) => !h.ok)), isNull);
+    expect(generateCollectionClient('X', [const ClientSource('A', [])]), isNull);
+    final code = generateClient('Example API', hist, demoKey: 'DEMO_KEY')!;
+    expect(code.split('\n').where((l) => !l.trimLeft().startsWith('//') && l.contains('{key}') && !l.contains('.Replace("{key}", _apiKey)')), isEmpty);
+    expect(clientClassName('Example API'), 'ExampleAPIClient');
   });
 
   test('LIVE: the five real directories scan into a few thousand categorised APIs', () async {

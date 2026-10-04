@@ -123,7 +123,12 @@ class ApiTile extends StatelessWidget {
   final bool hasKey;
   /// Extra room kept clear on the right, for the A-Z rail.
   final double rightInset;
-  const ApiTile({super.key, required this.view, required this.favourite, required this.onTap, required this.onFavourite, this.tags = const [], this.hasKey = false, this.rightInset = 0});
+  final VoidCallback? onLongPress;
+
+  /// While APIs are being picked for a comparison the star gives way to a tick box: null = not picking.
+  final bool? picked;
+  const ApiTile(
+      {super.key, required this.view, required this.favourite, required this.onTap, required this.onFavourite, this.tags = const [], this.hasKey = false, this.rightInset = 0, this.onLongPress, this.picked});
 
   @override
   Widget build(BuildContext context) {
@@ -131,9 +136,10 @@ class ApiTile extends StatelessWidget {
     final d = view.entry.description;
     return InkWell(
       onTap: onTap,
+      onLongPress: onLongPress,
       child: Container(
         height: rowExtentFor(context),
-        decoration: BoxDecoration(border: Border(bottom: BorderSide(color: scheme.outlineVariant))),
+        decoration: BoxDecoration(color: picked == true ? scheme.surfaceContainerHighest : null, border: Border(bottom: BorderSide(color: scheme.outlineVariant))),
         padding: EdgeInsets.fromLTRB(16, 0, 4 + rightInset, 0),
         child: Row(children: [
           BrandTile(view, hero: true),
@@ -146,11 +152,21 @@ class ApiTile extends StatelessWidget {
               StatusLine(view, hasKey: hasKey, tags: tags),
             ]),
           ),
-          IconButton(
-            tooltip: favourite ? 'Remove from favourites' : 'Add to favourites',
-            icon: Icon(favourite ? Icons.star : Icons.star_border, color: favourite ? const Color(0xFFF5B83D) : scheme.onSurfaceVariant),
-            onPressed: onFavourite,
-          ),
+          if (picked != null)
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Semantics(
+                checked: picked,
+                label: 'Picked to compare',
+                child: Icon(picked! ? Icons.check_circle : Icons.radio_button_unchecked, color: picked! ? scheme.primary : scheme.onSurfaceVariant),
+              ),
+            )
+          else
+            IconButton(
+              tooltip: favourite ? 'Remove from favourites' : 'Add to favourites',
+              icon: Icon(favourite ? Icons.star : Icons.star_border, color: favourite ? const Color(0xFFF5B83D) : scheme.onSurfaceVariant),
+              onPressed: onFavourite,
+            ),
         ]),
       ),
     );
@@ -164,7 +180,8 @@ class SwipeActions extends StatelessWidget {
   final bool favourite;
   final VoidCallback onStar;
   final VoidCallback onCollect;
-  const SwipeActions({super.key, required this.rowKey, required this.child, required this.favourite, required this.onStar, required this.onCollect});
+  final VoidCallback? onPick;
+  const SwipeActions({super.key, required this.rowKey, required this.child, required this.favourite, required this.onStar, required this.onCollect, this.onPick});
 
   Widget _pane(BuildContext context, {required Color color, required Color ink, required IconData icon, required String label, required Alignment align}) => Container(
         color: color,
@@ -185,6 +202,7 @@ class SwipeActions extends StatelessWidget {
       customSemanticsActions: {
         CustomSemanticsAction(label: favourite ? 'Remove from favourites' : 'Add to favourites'): onStar,
         const CustomSemanticsAction(label: 'Add to a collection'): onCollect,
+        const CustomSemanticsAction(label: 'Pick to compare'): ?onPick,
       },
       child: Dismissible(
       key: rowKey,
