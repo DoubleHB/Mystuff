@@ -37,9 +37,10 @@ Future<void> enableWeeklyRescan() => Workmanager().registerPeriodicTask(
 
 Future<void> disableWeeklyRescan() => Workmanager().cancelByUniqueName(rescanTask);
 
-/// A save that is cut short leaves the old file whole.
+/// A save that is cut short leaves the old file whole. The temp name carries the process id: the app and the
+/// background rescan can write the same file at the same moment without renaming each other's half.
 Future<void> writeFileAtomically(File file, String text) async {
-  final temp = File('${file.path}.tmp');
+  final temp = File('${file.path}.$pid.tmp');
   await temp.writeAsString(text, flush: true);
   await temp.rename(file.path);
 }

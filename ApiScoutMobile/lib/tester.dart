@@ -95,8 +95,9 @@ String guessContentType(String body) {
 String _size(int bytes) => bytes < 1024 ? '$bytes B' : bytes < 1048576 ? '${(bytes / 1024).toStringAsFixed(1)} KB' : '${(bytes / 1048576).toStringAsFixed(1)} MB';
 
 /// Sends one request and returns the response formatted for reading.
-/// Redirects are not followed automatically when the request carries headers: a key in a header must not travel to another host.
-Future<TestResult> sendTest(String method, String url, String headerText, String body) async {
+/// Redirects are not followed automatically when the request carries headers or, with [carriesKey], the saved key
+/// anywhere in it: a key must not travel to another host.
+Future<TestResult> sendTest(String method, String url, String headerText, String body, {bool carriesKey = false}) async {
   final uri = Uri.tryParse(url.trim());
   if (uri == null || !(uri.scheme == 'http' || uri.scheme == 'https') || uri.host.isEmpty) return const TestResult(false, false, 'That is not a valid http(s) URL.', '');
   String? badLine;
@@ -106,9 +107,9 @@ Future<TestResult> sendTest(String method, String url, String headerText, String
   final client = http.Client();
   final watch = Stopwatch()..start();
   try {
-    final req = http.Request(method, uri)..followRedirects = headers.isEmpty;
+    final req = http.Request(method, uri)..followRedirects = headers.isEmpty && !carriesKey;
     req.headers['Accept'] = 'application/json, text/plain;q=0.8, */*;q=0.5';
-    req.headers['User-Agent'] = 'APIFree/1.5 (Android)';
+    req.headers['User-Agent'] = 'APIFree/1.6 (Android)';
     req.headers.addAll(headers);
     if (methodHasBody(method)) {
       req.headers.putIfAbsent('Content-Type', () => '${guessContentType(body)}; charset=utf-8');
@@ -123,7 +124,7 @@ Future<TestResult> sendTest(String method, String url, String headerText, String
     var summary = '${resp.statusCode} ${resp.reasonPhrase ?? ''} · ${watch.elapsedMilliseconds} ms · $type · ${_size(resp.bodyBytes.length)}';
     final code = resp.statusCode;
     if (code >= 300 && code < 400 && resp.headers['location'] != null) {
-      summary += '\nThe API redirects to ${resp.headers['location']} - not followed, because your headers would go along. Test that URL directly if it is right.';
+      summary += '\nThe API redirects to ${resp.headers['location']} - not followed, because your ${carriesKey ? 'key' : 'headers'} would go along. Test that URL directly if it is right.';
     } else if (!isJson && type.contains('html')) {
       summary += '\nThis is a web page, not JSON - probably the docs. Paste an endpoint URL from the docs and send again.';
     } else if (code == 401 || code == 403) {

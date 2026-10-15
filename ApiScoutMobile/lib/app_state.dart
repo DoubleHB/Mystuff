@@ -198,7 +198,7 @@ class AppState extends ChangeNotifier {
   Future<void> saveUser() => _pendingSave = _pendingSave.then((_) async {
         try {
           final file = await _userFile();
-          final temp = File('${file.path}.tmp');
+          final temp = File('${file.path}.$pid.tmp');
           await temp.writeAsString(jsonEncode(user.toJson()), flush: true);
           await temp.rename(file.path);
         } catch (ex) {
@@ -224,6 +224,13 @@ class AppState extends ChangeNotifier {
     applyFilter();
   }
 
+  /// For widget tests: a catalogue without a scan or a file.
+  @visibleForTesting
+  void useCatalogue(Catalogue cat) {
+    _use(cat);
+    notifyListeners();
+  }
+
   Map<String, ApiView> _byKey = {};
   ApiView? find(String key) => _byKey[key];
 
@@ -237,13 +244,15 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _moveKeys(List<MapEntry<String, String>> moves) async {
+    if (vaultProblem != null) return; // a vault that forgets at close is no place to move keys through
     for (final m in moves) {
       try {
+        // a key already saved under the surviving name wins; the other is left where it is, never deleted unread
+        if (keyed.contains(m.value)) continue;
         final value = await vault.read(m.key) ?? '';
-        if (value.isNotEmpty && !keyed.contains(m.value)) {
-          await vault.write(m.value, value);
-          keyed.add(m.value);
-        }
+        if (value.isEmpty) continue;
+        await vault.write(m.value, value);
+        keyed.add(m.value);
         await vault.delete(m.key);
         keyed.remove(m.key);
       } catch (_) {
@@ -353,6 +362,11 @@ class AppState extends ChangeNotifier {
       final allNotes = (result['notes'] as List).cast<String>();
       if (entries.isEmpty) {
         status = 'The scan found nothing. ${allNotes.join('; ')}';
+        return;
+      }
+      if (all.isNotEmpty && (texts.length < 3 || entries.length < 500 || entries.length < all.length ~/ 2)) {
+        // most sources down: a thin result must not replace a good catalogue (the background rescan has the same rule)
+        status = 'Only ${texts.length} of ${sources.length} sources answered (${entries.length} APIs) - the catalogue of ${all.length} from ${scannedAt == null ? 'before' : _when(scannedAt!)} is kept. Try again later.';
         return;
       }
       final before = all.length;
@@ -605,6 +619,7 @@ class AppState extends ChangeNotifier {
   bool hasKey(ApiView v) => keyed.contains(v.entry.key);
   Future<String> keyOf(ApiView v) async => hasKey(v) ? (await vault.read(v.entry.key) ?? '') : '';
 
+  /// Throws when the keystore refuses: the caller tells the user, and [keyed] is left as it was.
   Future<void> setKey(ApiView v, String value) async {
     value = value.trim();
     if (value.isEmpty) {
@@ -716,28 +731,49 @@ class AppState extends ChangeNotifier {
   Future<File> _historyFile() async => File('${(await getApplicationSupportDirectory()).path}/history.bin');
 
   /// Read on first use, not at start-up: most visits never open it. The saved test requests share the key and come with it.
-  Future<void> ensureHistory() async {
-    if (_history != null) return;
-    _history = {};
-    _requests = {};
+  /// One load at a time: a second caller waits for the first instead of seeing empty maps that a write could then persist.
+  Future<void> ensureHistory() => _historyLoading ??= _loadHistory();
+  Future<void>? _historyLoading;
+
+  /// Set when sealed files exist that could not be opened (no seal key, a vault that would not open, or a key that does not
+  /// fit): nothing is written to them this session, so a healthy next launch still finds them whole.
+  String? historyProblem;
+
+  Future<void> _loadHistory() async {
+    final history = <String, List<TestHistoryEntry>>{};
+    final requests = <String, TestRequest>{};
     try {
-      final saved = await vault.readSecret('history-key');
+      final saved = vaultProblem == null ? await vault.readSecret('history-key') : null;
       if (saved != null) _historyKey = base64Decode(saved);
-      if (_historyKey != null) {
-        final file = await _historyFile();
+      final file = await _historyFile(), requestsFile = await _requestsFile();
+      final sealedExists = await file.exists() || await requestsFile.exists();
+      if (_historyKey == null) {
+        if (sealedExists) historyProblem = 'The saved test requests and history could not be unlocked this time. Nothing new is saved until they can be.';
+      } else {
+        var opened = true;
         if (await file.exists()) {
           final plain = openWithKey(_historyKey!, await file.readAsBytes());
-          if (plain != null) _history = historyFromJson(jsonDecode(utf8.decode(plain)));
+          if (plain != null) {
+            history.addAll(historyFromJson(jsonDecode(utf8.decode(plain))));
+          } else {
+            opened = false;
+          }
         }
-        final requests = await _requestsFile();
-        if (await requests.exists()) {
-          final plain = openWithKey(_historyKey!, await requests.readAsBytes());
-          if (plain != null) _requests = testRequestsFromJson(jsonDecode(utf8.decode(plain)));
+        if (await requestsFile.exists()) {
+          final plain = openWithKey(_historyKey!, await requestsFile.readAsBytes());
+          if (plain != null) {
+            requests.addAll(testRequestsFromJson(jsonDecode(utf8.decode(plain))));
+          } else {
+            opened = false;
+          }
         }
+        if (!opened) historyProblem = 'The saved test requests and history on this phone do not fit the key in its secure storage, so they are left as they are. Nothing new is saved to them.';
       }
     } catch (_) {
-      // an unreadable history is an empty history
+      historyProblem ??= 'The saved test requests and history could not be read this time. Nothing new is saved until they can be.';
     }
+    _history = history;
+    _requests = requests;
   }
 
   List<TestHistoryEntry> historyOf(ApiView v) => _history?[v.entry.key] ?? const [];
@@ -759,13 +795,16 @@ class AppState extends ChangeNotifier {
 
   /// Seals [json] with the keystore-held key (made on first use) and writes it whole, one write after another.
   Future<void> _writeSealed(Future<File> Function() which, String json) => _pendingSave = _pendingSave.then((_) async {
+        // never mint a new seal key over files sealed with one this session could not read, nor into a vault that
+        // forgets at close: either would make the real files unreadable for good
+        if (historyProblem != null || (_historyKey == null && vaultProblem != null)) return;
         try {
           if (_historyKey == null) {
             _historyKey = newSealKey();
             await vault.writeSecret('history-key', base64Encode(_historyKey!));
           }
           final file = await which();
-          final temp = File('${file.path}.tmp');
+          final temp = File('${file.path}.$pid.tmp');
           await temp.writeAsBytes(sealWithKey(_historyKey!, Uint8List.fromList(utf8.encode(json))), flush: true);
           await temp.rename(file.path);
         } catch (_) {
@@ -811,7 +850,7 @@ class AppState extends ChangeNotifier {
       _pendingSave = _pendingSave.then((_) async {
         try {
           final file = await _docsFile();
-          final temp = File('${file.path}.tmp');
+          final temp = File('${file.path}.$pid.tmp');
           await temp.writeAsString(jsonEncode({for (final e in _docsScans.entries) e.key: e.value.toJson()}), flush: true);
           await temp.rename(file.path);
         } catch (_) {}

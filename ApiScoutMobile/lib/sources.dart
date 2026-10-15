@@ -22,7 +22,7 @@ const sources = <SourceInfo>[
   SourceInfo('n0shake', 'n0shake/Public-APIs (GitHub)', 'Older list of big-name platform APIs', 'https://raw.githubusercontent.com/n0shake/Public-APIs/master/README.md'),
 ];
 
-const _userAgent = 'Mozilla/5.0 (Android) APIFree/1.5';
+const _userAgent = 'Mozilla/5.0 (Android) APIFree/1.6';
 
 Future<String> fetchText(String url, {Duration timeout = const Duration(seconds: 60)}) async {
   final resp = await http.get(Uri.parse(url), headers: {'User-Agent': _userAgent, 'Accept': 'text/html,application/json,text/plain,*/*'}).timeout(timeout);

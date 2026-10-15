@@ -19,7 +19,7 @@ Alternative, if the first reads as too dense:
 
 API Free finds free public APIs and tells you the one thing every directory leaves out: whether you can call it right now, and with what key.
 
-It scans five public API directories (public-apis, public-api-lists, publicapis.dev, freepublicapis.com and n0shake), merges the results into one catalogue of roughly 3,500 APIs in 42 categories, and keeps it on your phone. No account, no sign-up, and nothing is sent anywhere except to the directories and the API you choose to test.
+It scans five public API directories (public-apis, public-api-lists, publicapis.dev, freepublicapis.com and n0shake), merges the results into one catalogue of roughly 3,600 APIs in 42 categories - one row per API, even when two directories list it under different pages - and keeps it on your phone. No account, no sign-up, and nothing is sent anywhere except to the directories and the API you choose to test.
 
 WHAT YOU GET FOR EACH API
 - Whether it needs a key, HTTPS and CORS support, and a health score from daily tests.
@@ -31,10 +31,16 @@ SCAN THE DOCS FOR KEY INFO
 Ask API Free to read an API's documentation page, the OpenAPI spec it points to, and the pricing page it links to. It pulls out sign-up links, sample keys and placeholders, example endpoints, auth schemes, and the sentences about free tiers and rate limits - all from the provider's own site. Press "Try" on any endpoint it finds to send it immediately.
 
 TRY IT
-Send GET, POST, PUT, PATCH or DELETE requests with headers and a body, and read the reply as a searchable, folding JSON tree. Auth presets write the usual Bearer, X-Api-Key, ?api_key= or RapidAPI lines for you. Write {key} anywhere in a request and your saved key is filled in only at the moment of sending - it never appears in what you copy. Request variables ({name} = value, plus {today}, {now}, {timestamp} and more) make requests reusable; a request you change is remembered for that API, and the last 8 requests per API are kept with their responses so you can load one back with a tap. Copy any request as cURL.
+Send GET, POST, PUT, PATCH or DELETE requests with headers and a body, and read the reply as a searchable, folding JSON tree. Auth presets write the usual Bearer, X-Api-Key, ?api_key= or RapidAPI lines for you. Write {key} anywhere in a request and your saved key is filled in only at the moment of sending - it never appears in what you copy. Request variables ({name} = value, plus {today}, {now}, {timestamp} and more) make requests reusable; a request you change is remembered for that API, and the last 8 requests per API are kept with their responses so you can load one back with a tap. Copy any request as cURL, JavaScript (fetch) or Python (requests).
+
+C# FROM WHAT YOU TESTED
+Once a request has worked, turn it into a small typed C# HttpClient class: a method per request, query values as parameters, response classes inferred from the answers - the same code the desktop app writes. A JSON reply becomes C# classes with one tap, and a collection can become one file with a client for every tested API in it. Your key is never written into the code.
+
+COMPARE
+Long-press an API to start picking, tap up to three more, then see them side by side: what each needs, what is free, the demo key, how the key is sent, HTTPS, CORS and health. "Measure now" checks each docs site and sends each known example request once. Copy or share the table as Markdown.
 
 ORGANISE
-Search by name, description, category or URL - a typo is forgiven, and recent searches wait under the box. An A-Z rail jumps through long lists. Filter by what you need before calling (no key, API key, OAuth), how much is free, HTTPS and CORS. Star favourites, add tags and notes, and group APIs into collections that appear in the category drawer. An API of the day shows one API you can try today with no key - as a 9:00 notification too, if you want it.
+Search by name, description, category or URL - a typo is forgiven, and recent searches wait under the box. An A-Z rail jumps through long lists. One tap on "Works right now" keeps only the APIs you can call this minute; filter by what you need before calling (no key, API key, OAuth), how much is free, HTTPS and CORS, and sort by health. Your filters are remembered. Star favourites, add tags and notes, and group APIs into collections that appear in the category drawer. An API of the day shows one API you can try today with no key - as a 9:00 notification too, if you want it.
 
 STAYS FRESH
 Rescan weekly on Wi-Fi while the app is closed, and see what changed - new APIs, ones no longer listed, changed auth - the next time you open it. Share any API to a chat or a note; the link at the end opens it in API Free.
@@ -63,6 +69,9 @@ ALSO
 - Data collected by the developer: none. The app has no analytics, crash reporting or accounts.
 - Data shared with third parties: none by the app itself. Requests you send in "Try it" go to whichever API you
   choose; the directory scans go to the five directory sites; "More about" and "Scan docs" fetch the provider's own docs and pricing pages.
+  Provider logos in the list come from Google's public favicon service (www.google.com/s2/favicons): only the API's
+  host name is sent, no user data - but it does mean Google sees which hosts are shown on the screen. Declare this
+  as "app activity - other" shared with a third party if the form asks, or turn logos off in a later version.
 - Data stored on the device: catalogue, favourites, tags, notes, collections, request variables and docs-scan results in the app's private
   storage; saved API keys in the Android keystore (flutter_secure_storage); request history and saved test requests encrypted with a keystore-held key.
 - Data can be exported by the user to a file; secrets in that file are encrypted with the user's passphrase.

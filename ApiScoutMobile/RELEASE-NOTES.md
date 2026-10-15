@@ -1,5 +1,31 @@
 # API Free for Android - release notes
 
+## 1.6.0
+
+Two of the desktop app's tools come to the phone.
+
+- **Compare.** Long-press an API in the list to start picking, tap up to three more, then Compare: two to four
+  APIs side by side - what each needs, what is free, the demo key, how the key is sent, where to get one, HTTPS,
+  CORS and health, your tags and notes. Measure now checks each docs site and sends each known example request
+  once. Copy or share the table as Markdown. "Compare with…" on an API's page starts the picking from there.
+- **C# client.** Once a request has worked in Try it, "C# client…" turns the requests you tick into one small
+  typed HttpClient class: a method per request, query values as parameters with the tested values as defaults,
+  response classes inferred from the answers. Your key is never written into the code. The menu of a collection
+  offers one file with a client for every tested API in it.
+- **C# classes.** The response page has a button that turns a JSON answer into classes for System.Text.Json.
+
+The generated code is the same, to the letter, as the desktop app writes for the same requests. Includes 1.5.4 and
+1.5.5.
+
+Also, from a review of the app's structure before release:
+- If the phone's secure storage cannot be opened at start-up, the saved test requests and request history are now
+  left untouched on disk (and the Try it tab says so) instead of being sealed again under a key that would be lost.
+- A scan with most directories unreachable keeps the catalogue you have instead of replacing it with a thin one.
+- A request that carries your key in the URL no longer follows a redirect to another site.
+- Saving a key the keystore refuses now says so instead of failing silently.
+- The app and the weekly background rescan can no longer trip over each other's temporary file.
+- The Back button during an import or export no longer leaves a blank screen.
+
 ## 1.5.5
 
 - **One row per API.** Some APIs were listed twice because two directories point at different docs pages for them

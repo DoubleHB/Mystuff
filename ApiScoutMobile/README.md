@@ -113,6 +113,17 @@ own published demo key where there is one, or how to get a key.
   - Play screenshots redone with the 1.5 look (`store/`).
 - **1.5.1 - renamed API Free.** The app, the listing and the desktop app are now called API Free (the ApiScout name
   was taken). Package id, files, data and keys are untouched, so 1.5.1 installs over 1.5.0.
+- **1.6.0 - Compare and C# from the desktop.**
+  - `json_to_csharp.dart` and `client_generator.dart` are ports of the desktop's `JsonToCSharp` and `ClientGenerator`.
+    The two must write the same text: `dotnet run --project C:\Claude\ApiScout.Tests -- --codegen-fixture <dir>` writes
+    what the desktop produces for fixed inputs into `test/fixtures/codegen`, and the test compares to the letter.
+    Change both generators or neither, then refresh the fixtures.
+  - `compare.dart` (facts, Markdown, picking) and `compare_page.dart`: long-press a row to pick 2-4 APIs (`PickBar`),
+    or "Compare with…" on the detail page (`comparePick`); Measure now reuses `sendTest`.
+  - `code_page.dart`: `ClientPage` (ticks per request, the class follows them), `CodePage` (classes for a response,
+    the client for a collection from the menu).
+  - `test/pages_test.dart` drives these screens as widgets; with `APIFREE_SHOTS=<folder>` it saves a PNG per step,
+    drawn with the real fonts - a look at new screens without a build.
 - **1.5.5 - duplicates, sort, more copy formats.** `mergeDuplicates` in `sources.dart` runs after the URL-key
   merge: same `sameNameKey` (case, punctuation, a ".com" ending and a trailing "API" ignored) and either the same
   `siteOf` (registrable domain; empty for GitHub/GitLab/RapidAPI and the like) or the same description words. The
@@ -178,4 +189,4 @@ APK and the bundle are release-signed; without them the debug key is used, which
 "install unknown apps") but not for Play. `build-apk.ps1 -Bundle` adds `ApiScout.aab`, the file Play takes; the
 listing text and images are in `store/`.
 
-Not in this version (desktop only): C# generation, compare, link check, drag-to-reorder and Test all for collections.
+Not in this version (desktop only): link check, drag-to-reorder and Test all for collections.
