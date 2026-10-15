@@ -407,6 +407,37 @@ class _DetailPageState extends State<DetailPage> with SingleTickerProviderStateM
 
   TextStyle _muted(BuildContext context) => TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12.5, height: 1.4);
 
+  /// Copy as… in Try it: the request as a cURL command, JavaScript (fetch) or Python (requests).
+  Future<void> _copyAs() async {
+    final kind = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Padding(padding: EdgeInsets.fromLTRB(16, 16, 16, 4), child: Align(alignment: Alignment.centerLeft, child: FieldLabel('COPY THE REQUEST AS'))),
+          for (final (id, name, note) in const [
+            ('curl', 'cURL', 'for a terminal'),
+            ('js', 'JavaScript (fetch)', 'for a browser console or Node'),
+            ('py', 'Python (requests)', 'pip install requests'),
+          ])
+            ListTile(title: Text(name, style: const TextStyle(fontWeight: FontWeight.w700)), subtitle: Text(note), onTap: () => Navigator.of(ctx).pop(id)),
+          const SizedBox(height: 8),
+        ]),
+      ),
+    );
+    if (kind == null || !mounted) return;
+    // variables are filled in, {key} is not: a copied command never carries the saved key
+    final vars = parseVariables(_vars.text);
+    final url = fillVariables(_url.text, vars, escape: true), headers = fillVariables(_headers.text, vars), body = fillVariables(_body.text, vars);
+    switch (kind) {
+      case 'js':
+        copyText(context, toFetch(_method, url, headers, body), 'JavaScript fetch');
+      case 'py':
+        copyText(context, toPython(_method, url, headers, body), 'Python requests');
+      default:
+        copyText(context, toCurl(_method, url, headers, body), 'cURL command');
+    }
+  }
+
   // ---------------------------------------------------------------- Overview
   Widget _overview(BuildContext context) {
     final e = v.entry;
@@ -434,6 +465,8 @@ class _DetailPageState extends State<DetailPage> with SingleTickerProviderStateM
         OutlinedButton(onPressed: () => copyText(context, _asText(), 'Details'), child: const Text('Details')),
         OutlinedButton(onPressed: () => copyText(context, _asMarkdown(), 'Markdown'), child: const Text('Markdown')),
         OutlinedButton(onPressed: () => copyText(context, toCurl('GET', v.example ?? v.url, _defaultHeader, ''), 'cURL command'), child: const Text('cURL')),
+        OutlinedButton(onPressed: () => copyText(context, toFetch('GET', v.example ?? v.url, _defaultHeader, ''), 'JavaScript fetch'), child: const Text('JavaScript')),
+        OutlinedButton(onPressed: () => copyText(context, toPython('GET', v.example ?? v.url, _defaultHeader, ''), 'Python requests'), child: const Text('Python')),
       ]),
     ]);
   }
@@ -646,13 +679,7 @@ class _DetailPageState extends State<DetailPage> with SingleTickerProviderStateM
           icon: _sending ? SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2.5, color: scheme.onSurface)) : const Icon(Icons.play_arrow),
           label: Text(_sending ? 'Sending…' : 'Test this API'),
         ),
-        OutlinedButton(
-            onPressed: () {
-              // variables are filled in, {key} is not: a copied command never carries the saved key
-              final vars = parseVariables(_vars.text);
-              copyText(context, toCurl(_method, fillVariables(_url.text, vars, escape: true), fillVariables(_headers.text, vars), fillVariables(_body.text, vars)), 'cURL command');
-            },
-            child: const Text('Copy as cURL')),
+        OutlinedButton.icon(onPressed: _copyAs, icon: const Icon(Icons.code, size: 18), label: const Text('Copy as…')),
         if (state.historyOf(v).isNotEmpty)
           OutlinedButton.icon(onPressed: _showHistory, icon: const Icon(Icons.history, size: 18), label: Text('History (${state.historyOf(v).length})')),
         if (!_isSuggested || state.savedRequestOf(v) != null)

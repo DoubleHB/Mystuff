@@ -242,23 +242,88 @@ List<ApiEntry> mergeEntries(Iterable<ApiEntry> entries, Knowledge knowledge) {
       byKey[e.key] = e;
       continue;
     }
-    for (final s in e.sources) {
-      if (!have.sources.contains(s)) have.sources.add(s);
-    }
-    if (have.auth == AuthKind.unknown && e.auth != AuthKind.unknown) {
-      have.auth = e.auth;
-      have.authRaw = e.authRaw;
-    }
-    if (have.description.length < 12 && e.description.length > have.description.length) have.description = e.description;
-    if (have.rawCategory.isEmpty) have.rawCategory = e.rawCategory;
-    if ((have.cors.isEmpty || have.cors == 'Unknown') && (e.cors == 'Yes' || e.cors == 'No')) have.cors = e.cors;
-    if (have.pricing.isEmpty) have.pricing = e.pricing;
-    have.https ??= e.https;
-    have.health ??= e.health;
+    _absorb(have, e);
   }
-  final list = byKey.values.toList();
+  final list = mergeDuplicates(byKey.values);
   recategorise(list, knowledge);
   return list;
+}
+
+/// What a second listing of the same API adds to the first: more sources, and facts the first did not have.
+void _absorb(ApiEntry have, ApiEntry e) {
+  for (final s in e.sources) {
+    if (!have.sources.contains(s)) have.sources.add(s);
+  }
+  if (have.auth == AuthKind.unknown && e.auth != AuthKind.unknown) {
+    have.auth = e.auth;
+    have.authRaw = e.authRaw;
+  }
+  if (have.description.length < 12 && e.description.length > have.description.length) have.description = e.description;
+  if (have.rawCategory.isEmpty) have.rawCategory = e.rawCategory;
+  if ((have.cors.isEmpty || have.cors == 'Unknown') && (e.cors == 'Yes' || e.cors == 'No')) have.cors = e.cors;
+  if (have.pricing.isEmpty) have.pricing = e.pricing;
+  have.https ??= e.https;
+  have.health ??= e.health;
+}
+
+final _nameEndingRx = RegExp(r'\.(com|io|org|net|dev|co|app)$');
+final _notWordRx = RegExp(r'[^\p{L}\p{N}]+', unicode: true);
+
+/// "1inch", "1inch API" and "1Forge.com" all come out as "1inch" / "1forge": the name without case, punctuation,
+/// a web ending or a trailing "API".
+String sameNameKey(String name) {
+  var n = name.trim().toLowerCase().replaceFirst(_nameEndingRx, '');
+  n = n.replaceAll(_notWordRx, ' ').trim();
+  if (n.startsWith('the ')) n = n.substring(4);
+  n = n.replaceFirst(RegExp(r'\s*apis?$'), '');
+  return n.replaceAll(' ', '');
+}
+
+/// Hosts that hold many unrelated APIs: two "Weather" projects on GitHub are not one API.
+const _sharedHosts = {'github.com', 'gitlab.com', 'bitbucket.org', 'rapidapi.com', 'sourceforge.net'};
+
+/// The site a docs URL belongs to: "docs.1inch.io" and "1inch.io" are both "1inch.io". Empty for a shared host.
+String siteOf(String url) {
+  final host = Uri.tryParse(url)?.host.toLowerCase() ?? '';
+  final parts = host.split('.');
+  if (parts.length < 2) return '';
+  // two labels, or three when the second-last is a country-level "co"/"com"/"org" (api.example.co.uk)
+  final n = parts.length >= 3 && parts.last.length == 2 && const {'co', 'com', 'org', 'net', 'gov', 'ac', 'edu'}.contains(parts[parts.length - 2]) ? 3 : 2;
+  final site = parts.sublist(parts.length - n).join('.');
+  return _sharedHosts.contains(site) ? '' : site;
+}
+
+/// One API listed twice under two docs URLs ("1inch" at 1inch.io/api and docs.1inch.io; "1Forge" and "1Forge.com"):
+/// entries with the same name are folded together when their docs are on the same site, or when they say the same
+/// thing about themselves. The first listing stays, the other's key is kept as an alias so what the user saved under it
+/// is not lost. Order is kept.
+List<ApiEntry> mergeDuplicates(Iterable<ApiEntry> entries) {
+  final byName = <String, List<ApiEntry>>{};
+  final out = <ApiEntry>[];
+  for (final e in entries) {
+    final name = sameNameKey(e.name);
+    final site = siteOf(e.url);
+    final said = e.description.trim().toLowerCase().replaceAll(_notWordRx, ' ').trim();
+    ApiEntry? same;
+    for (final c in byName[name] ?? const <ApiEntry>[]) {
+      final sameSite = site.isNotEmpty && site == siteOf(c.url);
+      final sameWords = said.length >= 12 && said == c.description.trim().toLowerCase().replaceAll(_notWordRx, ' ').trim();
+      if (sameSite || sameWords) {
+        same = c;
+        break;
+      }
+    }
+    if (same == null || name.isEmpty) {
+      byName.putIfAbsent(name, () => []).add(e);
+      out.add(e);
+      continue;
+    }
+    _absorb(same, e);
+    // the one that was found twice keeps the longer description: the two listings often describe it differently
+    if (e.description.length > same.description.length) same.description = e.description;
+    same.aliases.addAll([e.key, ...e.aliases].where((k) => k != same!.key && !same.aliases.contains(k)));
+  }
+  return out;
 }
 
 /// Categories from the current rules, then name order. Also run on a cached catalogue when the rules have changed

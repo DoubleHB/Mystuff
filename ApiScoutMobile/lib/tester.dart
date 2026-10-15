@@ -144,6 +144,49 @@ Future<TestResult> sendTest(String method, String url, String headerText, String
   }
 }
 
+/// The headers a copied request carries: the ones typed, plus a content type for a body that has none.
+Map<String, String> _copiedHeaders(String method, String headerText, String body) {
+  final headers = parseHeaders(headerText, (_) {}) ?? {};
+  if (methodHasBody(method) && body.trim().isNotEmpty) headers.putIfAbsent('Content-Type', () => guessContentType(body));
+  return headers;
+}
+
+/// The request as JavaScript, for a browser console or Node 18+: `fetch` with the method, headers and body set out.
+/// A JSON string literal is a JavaScript string literal, so the quoting is jsonEncode's.
+String toFetch(String method, String url, String headerText, String body) {
+  final headers = _copiedHeaders(method, headerText, body);
+  final hasBody = methodHasBody(method) && body.trim().isNotEmpty;
+  final sb = StringBuffer('const response = await fetch(${jsonEncode(url.trim())}');
+  if (method != 'GET' || headers.isNotEmpty || hasBody) {
+    sb.write(', {\n');
+    if (method != 'GET') sb.write('  method: ${jsonEncode(method)},\n');
+    if (headers.isNotEmpty) {
+      sb.write('  headers: {\n');
+      headers.forEach((name, value) => sb.write('    ${jsonEncode(name)}: ${jsonEncode(value)},\n'));
+      sb.write('  },\n');
+    }
+    if (hasBody) sb.write('  body: ${jsonEncode(body.trim())},\n');
+    sb.write('}');
+  }
+  sb.write(');\nconsole.log(response.status, await response.text());');
+  return sb.toString();
+}
+
+/// The request as Python 3 with the `requests` package (`pip install requests`). Python reads JSON string literals too.
+String toPython(String method, String url, String headerText, String body) {
+  final headers = _copiedHeaders(method, headerText, body);
+  final hasBody = methodHasBody(method) && body.trim().isNotEmpty;
+  final sb = StringBuffer('import requests\n\nresponse = requests.${method.toLowerCase()}(\n    ${jsonEncode(url.trim())},\n');
+  if (headers.isNotEmpty) {
+    sb.write('    headers={\n');
+    headers.forEach((name, value) => sb.write('        ${jsonEncode(name)}: ${jsonEncode(value)},\n'));
+    sb.write('    },\n');
+  }
+  if (hasBody) sb.write('    data=${jsonEncode(body.trim())},\n');
+  sb.write(')\nprint(response.status_code)\nprint(response.text)');
+  return sb.toString();
+}
+
 /// The request as a bash-style curl command.
 String toCurl(String method, String url, String headerText, String body) {
   String q(String s) => "'${s.replaceAll("'", "'\\''")}'";

@@ -284,7 +284,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   /// A rail is worth having for a long list in name order - not for a collection, which keeps the order it was built in.
-  bool get _showRail => state.rows.length >= 40 && !state.category.startsWith(collectionPrefix);
+  bool get _showRail => state.rows.length >= 40 && !state.category.startsWith(collectionPrefix) && state.sort == sortChoices.first;
 
   List<(String, int)> get _letters {
     if (!identical(_railRows, state.rows)) {
@@ -544,6 +544,7 @@ extension on _HomePageState {
       _menuPill(context, 'Free', accessFilters, state.accessFilter, (v) => state.setFilters(access: v)),
       FilterPill('HTTPS', selected: state.httpsOnly, onTap: () => state.setFilters(https: !state.httpsOnly)),
       FilterPill('CORS', selected: state.corsOnly, onTap: () => state.setFilters(cors: !state.corsOnly)),
+      _menuPill(context, 'Sort', sortChoices, state.sort, state.setSort),
       if (filtered)
         FilterPill('Clear', icon: Icons.close, onTap: () {
           // the search stays: only the choices in this row are cleared
@@ -896,7 +897,7 @@ Future<void> exportToFile(BuildContext context) async {
 void showAbout(BuildContext context) => showAboutDialog(
       context: context,
       applicationName: 'API Free',
-      applicationVersion: '1.5.4 (Android)',
+      applicationVersion: '1.5.5 (Android)',
       // the launcher icon, drawn: the blue-to-teal tile with the braces
       applicationIcon: Container(
         width: 44,

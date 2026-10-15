@@ -113,6 +113,14 @@ own published demo key where there is one, or how to get a key.
   - Play screenshots redone with the 1.5 look (`store/`).
 - **1.5.1 - renamed API Free.** The app, the listing and the desktop app are now called API Free (the ApiScout name
   was taken). Package id, files, data and keys are untouched, so 1.5.1 installs over 1.5.0.
+- **1.5.5 - duplicates, sort, more copy formats.** `mergeDuplicates` in `sources.dart` runs after the URL-key
+  merge: same `sameNameKey` (case, punctuation, a ".com" ending and a trailing "API" ignored) and either the same
+  `siteOf` (registrable domain; empty for GitHub/GitLab/RapidAPI and the like) or the same description words. The
+  folded entry's key goes into `ApiEntry.aliases`; `AppState._use` maps aliases in `_byKey` and calls
+  `adoptAliases` (user_data.dart) + `_moveKeys` so favourites, tags, notes, collections, variables and vault keys
+  follow. Phone-only for now: the desktop's Scanner.Merge does not fold these. `sortRows` / `sortChoices` in
+  app_state.dart, a Sort menu pill, the rail hidden off name order; `toFetch` / `toPython` in tester.dart (JSON
+  string literals are valid in both languages), a Copy as… sheet in Try it.
 - **1.5.4 - three small things.** A fresh install scans by itself (`AppState.firstLaunch`, started from `main`
   after `runApp`); a "Works right now" chip (`ApiView.worksNow` = `keylessWorks || hasDemoKey`, `state.worksNow`
   in `applyFilter`); the category, chips and tag come back next launch (`encodeFilters` / `restoreFilters`, one
