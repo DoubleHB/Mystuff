@@ -237,9 +237,7 @@ String toCurl(String method, String url, String headerText, String body) {
   final sb = StringBuffer('curl');
   if (method != 'GET') sb.write(' -X $method');
   sb.write(' ${q(url.trim())}');
-  final headers = parseHeaders(headerText, (_) {}) ?? {};
-  if (methodHasBody(method) && body.trim().isNotEmpty) headers.putIfAbsent('Content-Type', () => guessContentType(body));
-  headers.forEach((name, value) => sb.write(' \\\n  -H ${q('$name: $value')}'));
+  _copiedHeaders(method, headerText, body).forEach((name, value) => sb.write(' \\\n  -H ${q('$name: $value')}'));
   if (methodHasBody(method) && body.trim().isNotEmpty) sb.write(' \\\n  --data-raw ${q(body.trim())}');
   return sb.toString();
 }

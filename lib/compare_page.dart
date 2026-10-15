@@ -5,6 +5,7 @@ import 'compare.dart';
 import 'detail_page.dart';
 import 'knowledge.dart';
 import 'main.dart';
+import 'request_pipeline.dart';
 import 'tester.dart';
 import 'widgets.dart';
 
@@ -52,7 +53,7 @@ class _ComparePageState extends State<ComparePage> {
 
   Future<void> _measureOne(ApiView a) async {
     final key = a.entry.key;
-    final docs = await sendTest('GET', a.url, '', '');
+    final docs = await runRequest('GET', a.url, '', '');
     if (!mounted) return;
     setState(() => _docs[key] = docs.summary.split('\n').first);
     final example = a.example;
@@ -62,7 +63,7 @@ class _ComparePageState extends State<ComparePage> {
       setState(() => _example[key] = 'needs your key - send it from Try it');
       return;
     }
-    final call = await sendTest('GET', example, a.exampleHeader, '');
+    final call = await runRequest('GET', example, a.exampleHeader, '');
     if (!mounted) return;
     setState(() => _example[key] = call.summary.split('\n').first);
   }

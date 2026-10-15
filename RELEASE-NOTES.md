@@ -21,6 +21,8 @@ The rest of the pre-release review, done.
   name; off, every tile is a coloured initial and nothing leaves the phone for a logo.
 - A link to an API whose address has a slash in it, opened while the app is closed, no longer leaves a stray page
   under the real one.
+- Under the hood the three biggest source files were split up, so the next versions are easier to change safely.
+  Nothing on screen changes because of that.
 
 ## 1.6.0
 
