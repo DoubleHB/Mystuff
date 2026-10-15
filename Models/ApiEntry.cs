@@ -25,6 +25,11 @@ public sealed class ApiEntry
     /// <summary>When a scan first found this API (carried over from scan to scan).</summary>
     public DateTime? FirstSeen { get; set; }
     public List<string> Sources { get; set; } = [];
+    /// <summary>
+    /// Keys of entries folded into this one because they were the same API listed twice (Scanner.MergeDuplicates):
+    /// a favourite, tag, note or key saved under one of them moves to this entry (UserData.AdoptAliases).
+    /// </summary>
+    public List<string> Aliases { get; set; } = [];
 }
 
 /// <summary>What the on-demand docs scan found for one API.</summary>
@@ -157,4 +162,56 @@ public sealed class UserData
     public Dictionary<string, RateLimitNote> RateLimits { get; set; } = [];
     /// <summary>Edited "Test this API" requests (URL + header), DPAPI-encrypted because they may hold a key.</summary>
     public Dictionary<string, string> TestRequests { get; set; } = [];
+
+    /// <summary>
+    /// A scan folded two listings of one API together (<see cref="ApiEntry.Aliases"/>): whatever was saved under the key
+    /// that went moves to the key that stayed. A favourite stays a favourite, tags and variables are merged, two notes
+    /// are joined, a collection keeps its order, a key or saved request already under the new key wins. Returns whether
+    /// anything moved.
+    /// </summary>
+    public bool AdoptAliases(IReadOnlyDictionary<string, string> aliasToKey)
+    {
+        bool changed = false;
+        foreach (var (alias, key) in aliasToKey)
+        {
+            if (alias == key) continue;
+            if (Favourites.Remove(alias)) { Favourites.Add(key); changed = true; }
+            changed |= MoveIfAbsent(MyKeys, alias, key);
+            if (Notes.Remove(alias, out var note))
+            {
+                Notes[key] = Notes.TryGetValue(key, out var have) && have.Trim().Length > 0 && have != note ? have + "\n\n" + note : note;
+                changed = true;
+            }
+            if (Tags.Remove(alias, out var tags))
+            {
+                if (!Tags.TryGetValue(key, out var list)) Tags[key] = list = [];
+                foreach (var t in tags)
+                    if (!list.Any(x => x.Equals(t, StringComparison.OrdinalIgnoreCase))) list.Add(t);
+                changed = true;
+            }
+            if (Variables.Remove(alias, out var vars))
+            {
+                if (!Variables.TryGetValue(key, out var map)) Variables[key] = map = [];
+                foreach (var (name, value) in vars) map.TryAdd(name, value);
+                changed = true;
+            }
+            foreach (var list in Collections.Values)
+            {
+                int i = list.IndexOf(alias);
+                if (i < 0) continue;
+                if (list.Contains(key)) list.RemoveAt(i); else list[i] = key;
+                changed = true;
+            }
+            changed |= MoveIfAbsent(RateLimits, alias, key);
+            changed |= MoveIfAbsent(TestRequests, alias, key);
+        }
+        return changed;
+    }
+
+    private static bool MoveIfAbsent<T>(Dictionary<string, T> map, string alias, string key)
+    {
+        if (!map.Remove(alias, out var value)) return false;
+        map.TryAdd(key, value);
+        return true;
+    }
 }

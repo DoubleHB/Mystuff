@@ -20,6 +20,7 @@ public static class ChangeLog
         foreach (var e in fresh.Entries)
         {
             now.Add(e.Key);
+            now.UnionWith(e.Aliases); // a listing folded into this one is not "gone"
             if (!before.TryGetValue(e.Key, out var old)) { report.Added.Add(Line(e)); continue; }
             // the access level is worked out from these three (plus things a scan cannot change), so most entries need no second look
             if (old.Auth == e.Auth && old.Pricing == e.Pricing && old.Description == e.Description) continue;

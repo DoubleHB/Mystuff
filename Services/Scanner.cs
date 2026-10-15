@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using ApiScout.Models;
 
 namespace ApiScout.Services;
@@ -61,7 +62,13 @@ public static class Scanner
         foreach (var e in fresh.Entries)
         {
             now.Add(e.Key);
-            if (seen.TryGetValue(e.Key, out var first)) e.FirstSeen = first;
+            now.UnionWith(e.Aliases);
+            // an API known before under a key that has since been folded into this one is not new
+            DateTime? first = seen.TryGetValue(e.Key, out var f) ? f : null;
+            if (first is null)
+                foreach (var a in e.Aliases)
+                    if (seen.TryGetValue(a, out f)) { first = f; break; }
+            if (first is { } known) e.FirstSeen = known;
             else { e.FirstSeen = fresh.ScannedAt; added++; }
         }
         fresh.LastAdded = added;
@@ -100,23 +107,99 @@ public static class Scanner
                 byKey[e.Key] = e;
                 continue;
             }
-            foreach (var s in e.Sources)
-                if (!have.Sources.Contains(s)) have.Sources.Add(s);
-            if (have.Auth == AuthKind.Unknown && e.Auth != AuthKind.Unknown) { have.Auth = e.Auth; have.AuthRaw = e.AuthRaw; }
-            if (have.Description.Length < 12 && e.Description.Length > have.Description.Length) have.Description = e.Description;
-            if (have.RawCategory.Length == 0) have.RawCategory = e.RawCategory;
-            if (have.Cors is "" or "Unknown" && e.Cors is "Yes" or "No") have.Cors = e.Cors;
-            if (have.Pricing.Length == 0) have.Pricing = e.Pricing;
-            have.Https ??= e.Https;
-            have.Health ??= e.Health;
-            have.SpecUrl ??= e.SpecUrl;
+            Absorb(have, e);
         }
 
-        var list = byKey.Values.ToList();
+        var list = MergeDuplicates(byKey.Values);
         foreach (var e in list) Categoriser.Apply(e);
         Categoriser.FoldSmall(list);
         list.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
         return list;
+    }
+
+    /// <summary>What a second listing of the same API adds to the first: more sources, and facts the first did not have.</summary>
+    private static void Absorb(ApiEntry have, ApiEntry e)
+    {
+        foreach (var s in e.Sources)
+            if (!have.Sources.Contains(s)) have.Sources.Add(s);
+        if (have.Auth == AuthKind.Unknown && e.Auth != AuthKind.Unknown) { have.Auth = e.Auth; have.AuthRaw = e.AuthRaw; }
+        if (have.Description.Length < 12 && e.Description.Length > have.Description.Length) have.Description = e.Description;
+        if (have.RawCategory.Length == 0) have.RawCategory = e.RawCategory;
+        if (have.Cors is "" or "Unknown" && e.Cors is "Yes" or "No") have.Cors = e.Cors;
+        if (have.Pricing.Length == 0) have.Pricing = e.Pricing;
+        have.Https ??= e.Https;
+        have.Health ??= e.Health;
+        have.SpecUrl ??= e.SpecUrl;
+    }
+
+    private static readonly Regex NameEnding = new(@"\.(com|io|org|net|dev|co|app)$", RegexOptions.Compiled);
+    private static readonly Regex NotWord = new(@"[^\p{L}\p{N}]+", RegexOptions.Compiled);
+    private static readonly Regex TrailingApi = new(@"\s*apis?$", RegexOptions.Compiled);
+
+    /// <summary>"1inch", "1inch API" and "1Forge.com" come out as "1inch" / "1forge": the name without case, punctuation, a web ending or a trailing "API".</summary>
+    public static string SameNameKey(string name)
+    {
+        var n = NameEnding.Replace(name.Trim().ToLowerInvariant(), "", 1);
+        n = NotWord.Replace(n, " ").Trim();
+        if (n.StartsWith("the ")) n = n[4..];
+        n = TrailingApi.Replace(n, "", 1);
+        return n.Replace(" ", "");
+    }
+
+    /// <summary>Hosts that hold many unrelated APIs: two "Weather" projects on GitHub are not one API.</summary>
+    private static readonly HashSet<string> SharedHosts = ["github.com", "gitlab.com", "bitbucket.org", "rapidapi.com", "sourceforge.net"];
+    private static readonly HashSet<string> CountryLevels = ["co", "com", "org", "net", "gov", "ac", "edu"];
+
+    /// <summary>The site a docs URL belongs to: "docs.1inch.io" and "1inch.io" are both "1inch.io". Empty for a shared host.</summary>
+    public static string SiteOf(string url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var u)) return "";
+        var parts = u.Host.ToLowerInvariant().Split('.');
+        if (parts.Length < 2) return "";
+        // two labels, or three when the second-last is a country-level "co"/"com"/"org" (api.example.co.uk)
+        int n = parts.Length >= 3 && parts[^1].Length == 2 && CountryLevels.Contains(parts[^2]) ? 3 : 2;
+        var site = string.Join('.', parts[^n..]);
+        return SharedHosts.Contains(site) ? "" : site;
+    }
+
+    /// <summary>
+    /// One API listed twice under two docs URLs ("1inch" at 1inch.io/api and docs.1inch.io; "1Forge" and "1Forge.com"):
+    /// entries with the same name are folded together when their docs are on the same site, or when they say the same
+    /// thing about themselves. The first listing stays, the other's key is kept as an alias so what the user saved under
+    /// it is not lost. Order is kept. The same rule as the phone app's mergeDuplicates.
+    /// </summary>
+    public static List<ApiEntry> MergeDuplicates(IEnumerable<ApiEntry> entries)
+    {
+        static string Said(ApiEntry e) => NotWord.Replace(e.Description.Trim().ToLowerInvariant(), " ").Trim();
+        var byName = new Dictionary<string, List<ApiEntry>>(StringComparer.Ordinal);
+        var kept = new List<ApiEntry>();
+        foreach (var e in entries)
+        {
+            var name = SameNameKey(e.Name);
+            var site = SiteOf(e.Url);
+            var said = Said(e);
+            ApiEntry? same = null;
+            if (name.Length > 0 && byName.TryGetValue(name, out var candidates))
+                foreach (var c in candidates)
+                {
+                    bool sameSite = site.Length > 0 && site == SiteOf(c.Url);
+                    bool sameWords = said.Length >= 12 && said == Said(c);
+                    if (sameSite || sameWords) { same = c; break; }
+                }
+            if (same is null)
+            {
+                if (!byName.TryGetValue(name, out var list)) byName[name] = list = [];
+                list.Add(e);
+                kept.Add(e);
+                continue;
+            }
+            Absorb(same, e);
+            // the one that was found twice keeps the longer description: the two listings often describe it differently
+            if (e.Description.Length > same.Description.Length) same.Description = e.Description;
+            foreach (var k in e.Aliases.Prepend(e.Key))
+                if (k != same.Key && !same.Aliases.Contains(k)) same.Aliases.Add(k);
+        }
+        return kept;
     }
 
     /// <summary>Same docs URL = same API, ignoring scheme, www, tracking parameters and trailing slashes.</summary>

@@ -142,6 +142,7 @@ public partial class App : Application
             var (added, removed) = Scanner.StampFirstSeen(outcome.Catalog, previous);
             if (previous is { Entries.Count: > 0 }) Store.AddScanReport(ChangeLog.Build(outcome.Catalog, previous, Store.DocsScans, "Background scan", outcome.FailedSources));
             Store.SaveCatalog(outcome.Catalog);
+            Store.AdoptAliases(outcome.Catalog);
             Store.Log($"Headless scan: {outcome.Catalog.Entries.Count:N0} APIs, {added:N0} new, {removed:N0} gone" + (outcome.FailedSources > 0 ? $", {outcome.FailedSources} source(s) failed ({kept:N0} kept): {string.Join("; ", outcome.Notes.Where(n => n.Contains("failed")))}" : ""));
             if (added > 0)
             {

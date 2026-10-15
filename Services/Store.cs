@@ -88,6 +88,39 @@ public sealed class Store
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Log($"Could not save {HistoryFile}: {ex.Message}"); }
     }
 
+    /// <summary>
+    /// A scan folded two listings of one API together (ApiEntry.Aliases): favourites, tags, notes, keys, collections,
+    /// variables, rate-limit notes, saved requests, the test history and docs scans saved under the key that went move
+    /// to the key that stayed. Returns how many folded keys the catalogue carries.
+    /// </summary>
+    public int AdoptAliases(Catalog catalog)
+    {
+        var keys = catalog.Entries.Select(e => e.Key).ToHashSet(StringComparer.Ordinal);
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var e in catalog.Entries)
+            foreach (var a in e.Aliases)
+                if (!keys.Contains(a)) map.TryAdd(a, e.Key);
+        if (map.Count == 0) return 0;
+        if (User.AdoptAliases(map)) SaveUser();
+        bool history = false, docs = false;
+        foreach (var (alias, key) in map)
+        {
+            if (TestHistory.Remove(alias, out var past))
+            {
+                if (!TestHistory.TryGetValue(key, out var list)) TestHistory[key] = list = [];
+                list.AddRange(past);
+                list.Sort((a, b) => b.At.CompareTo(a.At));
+                if (list.Count > HistoryPerApi) list.RemoveRange(HistoryPerApi, list.Count - HistoryPerApi);
+                history = true;
+            }
+            // a scan of the docs page that stayed is the one worth keeping; the other fills in only when there is none
+            if (DocsScans.Remove(alias, out var scan)) { DocsScans.TryAdd(key, scan); docs = true; }
+        }
+        if (history) SaveHistory();
+        if (docs) SaveDocsScans();
+        return map.Count;
+    }
+
     public Catalog? LoadCatalog() => Load<Catalog>("catalog.json");
     public void SaveCatalog(Catalog c) => Save("catalog.json", c, indented: false);
     public void SaveSettings() => Save("settings.json", Settings);

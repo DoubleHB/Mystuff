@@ -6,8 +6,10 @@ key when the provider publishes one, or how and where to get a free key when not
 
 ## What it does
 
-- **Scan the internet** (F5): fetches every ticked source in parallel (~1.5 s), de-duplicates by docs URL and
-  folds every directory's own category names into ~42 canonical categories. ~3,600 unique APIs by default.
+- **Scan the internet** (F5): fetches every ticked source in parallel (~1.5 s), de-duplicates by docs URL, folds
+  the same API listed under two docs pages into one row (same name, and the same site or the same description -
+  `Scanner.MergeDuplicates`; what you saved under the other key follows, `UserData.AdoptAliases`) and folds every
+  directory's own category names into ~42 canonical categories. ~3,400 unique APIs by default.
 - **Sources** (button, top right): public-apis, public-api-lists, publicapis.dev, freepublicapis.com, n0shake -
   plus opt-in APIs.guru (2,500 OpenAPI specs) and "Discover more lists on GitHub" (topic search, keeps READMEs
   that really contain API tables). Add your own list URLs (GitHub repo / README / JSON), one per line.
@@ -169,7 +171,7 @@ Data: `%LOCALAPPDATA%\ApiScout` (settings.json, catalog.json, changes.json, user
 ## Build / test / publish
 
 ```
-dotnet run --project C:\Claude\ApiScout.Tests -c Release            # 218 checks (add -- --offline to skip live ones)
+dotnet run --project C:\Claude\ApiScout.Tests -c Release            # ~225 checks (add -- --offline to skip live ones)
 powershell -ExecutionPolicy Bypass -File C:\Claude\ApiScout\publish.ps1   # ..\ApiScout-App + the portable zip (-SkipApp: zip only)
 ```
 

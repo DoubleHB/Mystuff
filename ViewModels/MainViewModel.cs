@@ -74,6 +74,7 @@ public sealed partial class MainViewModel : ObservableObject
 
         if (store.LoadCatalog() is { Entries.Count: > 0 } cached)
         {
+            store.AdoptAliases(cached); // an import may have brought data under a key a scan has since folded away
             Load(cached);
             StatusText = $"Loaded {cached.Entries.Count:N0} APIs from the last scan ({cached.ScannedAt:d MMM yyyy HH:mm})" +
                          (cached.LastAdded > 0 ? $" - it found {cached.LastAdded:N0} new, see \"{NewCategory}\"." : ". Press Scan to refresh.");
@@ -870,6 +871,7 @@ public sealed partial class MainViewModel : ObservableObject
                 _store.AddScanReport(report);
             }
             _store.SaveCatalog(outcome.Catalog);
+            _store.AdoptAliases(outcome.Catalog); // before Load: the rows read favourites, notes and tags by key
             Load(outcome.Catalog);
             if (report is not null) OnPropertyChanged(nameof(ScanReports)); // after Load, so an open What changed window finds the new rows
             var failed = outcome.Notes.Where(n => n.Contains("failed")).ToList();
