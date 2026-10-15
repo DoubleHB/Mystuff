@@ -202,6 +202,35 @@ var merged = Scanner.Merge(
     new ApiEntry { Name = "NASA", Url = "https://api.nasa.gov/", Auth = AuthKind.ApiKey, AuthRaw = "apiKey", RawCategory = "Science & Math", Sources = ["b"] },
 ]);
 Check("duplicates merged, auth + category filled", merged.Count == 1 && merged[0].Auth == AuthKind.ApiKey && merged[0].Sources.Count == 2 && merged[0].Category == "Science, Math & Education", merged[0].Category);
+Check("same-name keys", Scanner.SameNameKey("1inch API") == "1inch" && Scanner.SameNameKey("1Forge.com") == "1forge" && Scanner.SameNameKey("The Dogs") == "dogs" && Scanner.SameNameKey("API") == "");
+Check("site of a docs url", Scanner.SiteOf("https://docs.1inch.io/api") == "1inch.io" && Scanner.SiteOf("https://api.example.co.uk/x") == "example.co.uk" && Scanner.SiteOf("https://github.com/a/b") == "");
+var folded = Scanner.Merge(
+[
+    new ApiEntry { Name = "1inch", Url = "https://1inch.io/api/", Description = "API for querying decentralize exchange", Sources = ["a"] },
+    new ApiEntry { Name = "1inch", Url = "https://docs.1inch.io/", Description = "Aggregated swaps across many chains and venues", Auth = AuthKind.ApiKey, Sources = ["b"] },
+    new ApiEntry { Name = "Weather", Url = "https://weather-one.example/docs", Description = "Forecasts for Norway", Sources = ["a"] },
+    new ApiEntry { Name = "Weather", Url = "https://weather-two.example/docs", Description = "Historical weather for the US", Sources = ["a"] },
+    new ApiEntry { Name = "Dice", Url = "https://github.com/a/dice", Description = "Rolls dice for tabletop games and more", Sources = ["a"] },
+    new ApiEntry { Name = "Dice", Url = "https://github.com/b/dice", Description = "Rolls dice for tabletop games and more", Sources = ["a"] },
+]);
+var inch = folded.Single(e => e.Name == "1inch");
+Check("one API under two docs pages is one row; the other key stays as an alias, its facts are taken", folded.Count == 4 && inch.Key == "1inch.io/api" && inch.Aliases is ["docs.1inch.io"] && inch.Auth == AuthKind.ApiKey && inch.Sources.Count == 2 && inch.Description.StartsWith("Aggregated"), $"{folded.Count} rows");
+Check("same name on two sites with different words stays two; the same words on GitHub fold", folded.Count(e => e.Name == "Weather") == 2 && folded.Count(e => e.Name == "Dice") == 1);
+var stamped = new Catalog { ScannedAt = DateTime.Now, Entries = folded };
+var earlier = new Catalog { ScannedAt = DateTime.Now.AddDays(-30), Entries = [new ApiEntry { Key = "docs.1inch.io", Name = "1inch", FirstSeen = DateTime.Now.AddDays(-30) }] };
+Check("an API known under the folded key is not new, and the folded key is not gone", Scanner.StampFirstSeen(stamped, earlier) is { Added: 3, Removed: 0 } && inch.FirstSeen == earlier.Entries[0].FirstSeen);
+var ud = new UserData
+{
+    Favourites = ["docs.1inch.io"],
+    Tags = { ["docs.1inch.io"] = ["defi", "Swap"], ["1inch.io/api"] = ["swap"] },
+    Notes = { ["docs.1inch.io"] = "from the docs", ["1inch.io/api"] = "mine" },
+    Collections = { ["Crypto"] = ["x", "docs.1inch.io", "1inch.io/api"], ["Mine"] = ["docs.1inch.io"] },
+    MyKeys = { ["docs.1inch.io"] = "enc" },
+};
+var moved = ud.AdoptAliases(new Dictionary<string, string> { ["docs.1inch.io"] = "1inch.io/api" });
+Check("what was saved under the folded key follows the row that stayed", moved && ud.Favourites.SetEquals(["1inch.io/api"]) && ud.Tags["1inch.io/api"] is ["swap", "defi"] && ud.Notes["1inch.io/api"] == "mine\n\nfrom the docs"
+    && ud.Collections["Crypto"] is ["x", "1inch.io/api"] && ud.Collections["Mine"] is ["1inch.io/api"] && ud.MyKeys["1inch.io/api"] == "enc" && !ud.MyKeys.ContainsKey("docs.1inch.io"));
+Check("nothing left to move the second time", !ud.AdoptAliases(new Dictionary<string, string> { ["docs.1inch.io"] = "1inch.io/api" }));
 
 Console.WriteLine("== Key knowledge ==");
 var nasa = new ApiRow(merged[0]);
@@ -393,7 +422,7 @@ Check("403 with nothing left counts as limited; plain 200 says nothing", Rate(40
 var limitedRow = new ApiRow(new ApiEntry { Name = "L", Url = "https://l.example/" }) { LimitEstimated = true, LimitedUntil = DateTime.Now.AddMinutes(30) };
 Check("row shows the wait, and stops once it is over", limitedRow.IsLimited && limitedRow.LimitLabel.Contains("should work again around") && limitedRow.LimitLabel.Contains("estimate") && limitedRow.LimitShort.StartsWith("⏳ until ")
     && !new ApiRow(new ApiEntry { Name = "L", Url = "https://l.example/" }) { LimitedUntil = DateTime.Now.AddMinutes(-1) }.IsLimited);
-Check("version is 1.6.2", ApiScout.Views.AboutWindow.VersionText == "1.6.2", ApiScout.Views.AboutWindow.VersionText);
+Check("version is 1.6.3", ApiScout.Views.AboutWindow.VersionText == "1.6.3", ApiScout.Views.AboutWindow.VersionText);
 
 Console.WriteLine("== Pricing page ==");
 const string docsHtml = "<a href=\"https://twitter.com/foo/pricing\">Pricing</a> <a href=\"/docs\">Docs</a> <a href=\"https://www.foo.example/pricing?utm=1#top\">See our plans</a>";
