@@ -70,7 +70,13 @@ class AppState extends ChangeNotifier {
   String accessFilter = accessFilters.first;
   bool httpsOnly = false;
   bool corsOnly = false;
+
+  /// The "Works right now" chip: only APIs that answer without a sign-up (no key, or a published demo key).
+  bool worksNow = false;
   ThemeModeSetting theme = ThemeModeSetting.system;
+
+  /// No catalogue on this phone yet: the app scans by itself instead of showing an empty list.
+  bool firstLaunch = false;
 
   /// Category name → how many of the filtered APIs it holds (special categories first).
   List<(String, int)> categories = [];
@@ -92,10 +98,12 @@ class AppState extends ChangeNotifier {
     recentSearches = _prefs.getStringList('recent-searches') ?? [];
     dailyNotice = _prefs.getBool('daily-notice') ?? false;
     weeklyRescan = _prefs.getBool('weekly-rescan') ?? false;
+    restoreFilters(_prefs.getString('filters'));
     await _loadChanges();
     try {
       final file = await _catalogueFile();
-      if (await file.exists()) {
+      firstLaunch = !await file.exists();
+      if (!firstLaunch) {
         var cat = Catalogue.fromJson(jsonDecode(await file.readAsString()) as Map<String, dynamic>);
         if (cat.rules != rulesHash(_knowledgeJson) && cat.entries.isNotEmpty) {
           // an app update brought new rules: same entries, fresh categories, no scan
@@ -110,6 +118,8 @@ class AppState extends ChangeNotifier {
       status = 'The saved catalogue could not be read - scan again.';
     }
     if (all.isEmpty && status.isEmpty) status = 'Press Scan to find free APIs.';
+    // no catalogue: the remembered category would be a headline over nothing, so the list falls back to All APIs
+    if (all.isEmpty) applyFilter();
     ready = true;
     notifyListeners();
     if (dailyNotice) await DailyNotice.schedule(dailyItems());
@@ -335,6 +345,7 @@ class AppState extends ChangeNotifier {
       for (final v in all)
         if ((!httpsOnly || v.entry.https == true) &&
             (!corsOnly || v.entry.cors == 'Yes') &&
+            (!worksNow || v.worksNow) &&
             _matchesAuth(v) &&
             (accessFilter == accessFilters.first || v.accessLabel == accessFilter) &&
             (tagFilter == null || tagsOf(v).any((t) => t.toLowerCase() == tagFilter!.toLowerCase())) &&
@@ -409,15 +420,18 @@ class AppState extends ChangeNotifier {
     category = value;
     listVersion++;
     applyFilter();
+    _saveFilters();
   }
 
-  void setFilters({String? auth, String? access, bool? https, bool? cors}) {
+  void setFilters({String? auth, String? access, bool? https, bool? cors, bool? worksNow}) {
     authFilter = auth ?? authFilter;
     accessFilter = access ?? accessFilter;
     httpsOnly = https ?? httpsOnly;
     corsOnly = cors ?? corsOnly;
+    this.worksNow = worksNow ?? this.worksNow;
     listVersion++;
     applyFilter();
+    _saveFilters();
   }
 
   void clearFilters() {
@@ -426,13 +440,48 @@ class AppState extends ChangeNotifier {
     tagFilter = null;
     authFilter = authFilters.first;
     accessFilter = accessFilters.first;
-    httpsOnly = corsOnly = false;
+    httpsOnly = corsOnly = worksNow = false;
     listVersion++;
     applyFilter();
+    _saveFilters();
   }
 
   int get activeFilterCount =>
-      (authFilter != authFilters.first ? 1 : 0) + (accessFilter != accessFilters.first ? 1 : 0) + (httpsOnly ? 1 : 0) + (corsOnly ? 1 : 0);
+      (authFilter != authFilters.first ? 1 : 0) + (accessFilter != accessFilters.first ? 1 : 0) + (httpsOnly ? 1 : 0) + (corsOnly ? 1 : 0) + (worksNow ? 1 : 0);
+
+  // ---------------------------------------------------------------- the filters come back next launch
+
+  /// The category, chips and tag as one JSON line (the search box is not kept: it is for the moment).
+  String encodeFilters() => jsonEncode({
+        'category': category,
+        'auth': authFilter,
+        'access': accessFilter,
+        'https': httpsOnly,
+        'cors': corsOnly,
+        'worksNow': worksNow,
+        if (tagFilter != null) 'tag': tagFilter,
+      });
+
+  /// Takes back what [encodeFilters] wrote. Anything missing or unknown keeps its default, and a category or tag that
+  /// is no longer there is dropped by the next [applyFilter].
+  void restoreFilters(String? json) {
+    if (json == null || json.isEmpty) return;
+    try {
+      final j = jsonDecode(json);
+      if (j is! Map) return;
+      if (j['category'] is String && (j['category'] as String).isNotEmpty) category = j['category'] as String;
+      if (authFilters.contains(j['auth'])) authFilter = j['auth'] as String;
+      if (accessFilters.contains(j['access'])) accessFilter = j['access'] as String;
+      httpsOnly = j['https'] == true;
+      corsOnly = j['cors'] == true;
+      worksNow = j['worksNow'] == true;
+      tagFilter = j['tag'] is String && (j['tag'] as String).isNotEmpty ? j['tag'] as String : null;
+    } catch (_) {
+      // a settings line that does not parse is no settings line
+    }
+  }
+
+  void _saveFilters() => _prefs.setString('filters', encodeFilters());
 
   bool isFavourite(ApiView v) => favourites.contains(v.entry.key);
 
@@ -446,6 +495,7 @@ class AppState extends ChangeNotifier {
     tagFilter = tag;
     listVersion++;
     applyFilter();
+    _saveFilters();
   }
 
   // ---------------------------------------------------------------- tags, notes, collections

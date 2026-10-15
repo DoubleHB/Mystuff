@@ -1,5 +1,17 @@
 # API Free for Android - release notes
 
+## 1.5.4
+
+Three small things from the closed test.
+
+- **The first scan starts by itself.** A fresh install no longer opens on an empty page with a button to find:
+  the list fills in while the explanation shows. If the phone is offline the page says so, with the Scan button
+  as before.
+- **"Works right now" chip.** One tap in the filter row keeps only the APIs you can call this minute: no key
+  needed, or a demo key the provider publishes. It combines with the other chips and the search.
+- **The filters come back.** The category, the chips (Auth, Free, HTTPS, CORS, Works right now) and a tag filter
+  are remembered between launches. The search box starts empty, as before. Clear works as it did.
+
 ## 1.5.3
 
 - **The app's own typefaces, at last.** Manrope for text and JetBrains Mono for hosts, keys, URLs and responses

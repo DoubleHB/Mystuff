@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:apiscout_mobile/app_state.dart';
 import 'package:apiscout_mobile/az_rail.dart';
 import 'package:apiscout_mobile/changes.dart';
 import 'package:apiscout_mobile/docs_scanner.dart';
@@ -18,6 +19,7 @@ import 'package:apiscout_mobile/sources.dart';
 import 'package:apiscout_mobile/tester.dart';
 import 'package:apiscout_mobile/user_data.dart';
 import 'package:apiscout_mobile/variables.dart';
+import 'package:apiscout_mobile/vault.dart';
 import 'package:apiscout_mobile/widgets.dart';
 import 'package:flutter/painting.dart' show TextDirection, TextPainter, TextScaler, TextSpan, TextStyle;
 import 'package:flutter/services.dart' show FontLoader;
@@ -149,6 +151,31 @@ API | Description | Auth | HTTPS | CORS |
     expect(plain.howTo, contains('Create a free account'));
     expect(ApiView(ApiEntry(name: 'T', url: 'https://t.example', auth: AuthKind.apiKey, description: 'Has a free tier'), k).access, AccessLevel.freeTier);
     expect(ApiView(ApiEntry(name: 'P', url: 'https://p.example', auth: AuthKind.apiKey, pricing: 'paid'), k).access, AccessLevel.trialOnly);
+  });
+
+  test('works right now: no key needed or a demo key included, nothing else', () {
+    expect(ApiView(ApiEntry(name: 'NASA', url: 'https://api.nasa.gov', auth: AuthKind.apiKey), k).worksNow, isTrue);
+    expect(ApiView(ApiEntry(name: 'Open', url: 'https://open.example', auth: AuthKind.none), k).worksNow, isTrue);
+    expect(ApiView(ApiEntry(name: 'Foo', url: 'https://foo.example/docs', auth: AuthKind.apiKey), k).worksNow, isFalse);
+    expect(ApiView(ApiEntry(name: 'Bar', url: 'https://bar.example', auth: AuthKind.oauth), k).worksNow, isFalse);
+    expect(ApiView(ApiEntry(name: 'Baz', url: 'https://baz.example'), k).worksNow, isFalse);
+  });
+
+  test('the filters come back next launch: category, chips and tag round-trip, rubbish is ignored', () {
+    final a = AppState(vault: MemoryKeyVault())
+      ..category = 'Weather'
+      ..authFilter = 'API key'
+      ..accessFilter = 'Full free access'
+      ..httpsOnly = true
+      ..worksNow = true
+      ..tagFilter = 'mine';
+    final b = AppState(vault: MemoryKeyVault())..restoreFilters(a.encodeFilters());
+    expect([b.category, b.authFilter, b.accessFilter, b.httpsOnly, b.corsOnly, b.worksNow, b.tagFilter], ['Weather', 'API key', 'Full free access', true, false, true, 'mine']);
+    expect(a.activeFilterCount, 4);
+    // an older or damaged line leaves the defaults
+    final c = AppState(vault: MemoryKeyVault())..restoreFilters('{"auth":"Bogus","access":7,"https":"yes","tag":""}');
+    expect([c.category, c.authFilter, c.accessFilter, c.httpsOnly, c.worksNow, c.tagFilter], [allCategory, authFilters.first, accessFilters.first, false, false, null]);
+    expect(() => AppState(vault: MemoryKeyVault())..restoreFilters('not json')..restoreFilters(null)..restoreFilters('[1]'), returnsNormally);
   });
 
   test('the Auth fact: the key knowledge answers when the directory says nothing', () {
