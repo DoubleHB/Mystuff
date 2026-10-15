@@ -118,7 +118,7 @@ own published demo key where there is one, or how to get a key.
   seal/open in isolates, one load at a time), responses read in chunks to 2 MB and formatted in an isolate, search
   debounce, MaterialApp on `state.themeMode` only, `logosOn`, cold-start deep links via `onGenerateInitialRoutes`,
   and the split: `theme.dart`, `home_widgets.dart`, `transfer.dart`, `sealed_store.dart`, `docs_store.dart`,
-  `request_pipeline.dart`, `api_text.dart`. Not built.
+  `request_pipeline.dart`, `api_text.dart`.
 - **1.6.0 - Compare and C# from the desktop.**
   - `json_to_csharp.dart` and `client_generator.dart` are ports of the desktop's `JsonToCSharp` and `ClientGenerator`.
     The two must write the same text: `dotnet run --project C:\Claude\ApiScout.Tests -- --codegen-fixture <dir>` writes

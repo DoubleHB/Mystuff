@@ -70,7 +70,11 @@ class BrandTile extends StatelessWidget {
   const BrandTile(this.view, {super.key, this.size = 36, this.hero = false});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      // the setting can change while a tile is on screen (a const card above the list does not rebuild otherwise)
+      ValueListenableBuilder(valueListenable: logosOn, builder: (context, logos, _) => _build(context, logos));
+
+  Widget _build(BuildContext context, bool logos) {
     final host = view.host;
     final letter = RegExp(r'[\p{L}\p{N}]', unicode: true).firstMatch(view.name)?.group(0)?.toUpperCase() ?? '?';
     var hash = 23;
@@ -87,7 +91,7 @@ class BrandTile extends StatelessWidget {
         child: Text(letter, style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: size * 0.45)),
       ),
     );
-    final tile = host.isEmpty || !logosOn.value
+    final tile = host.isEmpty || !logos
         ? initial
         : ClipRRect(
             borderRadius: BorderRadius.circular(size * 0.18),

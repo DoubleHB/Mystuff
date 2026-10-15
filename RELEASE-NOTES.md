@@ -1,6 +1,6 @@
 # API Free for Android - release notes
 
-## 1.6.1 (not built yet)
+## 1.6.1
 
 The rest of the pre-release review, done.
 
