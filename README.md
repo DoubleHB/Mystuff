@@ -113,7 +113,7 @@ own published demo key where there is one, or how to get a key.
   - Play screenshots redone with the 1.5 look (`store/`).
 - **1.5.1 - renamed API Free.** The app, the listing and the desktop app are now called API Free (the ApiScout name
   was taken). Package id, files, data and keys are untouched, so 1.5.1 installs over 1.5.0.
-- **1.6.0 - Compare and C# from the desktop (branch `v1.6`, built for a look, not released).**
+- **1.6.0 - Compare and C# from the desktop.**
   - `json_to_csharp.dart` and `client_generator.dart` are ports of the desktop's `JsonToCSharp` and `ClientGenerator`.
     The two must write the same text: `dotnet run --project C:\Claude\ApiScout.Tests -- --codegen-fixture <dir>` writes
     what the desktop produces for fixed inputs into `test/fixtures/codegen`, and the test compares to the letter.

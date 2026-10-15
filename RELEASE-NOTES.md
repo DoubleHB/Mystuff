@@ -1,6 +1,6 @@
 # API Free for Android - release notes
 
-## 1.6.0 (not released yet - held until the app is in production)
+## 1.6.0
 
 Two of the desktop app's tools come to the phone.
 
