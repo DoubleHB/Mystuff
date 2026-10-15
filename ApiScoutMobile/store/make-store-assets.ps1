@@ -72,12 +72,12 @@ function Draw-Icon($g, [float]$x, [float]$y, [float]$size, [bool]$rounded) {
 
 $shotsList = @(
     # sub-captions: two lines at most, about 90 characters
-    @('01-home',     'home',      '3,592 free APIs in your pocket',           'Five public directories, merged and categorised. Rescan weekly on Wi-Fi if you like.'),
+    @('01-home',     'home',      '3,600+ free APIs in your pocket',          'Five public directories merged into one row per API, categorised. Rescan weekly on Wi-Fi if you like.'),
     @('02-demo-key', 'nasa1',     'See the demo key before you sign up',      'Provider-published test keys, a request that works as it is, and how to get your own key.'),
-    @('03-try-it',   'tryit',     'Try any endpoint from your phone',         'Auth presets, variables, {key} filled in only when you send, a searchable response tree.'),
+    @('03-try-it',   'tryit',     'Try any endpoint from your phone',         'Auth presets, variables, {key} filled in only when you send. Copy as cURL, JavaScript or Python.'),
     @('04-docs-scan','ctdb3',     'Scan the docs for key info',               'Sign-up links, sample keys, endpoints and the OpenAPI spec, all from the provider''s own site.'),
     @('05-insight',  'insight',   'More about this API',                      'What the known facts mean for you, then the provider''s own words. Nothing is made up.'),
-    @('06-filters',  'filter',    'Filter by what you need',                  'Auth, how much is free, HTTPS and CORS. Search forgives a typo; an A-Z rail jumps long lists.'),
+    @('06-filters',  'filter',    'Filter by what you need',                  '"Works right now", auth, how much is free, HTTPS, CORS, sort by health. Search forgives a typo.'),
     @('07-categories','drawer',   '42 categories, favourites, collections',   'Tag, note and group APIs, and move it all to and from the desktop app, keys encrypted.'),
     @('08-dark',     'dark-home', 'Light, dark or system theme',              'API of the day as a 9:00 notification; share an API with a link that opens it in API Free.')
 )

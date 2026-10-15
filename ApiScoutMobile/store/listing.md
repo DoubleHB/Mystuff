@@ -98,6 +98,6 @@ The policy lives at `PRIVACY.md` in the root of the combined GitHub repository; 
 3. **Application id.** The bundle uses `com.kramn.apiscout_mobile`. It cannot be changed after the first upload.
 4. **Third-party logos.** The screenshots show provider logos (NASA, GitHub, TheCocktailDB) that the app loads from the
    providers' own sites. This is normal for a directory app, but you can pick screenshots without them if you prefer.
-5. The "3,592" in the first caption is today's count. Update it, or make it "3,500+", if the catalogue grows before release.
+5. The first caption says "3,600+" (3,677 on 2026-10-15, after duplicate folding). Update it if the catalogue changes a lot.
 6. **Phones with the old sideloaded build.** Those were debug-signed; a release-signed build will not install over them.
    Export data in the app first, uninstall, install, import.
