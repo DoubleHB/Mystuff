@@ -43,6 +43,8 @@ void main() async {
   await DailyNotice.init(openApiByKey);
   await state.load();
   runApp(const ApiScoutApp());
+  // a fresh install starts the first scan itself: the list fills in while the explanation shows, no button to find
+  if (state.firstLaunch) state.scan();
   final fromNotification = await DailyNotice.launchedWith();
   if (fromNotification != null) WidgetsBinding.instance.addPostFrameCallback((_) => openApiByKey(fromNotification));
 }
@@ -324,7 +326,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   /// A rail is worth having for a long list in name order - not for a collection, which keeps the order it was built in.
-  bool get _showRail => state.rows.length >= 40 && !state.category.startsWith(collectionPrefix);
+  bool get _showRail => state.rows.length >= 40 && !state.category.startsWith(collectionPrefix) && state.sort == sortChoices.first;
 
   List<(String, int)> get _letters {
     if (!identical(_railRows, state.rows)) {
@@ -641,14 +643,17 @@ extension on _HomePageState {
     return ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 12), children: [
       // its own Builder: the drawer belongs to the Scaffold below the outer builder's context
       Builder(builder: (ctx) => FilterPill(plainCategory(state.category), menu: true, selected: state.category != allCategory, onTap: () => Scaffold.of(ctx).openDrawer())),
+      // one tap for "what can I try this minute": no key needed, or a demo key included
+      FilterPill('Works right now', icon: Icons.bolt, selected: state.worksNow, onTap: () => state.setFilters(worksNow: !state.worksNow)),
       _menuPill(context, 'Auth', authFilters, state.authFilter, (v) => state.setFilters(auth: v)),
       _menuPill(context, 'Free', accessFilters, state.accessFilter, (v) => state.setFilters(access: v)),
       FilterPill('HTTPS', selected: state.httpsOnly, onTap: () => state.setFilters(https: !state.httpsOnly)),
       FilterPill('CORS', selected: state.corsOnly, onTap: () => state.setFilters(cors: !state.corsOnly)),
+      _menuPill(context, 'Sort', sortChoices, state.sort, state.setSort),
       if (filtered)
         FilterPill('Clear', icon: Icons.close, onTap: () {
           // the search stays: only the choices in this row are cleared
-          state.setFilters(auth: authFilters.first, access: accessFilters.first, https: false, cors: false);
+          state.setFilters(auth: authFilters.first, access: accessFilters.first, https: false, cors: false, worksNow: false);
           state.setCategory(allCategory);
           state.setTagFilter(null);
         }),

@@ -25,6 +25,22 @@ const collectionPrefix = '📁 ';
 
 const authFilters = ['Any auth', 'No key needed', 'Demo key included', 'Key optional or none', 'API key', 'OAuth', 'Unknown'];
 const accessFilters = ['Any free access', 'Full free access', 'Free tier (limited)', 'Demo / trial only', 'Not stated'];
+const sortChoices = ['Name A-Z', 'Health first'];
+
+/// The list in the chosen order. Health comes from freepublicapis.com's daily checks: the best-scoring first, APIs with
+/// no score after them in name order. Name order is how the catalogue is stored, so it costs nothing.
+List<ApiView> sortRows(List<ApiView> rows, String sort) {
+  if (sort != sortChoices[1]) return rows;
+  return [...rows]..sort((a, b) {
+      final ha = a.entry.health, hb = b.entry.health;
+      if (ha != hb) {
+        if (ha == null) return 1;
+        if (hb == null) return -1;
+        return hb.compareTo(ha);
+      }
+      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    });
+}
 
 /// Everything the screens show: the catalogue, the filters and the user's favourites.
 class AppState extends ChangeNotifier {
@@ -70,7 +86,14 @@ class AppState extends ChangeNotifier {
   String accessFilter = accessFilters.first;
   bool httpsOnly = false;
   bool corsOnly = false;
+
+  /// The "Works right now" chip: only APIs that answer without a sign-up (no key, or a published demo key).
+  bool worksNow = false;
+  String sort = sortChoices.first;
   ThemeModeSetting theme = ThemeModeSetting.system;
+
+  /// No catalogue on this phone yet: the app scans by itself instead of showing an empty list.
+  bool firstLaunch = false;
 
   /// Category name → how many of the filtered APIs it holds (special categories first).
   List<(String, int)> categories = [];
@@ -92,10 +115,12 @@ class AppState extends ChangeNotifier {
     recentSearches = _prefs.getStringList('recent-searches') ?? [];
     dailyNotice = _prefs.getBool('daily-notice') ?? false;
     weeklyRescan = _prefs.getBool('weekly-rescan') ?? false;
+    restoreFilters(_prefs.getString('filters'));
     await _loadChanges();
     try {
       final file = await _catalogueFile();
-      if (await file.exists()) {
+      firstLaunch = !await file.exists();
+      if (!firstLaunch) {
         var cat = Catalogue.fromJson(jsonDecode(await file.readAsString()) as Map<String, dynamic>);
         if (cat.rules != rulesHash(_knowledgeJson) && cat.entries.isNotEmpty) {
           // an app update brought new rules: same entries, fresh categories, no scan
@@ -110,6 +135,8 @@ class AppState extends ChangeNotifier {
       status = 'The saved catalogue could not be read - scan again.';
     }
     if (all.isEmpty && status.isEmpty) status = 'Press Scan to find free APIs.';
+    // no catalogue: the remembered category would be a headline over nothing, so the list falls back to All APIs
+    if (all.isEmpty) applyFilter();
     ready = true;
     notifyListeners();
     if (dailyNotice) await DailyNotice.schedule(dailyItems());
@@ -186,6 +213,13 @@ class AppState extends ChangeNotifier {
     scannedAt = cat.scannedAt;
     all = [for (final e in cat.entries) ApiView(e, knowledge)..docsAccess = accessFromDocs(_docsScans[e.key])];
     _byKey = {for (final v in all) v.entry.key: v};
+    // a link or notification made before two listings were folded together still opens the API
+    for (final v in all) {
+      for (final a in v.entry.aliases) {
+        _byKey.putIfAbsent(a, () => v);
+      }
+    }
+    _adoptAliases();
     _pickApiOfTheDay();
     applyFilter();
   }
@@ -199,6 +233,32 @@ class AppState extends ChangeNotifier {
 
   Map<String, ApiView> _byKey = {};
   ApiView? find(String key) => _byKey[key];
+
+  /// Favourites, tags, notes, collections, variables and keys saved under a key that a scan folded into another.
+  void _adoptAliases() {
+    final map = {for (final v in all) for (final a in v.entry.aliases) if (_byKey[a] == v) a: v.entry.key};
+    if (map.isEmpty) return;
+    if (adoptAliases(user, map)) saveUser();
+    final moves = [for (final e in map.entries) if (keyed.contains(e.key)) e];
+    if (moves.isNotEmpty) _moveKeys(moves);
+  }
+
+  Future<void> _moveKeys(List<MapEntry<String, String>> moves) async {
+    for (final m in moves) {
+      try {
+        final value = await vault.read(m.key) ?? '';
+        if (value.isNotEmpty && !keyed.contains(m.value)) {
+          await vault.write(m.value, value);
+          keyed.add(m.value);
+        }
+        await vault.delete(m.key);
+        keyed.remove(m.key);
+      } catch (_) {
+        // the keystore said no: the key stays where it was, under the old name
+      }
+    }
+    applyFilter();
+  }
 
   /// One API a day that answers without any sign-up - the same pick as the desktop app makes from the same catalogue.
   void _pickApiOfTheDay() => apiOfTheDay = apiOfTheDayFor(DateTime.now(), offset: _dayOffset);
@@ -342,6 +402,7 @@ class AppState extends ChangeNotifier {
       for (final v in all)
         if ((!httpsOnly || v.entry.https == true) &&
             (!corsOnly || v.entry.cors == 'Yes') &&
+            (!worksNow || v.worksNow) &&
             _matchesAuth(v) &&
             (accessFilter == accessFilters.first || v.accessLabel == accessFilter) &&
             (tagFilter == null || tagsOf(v).any((t) => t.toLowerCase() == tagFilter!.toLowerCase())) &&
@@ -376,7 +437,15 @@ class AppState extends ChangeNotifier {
             myKeysCategory => [for (final v in pre) if (keyed.contains(v.entry.key)) v],
             _ => [for (final v in pre) if (v.entry.category == category) v],
           };
+    if (collection == null) rows = sortRows(rows, sort);
     notifyListeners();
+  }
+
+  void setSort(String value) {
+    sort = value;
+    listVersion++;
+    applyFilter();
+    _saveFilters();
   }
 
   int specialCategoryCount = 3;
@@ -416,15 +485,18 @@ class AppState extends ChangeNotifier {
     category = value;
     listVersion++;
     applyFilter();
+    _saveFilters();
   }
 
-  void setFilters({String? auth, String? access, bool? https, bool? cors}) {
+  void setFilters({String? auth, String? access, bool? https, bool? cors, bool? worksNow}) {
     authFilter = auth ?? authFilter;
     accessFilter = access ?? accessFilter;
     httpsOnly = https ?? httpsOnly;
     corsOnly = cors ?? corsOnly;
+    this.worksNow = worksNow ?? this.worksNow;
     listVersion++;
     applyFilter();
+    _saveFilters();
   }
 
   void clearFilters() {
@@ -433,13 +505,50 @@ class AppState extends ChangeNotifier {
     tagFilter = null;
     authFilter = authFilters.first;
     accessFilter = accessFilters.first;
-    httpsOnly = corsOnly = false;
+    httpsOnly = corsOnly = worksNow = false;
     listVersion++;
     applyFilter();
+    _saveFilters();
   }
 
   int get activeFilterCount =>
-      (authFilter != authFilters.first ? 1 : 0) + (accessFilter != accessFilters.first ? 1 : 0) + (httpsOnly ? 1 : 0) + (corsOnly ? 1 : 0);
+      (authFilter != authFilters.first ? 1 : 0) + (accessFilter != accessFilters.first ? 1 : 0) + (httpsOnly ? 1 : 0) + (corsOnly ? 1 : 0) + (worksNow ? 1 : 0);
+
+  // ---------------------------------------------------------------- the filters come back next launch
+
+  /// The category, chips and tag as one JSON line (the search box is not kept: it is for the moment).
+  String encodeFilters() => jsonEncode({
+        'category': category,
+        'auth': authFilter,
+        'access': accessFilter,
+        'https': httpsOnly,
+        'cors': corsOnly,
+        'worksNow': worksNow,
+        'sort': sort,
+        if (tagFilter != null) 'tag': tagFilter,
+      });
+
+  /// Takes back what [encodeFilters] wrote. Anything missing or unknown keeps its default, and a category or tag that
+  /// is no longer there is dropped by the next [applyFilter].
+  void restoreFilters(String? json) {
+    if (json == null || json.isEmpty) return;
+    try {
+      final j = jsonDecode(json);
+      if (j is! Map) return;
+      if (j['category'] is String && (j['category'] as String).isNotEmpty) category = j['category'] as String;
+      if (authFilters.contains(j['auth'])) authFilter = j['auth'] as String;
+      if (accessFilters.contains(j['access'])) accessFilter = j['access'] as String;
+      httpsOnly = j['https'] == true;
+      corsOnly = j['cors'] == true;
+      worksNow = j['worksNow'] == true;
+      if (sortChoices.contains(j['sort'])) sort = j['sort'] as String;
+      tagFilter = j['tag'] is String && (j['tag'] as String).isNotEmpty ? j['tag'] as String : null;
+    } catch (_) {
+      // a settings line that does not parse is no settings line
+    }
+  }
+
+  void _saveFilters() => _prefs.setString('filters', encodeFilters());
 
   bool isFavourite(ApiView v) => favourites.contains(v.entry.key);
 
@@ -453,6 +562,7 @@ class AppState extends ChangeNotifier {
     tagFilter = tag;
     listVersion++;
     applyFilter();
+    _saveFilters();
   }
 
   // ---------------------------------------------------------------- tags, notes, collections

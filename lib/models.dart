@@ -20,6 +20,10 @@ class ApiEntry {
   int? health;
   List<String> sources;
 
+  /// Keys of entries folded into this one because they were the same API listed twice (see mergeDuplicates): a
+  /// favourite, tag or key saved under one of them moves to this entry.
+  List<String> aliases;
+
   ApiEntry({
     this.key = '',
     required this.name,
@@ -34,7 +38,9 @@ class ApiEntry {
     this.pricing = '',
     this.health,
     List<String>? sources,
-  }) : sources = sources ?? [];
+    List<String>? aliases,
+  })  : sources = sources ?? [],
+        aliases = aliases ?? [];
 
   Map<String, dynamic> toJson() => {
         'key': key,
@@ -50,6 +56,7 @@ class ApiEntry {
         'pricing': pricing,
         'health': health,
         'sources': sources,
+        if (aliases.isNotEmpty) 'aliases': aliases,
       };
 
   factory ApiEntry.fromJson(Map<String, dynamic> j) => ApiEntry(
@@ -66,6 +73,7 @@ class ApiEntry {
         pricing: j['pricing'] as String? ?? '',
         health: j['health'] as int?,
         sources: (j['sources'] as List?)?.cast<String>() ?? [],
+        aliases: (j['aliases'] as List?)?.cast<String>() ?? [],
       );
 }
 

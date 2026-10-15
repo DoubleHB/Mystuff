@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:apiscout_mobile/app_state.dart';
 import 'package:apiscout_mobile/az_rail.dart';
 import 'package:apiscout_mobile/changes.dart';
 import 'package:apiscout_mobile/client_generator.dart';
@@ -21,6 +22,7 @@ import 'package:apiscout_mobile/sources.dart';
 import 'package:apiscout_mobile/tester.dart';
 import 'package:apiscout_mobile/user_data.dart';
 import 'package:apiscout_mobile/variables.dart';
+import 'package:apiscout_mobile/vault.dart';
 import 'package:apiscout_mobile/widgets.dart';
 import 'package:flutter/painting.dart' show TextDirection, TextPainter, TextScaler, TextSpan, TextStyle;
 import 'package:flutter/services.dart' show FontLoader;
@@ -131,6 +133,73 @@ API | Description | Auth | HTTPS | CORS |
     expect(cat.category, 'Animals');
   });
 
+  test('one API listed twice under two docs URLs is one row, and what was saved under either key is kept', () {
+    expect([sameNameKey('1inch'), sameNameKey('1inch API'), sameNameKey('1Forge.com'), sameNameKey('The 1Forge')], ['1inch', '1inch', '1forge', '1forge']);
+    expect([siteOf('https://docs.1inch.io/api'), siteOf('https://api.example.co.uk/x'), siteOf('https://github.com/a/b')], ['1inch.io', 'example.co.uk', '']);
+    ApiEntry e(String name, String url, {String desc = '', String src = 's', AuthKind auth = AuthKind.unknown}) =>
+        ApiEntry(name: name, url: url, description: desc, sources: [src], auth: auth);
+    final merged = mergeEntries([
+      e('1inch', 'https://1inch.io/api/', desc: 'API for querying decentralize exchange', src: 'a'),
+      e('1inch', 'https://docs.1inch.io/', desc: 'Aggregated swaps across many chains and venues', src: 'b', auth: AuthKind.apiKey),
+      e('1Forge', 'https://1forge.com/forex-data-api', desc: 'Forex currency market data'),
+      e('1Forge.com', 'https://1forge.com/api/', desc: 'Real-time forex and crypto quotes'),
+      // the same name on two unrelated sites, saying different things: two APIs
+      e('Weather', 'https://weather-one.example/docs', desc: 'Forecasts for Norway'),
+      e('Weather', 'https://weather-two.example/docs', desc: 'Historical weather for the US'),
+      // the same name on GitHub twice is two projects unless they describe themselves the same way
+      e('Dice', 'https://github.com/a/dice', desc: 'Rolls dice for tabletop games and more'),
+      e('Dice', 'https://github.com/b/dice', desc: 'Rolls dice for tabletop games and more'),
+      e('Dice', 'https://github.com/c/dice', desc: 'Random numbers'),
+    ], k);
+    expect(merged.map((m) => m.name), ['1Forge', '1inch', 'Dice', 'Dice', 'Weather', 'Weather']);
+    final inch = merged.firstWhere((m) => m.name == '1inch');
+    expect(inch.key, '1inch.io/api');
+    expect(inch.aliases, ['docs.1inch.io']);
+    expect(inch.sources, ['a', 'b']);
+    expect(inch.auth, AuthKind.apiKey); // a fact the first listing lacked
+    expect(inch.description, 'Aggregated swaps across many chains and venues'); // the longer description wins
+    expect(merged.firstWhere((m) => m.name == '1Forge').aliases, ['1forge.com/api']);
+    expect(merged.where((m) => m.name == 'Dice').map((m) => m.aliases.length), unorderedEquals([1, 0]));
+
+    // the user's data follows the key that stayed
+    final user = UserData()
+      ..favourites = {'docs.1inch.io', 'other'}
+      ..tags = {'docs.1inch.io': ['defi', 'Swap'], '1inch.io/api': ['swap']}
+      ..notes = {'docs.1inch.io': 'from the docs', '1inch.io/api': 'mine'}
+      ..collections = {'Crypto': ['x', 'docs.1inch.io', '1inch.io/api'], 'Mine': ['docs.1inch.io']}
+      ..variables = {'docs.1inch.io': {'chain': '1'}};
+    expect(adoptAliases(user, {'docs.1inch.io': '1inch.io/api'}), isTrue);
+    expect(user.favourites, {'1inch.io/api', 'other'});
+    expect(user.tags, {'1inch.io/api': ['swap', 'defi']});
+    expect(user.notes, {'1inch.io/api': 'mine\n\nfrom the docs'});
+    expect(user.collections, {'Crypto': ['x', '1inch.io/api'], 'Mine': ['1inch.io/api']});
+    expect(user.variables, {'1inch.io/api': {'chain': '1'}});
+    expect(adoptAliases(user, {'docs.1inch.io': '1inch.io/api'}), isFalse);
+  });
+
+  test('sort: health first puts the best-scoring at the top and the unscored after, in name order', () {
+    final rows = [
+      ApiView(ApiEntry(name: 'b', url: 'https://b.example'), k),
+      ApiView(ApiEntry(name: 'a', url: 'https://a.example'), k),
+      ApiView(ApiEntry(name: 'c', url: 'https://c.example', health: 70), k),
+      ApiView(ApiEntry(name: 'd', url: 'https://d.example', health: 99), k),
+      ApiView(ApiEntry(name: 'e', url: 'https://e.example', health: 70), k),
+    ];
+    expect(identical(sortRows(rows, sortChoices.first), rows), isTrue);
+    expect(sortRows(rows, 'Health first').map((v) => v.name), ['d', 'c', 'e', 'a', 'b']);
+  });
+
+  test('copy as JavaScript (fetch) and Python (requests): quoting, methods, headers and bodies', () {
+    expect(toFetch('GET', ' https://api.example/x?q="a" ', '', ''), 'const response = await fetch("https://api.example/x?q=\\"a\\"");\nconsole.log(response.status, await response.text());');
+    expect(toFetch('POST', 'https://api.example/x', 'X-Api-Key: {key}', '{"a": 1}'),
+        'const response = await fetch("https://api.example/x", {\n  method: "POST",\n  headers: {\n    "X-Api-Key": "{key}",\n    "Content-Type": "application/json",\n  },\n  body: "{\\"a\\": 1}",\n});\nconsole.log(response.status, await response.text());');
+    expect(toPython('GET', 'https://api.example/x', '', ''), 'import requests\n\nresponse = requests.get(\n    "https://api.example/x",\n)\nprint(response.status_code)\nprint(response.text)');
+    expect(toPython('DELETE', 'https://api.example/x', 'Authorization: Bearer t', 'ignored for DELETE'),
+        'import requests\n\nresponse = requests.delete(\n    "https://api.example/x",\n    headers={\n        "Authorization": "Bearer t",\n    },\n)\nprint(response.status_code)\nprint(response.text)');
+    expect(toPython('PUT', 'https://api.example/x', '', 'a=1&b=2'), contains('"Content-Type": "application/x-www-form-urlencoded"'));
+    expect(toPython('PUT', 'https://api.example/x', '', 'a=1&b=2'), contains('data="a=1&b=2"'));
+  });
+
   test('same docs URL = same API', () {
     expect(makeKey('https://www.Example.com/docs/', 'A'), makeKey('http://example.com/docs?utm=1', 'B'));
     expect(makeKey('https://rapidapi.com/#one', 'A'), isNot(makeKey('https://rapidapi.com/#two', 'A')));
@@ -152,6 +221,32 @@ API | Description | Auth | HTTPS | CORS |
     expect(plain.howTo, contains('Create a free account'));
     expect(ApiView(ApiEntry(name: 'T', url: 'https://t.example', auth: AuthKind.apiKey, description: 'Has a free tier'), k).access, AccessLevel.freeTier);
     expect(ApiView(ApiEntry(name: 'P', url: 'https://p.example', auth: AuthKind.apiKey, pricing: 'paid'), k).access, AccessLevel.trialOnly);
+  });
+
+  test('works right now: no key needed or a demo key included, nothing else', () {
+    expect(ApiView(ApiEntry(name: 'NASA', url: 'https://api.nasa.gov', auth: AuthKind.apiKey), k).worksNow, isTrue);
+    expect(ApiView(ApiEntry(name: 'Open', url: 'https://open.example', auth: AuthKind.none), k).worksNow, isTrue);
+    expect(ApiView(ApiEntry(name: 'Foo', url: 'https://foo.example/docs', auth: AuthKind.apiKey), k).worksNow, isFalse);
+    expect(ApiView(ApiEntry(name: 'Bar', url: 'https://bar.example', auth: AuthKind.oauth), k).worksNow, isFalse);
+    expect(ApiView(ApiEntry(name: 'Baz', url: 'https://baz.example'), k).worksNow, isFalse);
+  });
+
+  test('the filters come back next launch: category, chips and tag round-trip, rubbish is ignored', () {
+    final a = AppState(vault: MemoryKeyVault())
+      ..category = 'Weather'
+      ..authFilter = 'API key'
+      ..accessFilter = 'Full free access'
+      ..httpsOnly = true
+      ..worksNow = true
+      ..sort = 'Health first'
+      ..tagFilter = 'mine';
+    final b = AppState(vault: MemoryKeyVault())..restoreFilters(a.encodeFilters());
+    expect([b.category, b.authFilter, b.accessFilter, b.httpsOnly, b.corsOnly, b.worksNow, b.sort, b.tagFilter], ['Weather', 'API key', 'Full free access', true, false, true, 'Health first', 'mine']);
+    expect(a.activeFilterCount, 4);
+    // an older or damaged line leaves the defaults
+    final c = AppState(vault: MemoryKeyVault())..restoreFilters('{"auth":"Bogus","access":7,"https":"yes","tag":""}');
+    expect([c.category, c.authFilter, c.accessFilter, c.httpsOnly, c.worksNow, c.sort, c.tagFilter], [allCategory, authFilters.first, accessFilters.first, false, false, sortChoices.first, null]);
+    expect(() => AppState(vault: MemoryKeyVault())..restoreFilters('not json')..restoreFilters(null)..restoreFilters('[1]'), returnsNormally);
   });
 
   test('the Auth fact: the key knowledge answers when the directory says nothing', () {
@@ -636,7 +731,12 @@ POST /v1/cats</pre>
     // ignore: avoid_print
     print('${entries.length} APIs, ${entries.map((e) => e.category).toSet().length} categories, '
         '${views.where((v) => v.hasDemoKey).length} with a demo key, other: ${entries.where((e) => e.category == 'Other').length}');
+    final folded = entries.where((e) => e.aliases.isNotEmpty).toList();
+    // ignore: avoid_print
+    print('${folded.length} APIs were listed twice and folded, e.g. ${folded.take(40).map((e) => '${e.name} (${e.key} + ${e.aliases.join(', ')})').join('; ')}');
     expect(entries.length, greaterThan(3000));
+    // 305 of 3,676 on 2026-10-15, all of them the same API under two docs pages; a rule that folds more than one in eight is folding the wrong things
+    expect(folded.length, lessThan(entries.length * 0.125));
     expect(entries.where((e) => e.category == 'Other').length, lessThan(entries.length * 0.1));
     expect(views.where((v) => v.hasDemoKey).length, greaterThan(10));
     expect((result['notes'] as List).where((n) => (n as String).contains('failed')), isEmpty);

@@ -14,7 +14,33 @@ Two of the desktop app's tools come to the phone.
   offers one file with a client for every tested API in it.
 - **C# classes.** The response page has a button that turns a JSON answer into classes for System.Text.Json.
 
-The generated code is the same, to the letter, as the desktop app writes for the same requests.
+The generated code is the same, to the letter, as the desktop app writes for the same requests. Includes 1.5.4 and
+1.5.5.
+
+## 1.5.5
+
+- **One row per API.** Some APIs were listed twice because two directories point at different docs pages for them
+  (1inch, 1Forge). The scan now folds those together when the name matches and the docs are on the same site, or
+  the two listings describe the API in the same words. Anything you saved under either copy - a favourite, tags,
+  a note, a collection entry, variables or your key - follows the row that stays. Takes effect on the next scan.
+- **Sort.** A Sort chip at the end of the filter row: Name A-Z (as before) or Health first, which puts the APIs
+  freepublicapis.com checks daily at the top, best score first; APIs without a score follow in name order. The A-Z
+  rail steps aside while the list is not in name order.
+- **Copy as JavaScript or Python.** Next to cURL on the Overview tab, and in Try it the cURL button is now
+  "Copy as…" with cURL, JavaScript (fetch) and Python (requests). Variables are filled in; `{key}` is not, so a
+  copied snippet never carries your saved key.
+
+## 1.5.4
+
+Three small things from the closed test.
+
+- **The first scan starts by itself.** A fresh install no longer opens on an empty page with a button to find:
+  the list fills in while the explanation shows. If the phone is offline the page says so, with the Scan button
+  as before.
+- **"Works right now" chip.** One tap in the filter row keeps only the APIs you can call this minute: no key
+  needed, or a demo key the provider publishes. It combines with the other chips and the search.
+- **The filters come back.** The category, the chips (Auth, Free, HTTPS, CORS, Works right now) and a tag filter
+  are remembered between launches. The search box starts empty, as before. Clear works as it did.
 
 ## 1.5.3
 
