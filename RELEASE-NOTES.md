@@ -1,6 +1,6 @@
 # API Free for Android - release notes
 
-## 1.5.5 (not built yet)
+## 1.5.5
 
 - **One row per API.** Some APIs were listed twice because two directories point at different docs pages for them
   (1inch, 1Forge). The scan now folds those together when the name matches and the docs are on the same site, or
