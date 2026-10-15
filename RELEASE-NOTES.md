@@ -17,6 +17,15 @@ Two of the desktop app's tools come to the phone.
 The generated code is the same, to the letter, as the desktop app writes for the same requests. Includes 1.5.4 and
 1.5.5.
 
+Also, from a review of the app's structure before release:
+- If the phone's secure storage cannot be opened at start-up, the saved test requests and request history are now
+  left untouched on disk (and the Try it tab says so) instead of being sealed again under a key that would be lost.
+- A scan with most directories unreachable keeps the catalogue you have instead of replacing it with a thin one.
+- A request that carries your key in the URL no longer follows a redirect to another site.
+- Saving a key the keystore refuses now says so instead of failing silently.
+- The app and the weekly background rescan can no longer trip over each other's temporary file.
+- The Back button during an import or export no longer leaves a blank screen.
+
 ## 1.5.5
 
 - **One row per API.** Some APIs were listed twice because two directories point at different docs pages for them

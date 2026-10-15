@@ -871,6 +871,33 @@ class ApiOfTheDayCard extends StatelessWidget {
 
 // ---------------------------------------------------------------- moving data between the desktop app and the phone
 
+/// A spinner the Back button cannot dismiss, closed by its own route - never by popping whatever is on top at the time.
+class WorkingDialog {
+  BuildContext? _dialog;
+  bool _closed = false;
+
+  void close() {
+    _closed = true;
+    final c = _dialog;
+    if (c != null && c.mounted) Navigator.of(c).pop();
+  }
+}
+
+WorkingDialog showWorking(BuildContext context) {
+  final w = WorkingDialog();
+  showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (c) {
+      w._dialog = c;
+      // the work finished before the dialog was even built: leave again at once
+      if (w._closed) WidgetsBinding.instance.addPostFrameCallback((_) => c.mounted ? Navigator.of(c).pop() : null);
+      return const PopScope(canPop: false, child: Center(child: CircularProgressIndicator()));
+    },
+  );
+  return w;
+}
+
 void _say(BuildContext context, String text) {
   if (!context.mounted) return;
   ScaffoldMessenger.of(context)
@@ -941,12 +968,12 @@ Future<void> importFromFile(BuildContext context) async {
       if (passphrase == null) return;
     }
     if (!context.mounted) return;
-    showDialog(context: context, barrierDismissible: false, builder: (_) => const Center(child: CircularProgressIndicator()));
+    final working = showWorking(context);
     ImportSummary summary;
     try {
       summary = await state.importBackup(json, passphrase);
     } finally {
-      if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
+      working.close();
     }
     if (!context.mounted) return;
     showDialog(
@@ -980,12 +1007,12 @@ Future<void> exportToFile(BuildContext context) async {
       if (passphrase == null) return;
     }
     if (!context.mounted) return;
-    showDialog(context: context, barrierDismissible: false, builder: (_) => const Center(child: CircularProgressIndicator()));
+    final working = showWorking(context);
     String json;
     try {
       json = await state.exportBackup(passphrase);
     } finally {
-      if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
+      working.close();
     }
     final now = DateTime.now();
     final saved = await FilePicker.saveFile(

@@ -174,13 +174,27 @@ class _DetailPageState extends State<DetailPage> with SingleTickerProviderStateM
   Future<void> _saveKey() async {
     FocusScope.of(context).unfocus();
     final had = state.hasKey(v);
-    await state.setKey(v, _key.text);
-    _keyDirty = false;
+    String? problem;
+    try {
+      await state.setKey(v, _key.text);
+      _keyDirty = false;
+    } catch (ex) {
+      problem = 'Could not save the key - the phone\'s secure storage refused ($ex). It is still in the box; try again later.';
+    }
     if (!mounted) return;
     final saved = state.hasKey(v);
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(saved ? '✓ Key saved in the phone\'s secure storage - {key} in Try it stands for it' : had ? 'Key removed from this phone' : 'Type or paste a key first')));
+      ..showSnackBar(SnackBar(
+          duration: Duration(seconds: problem == null ? 4 : 8),
+          content: Text(problem ??
+              (saved
+                  ? state.vaultProblem != null
+                      ? 'Key kept until the app closes - the secure storage could not be opened this time. {key} in Try it stands for it.'
+                      : '✓ Key saved in the phone\'s secure storage - {key} in Try it stands for it'
+                  : had
+                      ? 'Key removed from this phone'
+                      : 'Type or paste a key first'))));
     setState(() {});
   }
 
@@ -265,8 +279,9 @@ class _DetailPageState extends State<DetailPage> with SingleTickerProviderStateM
     // going back to the suggested one by hand forgets it
     state.setSavedRequest(v, _isSuggested ? null : TestRequest(method, typedUrl.trim(), typedHeaders.trim(), body.trim()));
     setState(() => _sending = true);
-    var r = await sendTest(method, url, headers, sentBody);
-    if (url != filledUrl || headers != filledHeaders || sentBody != filledBody) {
+    final carriesKey = url != filledUrl || headers != filledHeaders || sentBody != filledBody;
+    var r = await sendTest(method, url, headers, sentBody, carriesKey: carriesKey);
+    if (carriesKey) {
       // some APIs echo the request back: what is shown (and can be copied) says {key} again
       final key = _key.text.trim().isNotEmpty ? _key.text.trim() : await state.keyOf(v);
       String hide(String s) => key.length < 6 ? s : s.replaceAll(key, '{key}').replaceAll(Uri.encodeComponent(key), '{key}');
@@ -701,6 +716,8 @@ class _DetailPageState extends State<DetailPage> with SingleTickerProviderStateM
         if (!_isSuggested || state.savedRequestOf(v) != null)
           TextButton.icon(onPressed: _resetRequest, icon: const Icon(Icons.restart_alt, size: 18), label: const Text('Reset')),
       ]),
+      if (state.historyProblem != null)
+        Padding(padding: const EdgeInsets.only(top: 10), child: Text(state.historyProblem!, style: _muted(context).copyWith(color: Theme.of(context).colorScheme.error))),
       if (_result != null) ...[
         const SizedBox(height: 14),
         Text(_result!.summary, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, height: 1.4, color: badgeColor(context, _result!.ok ? 'Open' : 'Key needed'))),

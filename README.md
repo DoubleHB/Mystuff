@@ -189,4 +189,4 @@ APK and the bundle are release-signed; without them the debug key is used, which
 "install unknown apps") but not for Play. `build-apk.ps1 -Bundle` adds `ApiScout.aab`, the file Play takes; the
 listing text and images are in `store/`.
 
-Not in this version (desktop only): C# generation, compare, link check, drag-to-reorder and Test all for collections.
+Not in this version (desktop only): link check, drag-to-reorder and Test all for collections.

@@ -1,5 +1,5 @@
 {
-  "exportedFrom": "API Free 1.6.2",
+  "exportedFrom": "API Free 1.6.3",
   "categoryRules": [
     {
       "pattern": "(?<![\\p{L}])(?:misc|other(?![\\p{L}])|uncategor)",

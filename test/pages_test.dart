@@ -2,9 +2,11 @@
 //   flutter test test/pages_test.dart
 // With APIFREE_SHOTS set to a folder, each step is also saved there as a PNG - a look at the screens without a build.
 // ignore_for_file: depend_on_referenced_packages
+import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
 
+import 'package:apiscout_mobile/app_state.dart';
 import 'package:apiscout_mobile/code_page.dart';
 import 'package:apiscout_mobile/compare_page.dart';
 import 'package:apiscout_mobile/json_to_csharp.dart';
@@ -12,6 +14,7 @@ import 'package:apiscout_mobile/knowledge.dart';
 import 'package:apiscout_mobile/main.dart';
 import 'package:apiscout_mobile/models.dart';
 import 'package:apiscout_mobile/user_data.dart';
+import 'package:apiscout_mobile/vault.dart';
 import 'package:apiscout_mobile/widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -76,11 +79,13 @@ Finder row(String name) => find.descendant(of: find.byType(ApiTile), matching: f
 
 void main() {
   late Knowledge k;
+  late String dir;
 
   setUpAll(() async {
     TestWidgetsFlutterBinding.ensureInitialized();
     await _loadFonts();
-    PathProviderPlatform.instance = _TempPaths(Directory.systemTemp.createTempSync('apifree-pages-').path);
+    dir = Directory.systemTemp.createTempSync('apifree-pages-').path;
+    PathProviderPlatform.instance = _TempPaths(dir);
     SharedPreferences.setMockInitialValues({});
     k = Knowledge.parse(File('assets/knowledge.json').readAsStringSync());
   });
@@ -197,5 +202,39 @@ void main() {
     expect(find.text('Compare 3 APIs'), findsOneWidget);
     expect(find.text('no known example request'), findsOneWidget); // Cat Facts
     await _shot(tester, '8-compare-three');
+  });
+
+  test('sealed history that cannot be unlocked is left exactly as it is; with the key it opens and grows', () async {
+    // a history.bin sealed under a key this phone's vault does not hold (a keystore that would not open, a restore)
+    final sealKey = newSealKey();
+    final entry = TestHistoryEntry(at: DateTime(2026, 10, 1, 9), method: 'GET', url: 'https://catfact.ninja/fact', ok: true, summary: '200 OK', response: '{"fact":"x"}');
+    final file = File('$dir/history.bin');
+    final before = sealWithKey(sealKey, Uint8List.fromList(utf8.encode(jsonEncode({'catfact.ninja': [entry.toJson()]}))));
+    file.writeAsBytesSync(before);
+    final api = ApiView(_entry('Cat Facts', 'https://catfact.ninja'), k);
+
+    final blind = AppState(vault: MemoryKeyVault());
+    await blind.load();
+    await blind.ensureHistory();
+    expect(blind.historyProblem, isNotNull);
+    expect(blind.historyOf(api), isEmpty);
+    await blind.addHistory(api, entry);
+    await blind.setSavedRequest(api, const TestRequest('GET', 'https://catfact.ninja/facts', '', ''));
+    await Future<void>.delayed(const Duration(milliseconds: 200)); // the write chain, had it written
+    expect(blind.historyOf(api).length, 1); // kept for the session
+    expect(file.readAsBytesSync(), before); // the file on disk untouched
+    expect(File('$dir/requests.bin').existsSync(), isFalse); // no new seal key minted over it
+
+    final vault = MemoryKeyVault();
+    await vault.writeSecret('history-key', base64Encode(sealKey));
+    final sighted = AppState(vault: vault);
+    await sighted.load();
+    await sighted.ensureHistory();
+    expect(sighted.historyProblem, isNull);
+    expect(sighted.historyOf(api).single.url, 'https://catfact.ninja/fact');
+    await sighted.addHistory(api, TestHistoryEntry(at: DateTime(2026, 10, 2, 9), method: 'GET', url: 'https://catfact.ninja/facts', ok: true, summary: '200 OK', response: '[]'));
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    expect(file.readAsBytesSync(), isNot(before));
+    expect(historyFromJson(jsonDecode(utf8.decode(openWithKey(sealKey, file.readAsBytesSync())!)))['catfact.ninja']!.length, 2);
   });
 }
