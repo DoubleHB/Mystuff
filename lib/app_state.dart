@@ -16,6 +16,7 @@ import 'search.dart';
 import 'sources.dart';
 import 'user_data.dart';
 import 'vault.dart';
+import 'widgets.dart' show logosOn;
 
 const allCategory = 'All APIs';
 const favouritesCategory = '★ Favourites';
@@ -92,6 +93,12 @@ class AppState extends ChangeNotifier {
   String sort = sortChoices.first;
   ThemeModeSetting theme = ThemeModeSetting.system;
 
+  /// The theme on its own notifier: MaterialApp listens to this and to nothing else.
+  final themeMode = ValueNotifier<ThemeModeSetting>(ThemeModeSetting.system);
+
+  /// Provider logos from the icon service (host names leave the phone for them); off = coloured initials only.
+  bool showLogos = true;
+
   /// No catalogue on this phone yet: the app scans by itself instead of showing an empty list.
   bool firstLaunch = false;
 
@@ -112,6 +119,9 @@ class AppState extends ChangeNotifier {
       vault = MemoryKeyVault();
     }
     theme = ThemeModeSetting.values[(_prefs.getInt('theme') ?? 0).clamp(0, 2)];
+    themeMode.value = theme;
+    showLogos = _prefs.getBool('show-logos') ?? true;
+    logosOn.value = showLogos;
     recentSearches = _prefs.getStringList('recent-searches') ?? [];
     dailyNotice = _prefs.getBool('daily-notice') ?? false;
     weeklyRescan = _prefs.getBool('weekly-rescan') ?? false;
@@ -123,16 +133,19 @@ class AppState extends ChangeNotifier {
       if (!firstLaunch) {
         var cat = Catalogue.fromJson(jsonDecode(await file.readAsString()) as Map<String, dynamic>);
         if (cat.rules != rulesHash(_knowledgeJson) && cat.entries.isNotEmpty) {
-          // an app update brought new rules: same entries, fresh categories, no scan
-          recategorise(cat.entries, knowledge);
-          cat = Catalogue(cat.scannedAt, cat.entries, rules: rulesHash(_knowledgeJson));
+          // an app update brought new rules: same entries, fresh categories, no scan - off the UI isolate
+          final fresh = await compute(recategoriseIsolate, {'knowledge': _knowledgeJson, 'entries': [for (final e in cat.entries) e.toJson()]});
+          cat = Catalogue(cat.scannedAt, [for (final e in fresh) ApiEntry.fromJson((e as Map).cast<String, dynamic>())], rules: rulesHash(_knowledgeJson));
           await _saveCatalogue(cat);
         }
         _use(cat);
         status = 'Loaded ${all.length} APIs from the last scan (${_when(cat.scannedAt)}).';
       }
-    } catch (_) {
-      status = 'The saved catalogue could not be read - scan again.';
+    } catch (ex) {
+      // a damaged catalogue is set aside, not overwritten in silence, and the app scans again by itself
+      await _setAside(await _catalogueFile(), 'catalogue', ex);
+      firstLaunch = true;
+      status = 'The saved catalogue could not be read, so the app is scanning again.';
     }
     if (all.isEmpty && status.isEmpty) status = 'Press Scan to find free APIs.';
     // no catalogue: the remembered category would be a headline over nothing, so the list falls back to All APIs
@@ -178,6 +191,14 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// A file this launch could not read, and what was done about it (a strip above the list until dismissed).
+  String? dataProblem;
+
+  void dismissDataProblem() {
+    dataProblem = null;
+    notifyListeners();
+  }
+
   Future<void> _loadUser() async {
     try {
       final file = await _userFile();
@@ -185,11 +206,26 @@ class AppState extends ChangeNotifier {
         user = UserData.fromJson(jsonDecode(await file.readAsString()) as Map<String, dynamic>);
         return;
       }
-    } catch (_) {
-      // unreadable: start clean rather than not start
+    } catch (ex) {
+      // unreadable: start clean rather than not start - but keep the file, and say so, instead of overwriting it
+      // with an empty one on the next star tap
+      await _setAside(await _userFile(), 'favourites, tags, notes and collections', ex);
     }
     // version 1.0 kept the favourites in the settings
     user = UserData()..favourites = {...?_prefs.getStringList('favourites')};
+  }
+
+  /// Renames a file the app could not read to `name.unreadable-time` so nothing overwrites it, and notes it.
+  Future<void> _setAside(File file, String what, Object error) async {
+    try {
+      if (!await file.exists()) return;
+      final stamp = DateTime.now().toIso8601String().replaceAll(':', '-').split('.').first;
+      final aside = '${file.path}.unreadable-$stamp';
+      await file.rename(aside);
+      dataProblem = 'The file with your $what could not be read ($error). It was kept as ${aside.split('/').last}; the app starts without it.';
+    } catch (_) {
+      dataProblem = 'The file with your $what could not be read ($error).';
+    }
   }
 
   Future<void> _pendingSave = Future.value();
@@ -234,11 +270,31 @@ class AppState extends ChangeNotifier {
   Map<String, ApiView> _byKey = {};
   ApiView? find(String key) => _byKey[key];
 
-  /// Favourites, tags, notes, collections, variables and keys saved under a key that a scan folded into another.
+  /// Favourites, tags, notes, collections, variables and keys saved under a key that a scan folded into another -
+  /// and back again when a later scan lists the folded key on its own and the other has gone (user.renames remembers
+  /// every move, so no star is stranded under a key that no row has).
   void _adoptAliases() {
-    final map = {for (final v in all) for (final a in v.entry.aliases) if (_byKey[a] == v) a: v.entry.key};
+    final forward = {for (final v in all) for (final a in v.entry.aliases) if (_byKey[a] == v) a: v.entry.key};
+    final backward = <String, String>{};
+    for (final e in user.renames.entries) {
+      final from = e.key, to = e.value;
+      final toRow = _byKey[to], fromRow = _byKey[from];
+      // the row the data moved to is gone, the one it came from is back as its own row: move it back
+      if (toRow == null && fromRow != null && fromRow.entry.key == from) backward[to] = from;
+    }
+    final map = {...backward, ...forward};
     if (map.isEmpty) return;
-    if (adoptAliases(user, map)) saveUser();
+    var changed = adoptAliases(user, map);
+    for (final e in forward.entries) {
+      if (user.renames[e.key] != e.value) {
+        user.renames[e.key] = e.value;
+        changed = true;
+      }
+    }
+    for (final e in backward.entries) {
+      changed = user.renames.remove(e.value) != null || changed;
+    }
+    if (changed) saveUser();
     final moves = [for (final e in map.entries) if (keyed.contains(e.key)) e];
     if (moves.isNotEmpty) _moveKeys(moves);
   }
@@ -752,7 +808,7 @@ class AppState extends ChangeNotifier {
       } else {
         var opened = true;
         if (await file.exists()) {
-          final plain = openWithKey(_historyKey!, await file.readAsBytes());
+          final plain = await compute(openIsolate, [_historyKey!, await file.readAsBytes()]);
           if (plain != null) {
             history.addAll(historyFromJson(jsonDecode(utf8.decode(plain))));
           } else {
@@ -760,7 +816,7 @@ class AppState extends ChangeNotifier {
           }
         }
         if (await requestsFile.exists()) {
-          final plain = openWithKey(_historyKey!, await requestsFile.readAsBytes());
+          final plain = await compute(openIsolate, [_historyKey!, await requestsFile.readAsBytes()]);
           if (plain != null) {
             requests.addAll(testRequestsFromJson(jsonDecode(utf8.decode(plain))));
           } else {
@@ -778,13 +834,23 @@ class AppState extends ChangeNotifier {
 
   List<TestHistoryEntry> historyOf(ApiView v) => _history?[v.entry.key] ?? const [];
 
+  /// How many APIs keep a history: beyond this the one not tested for longest is dropped, so the sealed file stays a
+  /// few megabytes at most however many APIs have been tried over the years.
+  static const historyApis = 100;
+
   Future<void> addHistory(ApiView v, TestHistoryEntry entry) async {
     await ensureHistory();
     final list = _history!.putIfAbsent(v.entry.key, () => []);
     list.insert(0, entry);
     if (list.length > historyPerApi) list.removeRange(historyPerApi, list.length);
+    while (_history!.length > historyApis) {
+      final oldest = _history!.entries.reduce((a, b) => _newest(a.value).isBefore(_newest(b.value)) ? a : b);
+      _history!.remove(oldest.key);
+    }
     await _saveHistory();
   }
+
+  static DateTime _newest(List<TestHistoryEntry> list) => list.isEmpty ? DateTime.fromMillisecondsSinceEpoch(0) : list.map((h) => h.at).reduce((a, b) => a.isAfter(b) ? a : b);
 
   Future<void> clearHistory(ApiView v) async {
     await ensureHistory();
@@ -805,7 +871,8 @@ class AppState extends ChangeNotifier {
           }
           final file = await which();
           final temp = File('${file.path}.$pid.tmp');
-          await temp.writeAsBytes(sealWithKey(_historyKey!, Uint8List.fromList(utf8.encode(json))), flush: true);
+          final sealed = await compute(sealIsolate, [_historyKey!, Uint8List.fromList(utf8.encode(json))]);
+          await temp.writeAsBytes(sealed, flush: true);
           await temp.rename(file.path);
         } catch (_) {
           // the history is a convenience: failing to save it must not get in the way of the test itself
@@ -863,7 +930,15 @@ class AppState extends ChangeNotifier {
 
   void setTheme(ThemeModeSetting value) {
     theme = value;
+    themeMode.value = value;
     _prefs.setInt('theme', value.index);
+    notifyListeners();
+  }
+
+  void setShowLogos(bool on) {
+    showLogos = on;
+    logosOn.value = on;
+    _prefs.setBool('show-logos', on);
     notifyListeners();
   }
 }

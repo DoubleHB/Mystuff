@@ -1,5 +1,27 @@
 # API Free for Android - release notes
 
+## 1.6.1 (not built yet)
+
+The rest of the pre-release review, done.
+
+- **Nothing stranded.** When a scan folds two listings of an API together your favourites, tags, notes and key
+  move to the row that stays - and now move back if a later scan lists the other one on its own again.
+- **A key typed out in full is treated like {key}.** Copies as cURL, JavaScript or Python, the C# client and the
+  collection client all put your saved key back to {key}, even when you typed it into the request instead of
+  writing {key}.
+- **Damaged files are kept, not overwritten.** If favourites or the catalogue cannot be read at start-up the file
+  is set aside under a dated name, a strip above the list says so, and the app scans again by itself.
+- **History stays small and off the main thread.** The sealed request history keeps the last 100 APIs tested
+  and is encrypted and decrypted in the background, so a big history never makes a page stutter.
+- **Big replies are cut, not swallowed.** A response is read up to 2 MB and large ones are formatted in the
+  background.
+- **Faster typing and lighter redraws.** The search waits for a short pause before filtering; changing a filter,
+  a scan tick or a docs scan no longer rebuilds the whole app.
+- **Provider logos can be turned off** (menu). They come from a public icon service that is told the API's host
+  name; off, every tile is a coloured initial and nothing leaves the phone for a logo.
+- A link to an API whose address has a slash in it, opened while the app is closed, no longer leaves a stray page
+  under the real one.
+
 ## 1.6.0
 
 Two of the desktop app's tools come to the phone.

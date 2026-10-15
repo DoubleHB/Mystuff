@@ -336,6 +336,15 @@ void recategorise(List<ApiEntry> list, Knowledge knowledge) {
   list.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
 }
 
+/// [recategorise] for compute(): an app update with new rules re-categorises ~4,000 cached entries with ~65 regexes,
+/// which is too long for the launch to wait on the UI isolate. Entries travel as JSON both ways.
+List<dynamic> recategoriseIsolate(Map<String, dynamic> args) {
+  final knowledge = Knowledge.parse(args['knowledge'] as String);
+  final entries = [for (final e in (args['entries'] as List)) ApiEntry.fromJson((e as Map).cast<String, dynamic>())];
+  recategorise(entries, knowledge);
+  return [for (final e in entries) e.toJson()];
+}
+
 /// Runs in a background isolate (see AppState.scan): parse every downloaded source, merge, categorise.
 /// Everything crossing the isolate boundary is plain JSON-like data.
 Map<String, dynamic> buildCatalogue(Map<String, dynamic> args) {

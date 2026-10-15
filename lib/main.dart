@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
@@ -20,6 +21,7 @@ import 'knowledge.dart';
 import 'links.dart';
 import 'notify.dart';
 import 'search.dart';
+import 'tester.dart' show scrubKey;
 import 'user_data.dart';
 import 'widgets.dart';
 
@@ -173,27 +175,44 @@ ThemeData ledgerTheme(Brightness brightness) {
   );
 }
 
+/// A link's page: the API, or a note that the catalogue does not have it.
+Route<dynamic> _routeForKey(String key, RouteSettings settings) {
+  final v = state.find(key);
+  return MaterialPageRoute(settings: settings, builder: (_) => v == null ? MissingApiPage(apiKey: key) : DetailPage(view: v));
+}
+
 class ApiScoutApp extends StatelessWidget {
   const ApiScoutApp({super.key});
 
+  // the themes are built once: a scan tick or a keystroke must not rebuild MaterialApp and both colour schemes
+  static final _light = ledgerTheme(Brightness.light), _dark = ledgerTheme(Brightness.dark);
+
   @override
-  Widget build(BuildContext context) => ListenableBuilder(
-        listenable: state,
-        builder: (context, _) => MaterialApp(
+  Widget build(BuildContext context) => ValueListenableBuilder(
+        // only the theme setting reaches up here; everything else is listened to by the pages that show it
+        valueListenable: state.themeMode,
+        builder: (context, theme, _) => MaterialApp(
           title: 'API Free',
           debugShowCheckedModeBanner: false,
           navigatorKey: appNavigator,
           // apiscout://open/api/<key> arrives as the route "/api/<key>", at start-up or while the app is running
           onGenerateRoute: (settings) {
             final key = apiKeyFromRoute(settings.name);
-            if (key == null) return null;
-            final v = state.find(key);
-            return MaterialPageRoute(settings: settings, builder: (_) => v == null ? MissingApiPage(apiKey: key) : DetailPage(view: v));
+            return key == null ? null : _routeForKey(key, settings);
+          },
+          // a cold start on a link: the home page and that one page - not, as Flutter would do by default, one page
+          // for every "/" in the key as well ("thecocktaildb.com/api.php" would get a stray "thecocktaildb.com" page)
+          onGenerateInitialRoutes: (initialRoute) {
+            final key = apiKeyFromRoute(initialRoute);
+            return [
+              MaterialPageRoute(settings: const RouteSettings(name: '/'), builder: (_) => const HomePage()),
+              if (key != null) _routeForKey(key, RouteSettings(name: initialRoute)),
+            ];
           },
           onUnknownRoute: (settings) => MaterialPageRoute(settings: settings, builder: (_) => const HomePage()),
-          theme: ledgerTheme(Brightness.light),
-          darkTheme: ledgerTheme(Brightness.dark),
-          themeMode: switch (state.theme) {
+          theme: _light,
+          darkTheme: _dark,
+          themeMode: switch (theme) {
             ThemeModeSetting.light => ThemeMode.light,
             ThemeModeSetting.dark => ThemeMode.dark,
             ThemeModeSetting.system => ThemeMode.system,
@@ -252,6 +271,17 @@ class _HomePageState extends State<HomePage> {
   final _search = TextEditingController();
   final _searchFocus = FocusNode();
   final _list = ScrollController();
+  Timer? _searchTimer;
+
+  /// Typing waits for a short pause before the list is filtered: the typo-forgiving search over ~4,000 rows is not
+  /// something to run on every keystroke.
+  void _onSearchChanged(String text) {
+    setState(() {}); // the clear button follows the box at once
+    _searchTimer?.cancel();
+    _searchTimer = Timer(const Duration(milliseconds: 150), () {
+      if (mounted) state.setSearch(text);
+    });
+  }
   int _listVersion = 0;
   double _rowExtent = 76;
 
@@ -306,6 +336,7 @@ class _HomePageState extends State<HomePage> {
   @override
   void dispose() {
     comparePick.removeListener(_onComparePick);
+    _searchTimer?.cancel();
     _search.dispose();
     _searchFocus.dispose();
     _list.dispose();
@@ -430,6 +461,8 @@ class _HomePageState extends State<HomePage> {
                             state.setDailyNotice(!state.dailyNotice);
                           } else if (v == 'weekly') {
                             state.setWeeklyRescan(!state.weeklyRescan);
+                          } else if (v == 'logos') {
+                            state.setShowLogos(!state.showLogos);
                           } else if (v == 'client') {
                             collectionClient(context);
                           } else if (v == 'changes') {
@@ -443,6 +476,7 @@ class _HomePageState extends State<HomePage> {
                           const PopupMenuDivider(),
                           menuRow('notice', 'API of the day at 9:00 (notification)', checked: state.dailyNotice),
                           menuRow('weekly', 'Rescan weekly on Wi-Fi', checked: state.weeklyRescan),
+                          menuRow('logos', 'Provider logos (host names go to an icon service)', checked: state.showLogos),
                           menuRow('changes', 'What the last scan changed…', enabled: state.changes != null),
                           const PopupMenuDivider(),
                           // only while a collection is on screen: one C# file with a client per tested API in it
@@ -464,8 +498,12 @@ class _HomePageState extends State<HomePage> {
                             child: TextField(
                               controller: _search,
                               focusNode: _searchFocus,
-                              onChanged: state.setSearch,
-                              onSubmitted: state.rememberSearch,
+                              onChanged: _onSearchChanged,
+                              onSubmitted: (term) {
+                                _searchTimer?.cancel();
+                                state.setSearch(term);
+                                state.rememberSearch(term);
+                              },
                               textInputAction: TextInputAction.search,
                               style: const TextStyle(fontSize: 15),
                               decoration: InputDecoration(
@@ -532,6 +570,7 @@ class _HomePageState extends State<HomePage> {
                       ),
                     )
                   else ...[
+                    if (state.dataProblem != null) const SliverToBoxAdapter(child: DataProblemStrip()),
                     if (state.hasUnseenChanges) const SliverToBoxAdapter(child: ChangesStrip()),
                     if (state.showApiOfTheDay) const SliverToBoxAdapter(child: ApiOfTheDayCard()),
                     // fixed-height rows: the rail can then land on row i without ever laying out the rows before it
@@ -739,6 +778,28 @@ class ChangesStrip extends StatelessWidget {
             IconButton(tooltip: 'Dismiss', visualDensity: VisualDensity.compact, icon: const Icon(Icons.close, size: 18), onPressed: state.markChangesSeen),
           ]),
         ),
+      ),
+    );
+  }
+}
+
+/// A file the app could not read at start-up was set aside: said once, above the list, until dismissed.
+class DataProblemStrip extends StatelessWidget {
+  const DataProblemStrip({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: scheme.errorContainer,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 6, 4, 6),
+        child: Row(children: [
+          Icon(Icons.warning_amber_rounded, size: 18, color: scheme.error),
+          const SizedBox(width: 10),
+          Expanded(child: Text(state.dataProblem ?? '', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, height: 1.3, color: scheme.onErrorContainer))),
+          IconButton(tooltip: 'Dismiss', visualDensity: VisualDensity.compact, icon: const Icon(Icons.close, size: 18), onPressed: state.dismissDataProblem),
+        ]),
       ),
     );
   }
@@ -1030,10 +1091,14 @@ Future<void> exportToFile(BuildContext context) async {
 Future<void> collectionClient(BuildContext context) async {
   final name = state.category.substring(collectionPrefix.length);
   await state.ensureHistory();
-  final sources = [
-    for (final key in state.user.collections[name] ?? const <String>[])
-      if (state.find(key) case final v?) ClientSource(v.name, state.historyOf(v), demoKey: v.demoKey, variables: state.variablesOf(v)),
-  ];
+  final sources = <ClientSource>[];
+  for (final key in state.user.collections[name] ?? const <String>[]) {
+    final v = state.find(key);
+    if (v == null) continue;
+    // the history is the request as typed: a key typed out in full instead of as {key} is put back before it reaches the code
+    final own = await state.keyOf(v);
+    sources.add(ClientSource(v.name, [for (final h in state.historyOf(v)) h.scrubbed((s) => scrubKey(s, own))], demoKey: v.demoKey, variables: state.variablesOf(v)));
+  }
   final code = generateCollectionClient(name, sources);
   if (!context.mounted) return;
   if (code == null) return _say(context, 'No API in "$name" has a request that worked yet. Test one in Try it, then come back.');
@@ -1051,7 +1116,7 @@ Future<void> collectionClient(BuildContext context) async {
 void showAbout(BuildContext context) => showAboutDialog(
       context: context,
       applicationName: 'API Free',
-      applicationVersion: '1.6.0 (Android)',
+      applicationVersion: '1.6.1 (Android)',
       // the launcher icon, drawn: the blue-to-teal tile with the braces
       applicationIcon: Container(
         width: 44,

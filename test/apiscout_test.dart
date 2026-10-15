@@ -273,6 +273,19 @@ API | Description | Auth | HTTPS | CORS |
     expect(noMatchText('a' * 40, filtered: false), 'Nothing matches "${'a' * 30}…"');
   });
 
+  test('a key typed out in full is put back to {key} wherever text leaves the app', () {
+    expect(scrubKey('https://a.example/?k=abcdef123&x=abcdef123', 'abcdef123'), 'https://a.example/?k={key}&x={key}');
+    expect(scrubKey('k=a%2Bb%2Fc-long', 'a+b/c-long'), 'k={key}');
+    expect(scrubKey('short 12345 stays', '12345'), 'short 12345 stays');
+    expect(scrubKey('', 'abcdef123'), '');
+    final h = TestHistoryEntry(at: DateTime(2026, 1, 1), method: 'GET', url: 'https://a.example/?k=abcdef123', headers: 'X-Api-Key: abcdef123', ok: true, summary: '200', response: '{"echo":"abcdef123"}');
+    final s = h.scrubbed((t) => scrubKey(t, 'abcdef123'));
+    expect([s.url, s.headers, s.response, s.at, s.ok], ['https://a.example/?k={key}', 'X-Api-Key: {key}', '{"echo":"{key}"}', h.at, true]);
+    // the response is not cut a second time
+    final long = TestHistoryEntry(at: DateTime(2026, 1, 1), method: 'GET', url: 'u', ok: true, summary: '200', response: 'x' * 30000);
+    expect(long.scrubbed((t) => t).response, long.response);
+  });
+
   test('tester helpers: headers, content type, pretty JSON, curl', () {
     String? bad;
     expect(parseHeaders('X-Api-Key: abc\n\nAccept: text/plain', (b) => bad = b), {'X-Api-Key': 'abc', 'Accept': 'text/plain'});

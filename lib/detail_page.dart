@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:share_plus/share_plus.dart';
 
 import 'client_generator.dart';
 import 'code_page.dart';
@@ -198,14 +197,7 @@ class _DetailPageState extends State<DetailPage> with SingleTickerProviderStateM
     setState(() {});
   }
 
-  Future<void> _addToCollection() async {
-    final name = await showDialog<String>(context: context, builder: (_) => CollectionDialog(already: state.collectionsOf(v)));
-    if (name == null || name.trim().isEmpty || !mounted) return;
-    final used = state.addToCollection(v, name);
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text('✓ Added to "$used" - it is in the category menu')));
-  }
+  Future<void> _addToCollection() => addToCollectionFor(context, v);
 
   /// "Header: X-Api-Key: abc" in the key knowledge means the key travels in a header.
   String get _defaultHeader => v.exampleHeader;
@@ -284,8 +276,7 @@ class _DetailPageState extends State<DetailPage> with SingleTickerProviderStateM
     if (carriesKey) {
       // some APIs echo the request back: what is shown (and can be copied) says {key} again
       final key = _key.text.trim().isNotEmpty ? _key.text.trim() : await state.keyOf(v);
-      String hide(String s) => key.length < 6 ? s : s.replaceAll(key, '{key}').replaceAll(Uri.encodeComponent(key), '{key}');
-      r = TestResult(r.ok, r.isJson, hide(r.summary), hide(r.body));
+      r = TestResult(r.ok, r.isJson, scrubKey(r.summary, key), scrubKey(r.body, key));
     }
     // the history keeps the request as typed, so neither the key nor a variable's value is written with it
     // (a request that was refused before sending - a bad URL or header line - is not history)
@@ -313,13 +304,18 @@ class _DetailPageState extends State<DetailPage> with SingleTickerProviderStateM
 
   /// The Markdown copy, handed to Android's share sheet (a chat, a note, an email). It carries the provider's
   /// published demo key where there is one and never the user's own key.
-  Future<void> _share() async {
-    try {
-      // the link at the end opens this page on a phone with API Free; elsewhere it is just a line of text
-      await SharePlus.instance.share(ShareParams(text: '${_asMarkdown()}\n\nOpen in API Free: ${deepLinkFor(v.entry.key)}', subject: v.name));
-    } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Nothing on this phone can take the share')));
-    }
+  // the link at the end opens this page on a phone with API Free; elsewhere it is just a line of text
+  Future<void> _share() => shareText(context, '${_asMarkdown()}\n\nOpen in API Free: ${deepLinkFor(v.entry.key)}', v.name);
+
+  /// The key as it would be filled in: typed in the box, else saved - so a key typed out in full can be scrubbed too.
+  Future<String> _keyToScrub() async => _key.text.trim().isNotEmpty ? _key.text.trim() : await state.keyOf(v);
+
+  /// The C# client is built from the history as typed; a key typed out in full instead of as {key} is put back first.
+  Future<void> _openClient() async {
+    final key = await _keyToScrub();
+    final history = [for (final h in state.historyOf(v)) h.scrubbed((s) => scrubKey(s, key))];
+    if (!mounted) return;
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => ClientPage(view: v, history: history)));
   }
 
   String _asMarkdown() => [
@@ -442,9 +438,13 @@ class _DetailPageState extends State<DetailPage> with SingleTickerProviderStateM
       ),
     );
     if (kind == null || !mounted) return;
-    // variables are filled in, {key} is not: a copied command never carries the saved key
+    // variables are filled in, {key} is not: a copied command never carries the saved key - and a key typed out in
+    // full instead of {key} is put back to {key} too
     final vars = parseVariables(_vars.text);
-    final url = fillVariables(_url.text, vars, escape: true), headers = fillVariables(_headers.text, vars), body = fillVariables(_body.text, vars);
+    final key = await _keyToScrub();
+    String ready(String s) => scrubKey(fillVariables(s, vars), key);
+    final url = scrubKey(fillVariables(_url.text, vars, escape: true), key), headers = ready(_headers.text), body = ready(_body.text);
+    if (!mounted) return;
     switch (kind) {
       case 'js':
         copyText(context, toFetch(_method, url, headers, body), 'JavaScript fetch');
@@ -710,7 +710,7 @@ class _DetailPageState extends State<DetailPage> with SingleTickerProviderStateM
         // once a request has worked: a small typed C# client made from what was tested
         if (usableRequests(state.historyOf(v)).isNotEmpty)
           OutlinedButton.icon(
-              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ClientPage(view: v))),
+              onPressed: _openClient,
               icon: const Icon(Icons.data_object, size: 18),
               label: const Text('C# client…')),
         if (!_isSuggested || state.savedRequestOf(v) != null)

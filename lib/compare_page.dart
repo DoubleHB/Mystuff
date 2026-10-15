@@ -1,8 +1,6 @@
 import 'dart:math';
 
 import 'package:flutter/material.dart';
-import 'package:share_plus/share_plus.dart';
-
 import 'compare.dart';
 import 'detail_page.dart';
 import 'knowledge.dart';
@@ -71,13 +69,7 @@ class _ComparePageState extends State<ComparePage> {
 
   String get _markdown => compareMarkdown(widget.apis, _facts);
 
-  Future<void> _share() async {
-    try {
-      await SharePlus.instance.share(ShareParams(text: _markdown, subject: 'Compare: ${widget.apis.map((a) => a.name).join(' vs ')}'));
-    } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Nothing on this phone can take the share')));
-    }
-  }
+  Future<void> _share() => shareText(context, _markdown, 'Compare: ${widget.apis.map((a) => a.name).join(' vs ')}');
 
   Color? _liveColor(BuildContext context, String label, String value) {
     if (label != docsNowLabel && label != exampleNowLabel) return null;

@@ -1,19 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:share_plus/share_plus.dart';
-
 import 'client_generator.dart';
 import 'knowledge.dart';
 import 'main.dart';
 import 'user_data.dart';
 import 'widgets.dart';
 
-Future<void> _shareCode(BuildContext context, String code, String fileName) async {
-  try {
-    await SharePlus.instance.share(ShareParams(text: code, subject: fileName));
-  } catch (_) {
-    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Nothing on this phone can take the share')));
-  }
-}
+Future<void> _shareCode(BuildContext context, String code, String fileName) => shareText(context, code, fileName);
 
 /// Generated code in a box that scrolls both ways, selectable.
 class _CodeBox extends StatelessWidget {
