@@ -181,6 +181,9 @@ class ApiView {
   String? get demoKey => hint?.demoKey;
   bool get hasDemoKey => hint?.demoKey != null;
   bool get keylessWorks => (hint?.keylessWorks ?? false) || entry.auth == AuthKind.none;
+
+  /// Can be called this minute, without signing up for anything: no key needed, or a published demo key.
+  bool get worksNow => keylessWorks || hasDemoKey;
   String? get example => hint?.example;
   String get host => Uri.tryParse(entry.url)?.host.replaceFirst(RegExp(r'^www\.'), '') ?? '';
 

@@ -113,6 +113,11 @@ own published demo key where there is one, or how to get a key.
   - Play screenshots redone with the 1.5 look (`store/`).
 - **1.5.1 - renamed API Free.** The app, the listing and the desktop app are now called API Free (the ApiScout name
   was taken). Package id, files, data and keys are untouched, so 1.5.1 installs over 1.5.0.
+- **1.5.4 - three small things.** A fresh install scans by itself (`AppState.firstLaunch`, started from `main`
+  after `runApp`); a "Works right now" chip (`ApiView.worksNow` = `keylessWorks || hasDemoKey`, `state.worksNow`
+  in `applyFilter`); the category, chips and tag come back next launch (`encodeFilters` / `restoreFilters`, one
+  JSON line under the `filters` preference, written by every set* call; a missing category falls back to All APIs
+  in `applyFilter`).
 - **1.5.3 - the typefaces load.** `assets/fonts/*.ttf` were EOT files with a .ttf name (what Google Fonts hands an
   old Internet Explorer): Android ignores them silently, so 1.3 to 1.5.2 drew everything in the system font. They
   are now the TrueType data that was inside each wrapper; a test checks the first four bytes and that the engine
