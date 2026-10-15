@@ -1,5 +1,18 @@
 # API Free for Android - release notes
 
+## 1.5.5 (not built yet)
+
+- **One row per API.** Some APIs were listed twice because two directories point at different docs pages for them
+  (1inch, 1Forge). The scan now folds those together when the name matches and the docs are on the same site, or
+  the two listings describe the API in the same words. Anything you saved under either copy - a favourite, tags,
+  a note, a collection entry, variables or your key - follows the row that stays. Takes effect on the next scan.
+- **Sort.** A Sort chip at the end of the filter row: Name A-Z (as before) or Health first, which puts the APIs
+  freepublicapis.com checks daily at the top, best score first; APIs without a score follow in name order. The A-Z
+  rail steps aside while the list is not in name order.
+- **Copy as JavaScript or Python.** Next to cURL on the Overview tab, and in Try it the cURL button is now
+  "Copy as…" with cURL, JavaScript (fetch) and Python (requests). Variables are filled in; `{key}` is not, so a
+  copied snippet never carries your saved key.
+
 ## 1.5.4
 
 Three small things from the closed test.

@@ -44,6 +44,50 @@ class UserData {
   }
 }
 
+/// A scan folded two listings of one API together (ApiEntry.aliases): whatever was saved under the key that went moves
+/// to the key that stayed. A favourite stays a favourite, tags and variables are merged, two notes are joined, a
+/// collection keeps its order. Returns whether anything moved.
+bool adoptAliases(UserData user, Map<String, String> aliasToKey) {
+  var changed = false;
+  for (final e in aliasToKey.entries) {
+    final alias = e.key, key = e.value;
+    if (alias == key) continue;
+    if (user.favourites.remove(alias)) {
+      user.favourites.add(key);
+      changed = true;
+    }
+    final tags = user.tags.remove(alias);
+    if (tags != null) {
+      final list = user.tags.putIfAbsent(key, () => []);
+      for (final t in tags) {
+        if (list.length < maxTagsPerApi && !list.any((have) => have.toLowerCase() == t.toLowerCase())) list.add(t);
+      }
+      changed = true;
+    }
+    final note = user.notes.remove(alias);
+    if (note != null) {
+      final have = user.notes[key];
+      user.notes[key] = have == null || have.trim().isEmpty || have == note ? note : '$have\n\n$note';
+      changed = true;
+    }
+    for (final list in user.collections.values) {
+      final i = list.indexOf(alias);
+      if (i < 0) continue;
+      list.contains(key) ? list.removeAt(i) : list[i] = key;
+      changed = true;
+    }
+    final vars = user.variables.remove(alias);
+    if (vars != null) {
+      final map = user.variables.putIfAbsent(key, () => {});
+      for (final v in vars.entries) {
+        map.putIfAbsent(v.key, () => v.value);
+      }
+      changed = true;
+    }
+  }
+  return changed;
+}
+
 /// A Try it request edited away from the suggested one, remembered per API - the desktop's ApiTestRequest, with its
 /// JSON names. A header may hold a token, so on the phone it is sealed like the history, and in an export it travels
 /// only inside the encrypted part.
