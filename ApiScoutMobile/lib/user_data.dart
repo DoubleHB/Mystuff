@@ -16,16 +16,22 @@ class UserData {
   /// Request variables per API (name -> value). They travel with the keys in an export: someone may have put a token in one.
   Map<String, Map<String, String>> variables = {};
 
+  /// Where data moved when a scan folded two listings together: the key that went -> the key it moved to. Kept so
+  /// that a later scan which lists the first key on its own again can move the data back (see adoptAliases). Phone-only;
+  /// not part of the export.
+  Map<String, String> renames = {};
+
   UserData();
 
-  Map<String, dynamic> toJson() => {'favourites': favourites.toList()..sort(), 'tags': tags, 'notes': notes, 'collections': collections, 'variables': variables};
+  Map<String, dynamic> toJson() => {'favourites': favourites.toList()..sort(), 'tags': tags, 'notes': notes, 'collections': collections, 'variables': variables, if (renames.isNotEmpty) 'renames': renames};
 
   factory UserData.fromJson(Map<String, dynamic> j) => UserData()
     ..favourites = {..._strings(j['favourites'])}
     ..tags = _lists(j['tags'])
     ..notes = _texts(j['notes'])
     ..collections = _lists(j['collections'])
-    ..variables = _maps(j['variables']);
+    ..variables = _maps(j['variables'])
+    ..renames = _texts(j['renames']);
 
   /// Every tag in use, most used first.
   List<(String, int)> get tagCounts {
@@ -448,6 +454,11 @@ class TestHistoryEntry {
   TestHistoryEntry({required this.at, required this.method, required this.url, this.headers = '', this.body = '', required this.ok, required this.summary, String response = ''})
       : response = response.length > _historyResponseChars ? '${response.substring(0, _historyResponseChars)}\n\n… cut for the history' : response;
 
+  /// The same entry with every text passed through [f] (a key typed out in full becomes {key} before the entry
+  /// reaches generated code or a copy). The response is not cut again.
+  TestHistoryEntry scrubbed(String Function(String) f) => TestHistoryEntry._exact(at, method, f(url), f(headers), f(body), ok, f(summary), f(response));
+  TestHistoryEntry._exact(this.at, this.method, this.url, this.headers, this.body, this.ok, this.summary, this.response);
+
   static const _months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   String get when => '${at.day} ${_months[at.month - 1]} ${at.hour.toString().padLeft(2, '0')}:${at.minute.toString().padLeft(2, '0')}';
   String get firstLine => summary.split('\n').first;
@@ -486,6 +497,11 @@ Uint8List sealWithKey(Uint8List key, Uint8List plain, [Random? random]) {
   final gcm = GCMBlockCipher(AESEngine())..init(true, AEADParameters(KeyParameter(key), 128, nonce, Uint8List(0)));
   return Uint8List.fromList([...nonce, ...gcm.process(plain)]);
 }
+
+/// [sealWithKey] / [openWithKey] for compute(): [key, data] in, bytes out. AES in pure Dart takes long enough on a
+/// large history to drop frames, so the app seals and opens off the UI isolate.
+Uint8List sealIsolate(List<Uint8List> keyAndPlain) => sealWithKey(keyAndPlain[0], keyAndPlain[1]);
+Uint8List? openIsolate(List<Uint8List> keyAndSealed) => openWithKey(keyAndSealed[0], keyAndSealed[1]);
 
 /// Null when the key is not the one the data was sealed with (or the data is damaged).
 Uint8List? openWithKey(Uint8List key, Uint8List sealed) {

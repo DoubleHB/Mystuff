@@ -1,8 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:share_plus/share_plus.dart';
 
+import 'api_text.dart';
 import 'client_generator.dart';
 import 'code_page.dart';
 import 'docs_scanner.dart';
@@ -10,6 +10,7 @@ import 'insight_page.dart';
 import 'knowledge.dart';
 import 'links.dart';
 import 'main.dart';
+import 'request_pipeline.dart';
 import 'response_page.dart';
 import 'tester.dart';
 import 'user_data.dart';
@@ -198,14 +199,7 @@ class _DetailPageState extends State<DetailPage> with SingleTickerProviderStateM
     setState(() {});
   }
 
-  Future<void> _addToCollection() async {
-    final name = await showDialog<String>(context: context, builder: (_) => CollectionDialog(already: state.collectionsOf(v)));
-    if (name == null || name.trim().isEmpty || !mounted) return;
-    final used = state.addToCollection(v, name);
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text('✓ Added to "$used" - it is in the category menu')));
-  }
+  Future<void> _addToCollection() => addToCollectionFor(context, v);
 
   /// "Header: X-Api-Key: abc" in the key knowledge means the key travels in a header.
   String get _defaultHeader => v.exampleHeader;
@@ -261,35 +255,19 @@ class _DetailPageState extends State<DetailPage> with SingleTickerProviderStateM
           'Not sent: ${missing.map((m) => '{$m}').join(', ')} ${missing.length == 1 ? 'has' : 'have'} no value. Give ${missing.length == 1 ? 'it' : 'them'} one in the Variables box (name = value).', ''));
       return;
     }
-    // variables first, then the key: a variable's value is never searched for {key}
-    var url = fillVariables(typedUrl, vars, escape: true), headers = fillVariables(typedHeaders, vars), sentBody = fillVariables(body, vars);
-    final filledUrl = url, filledHeaders = headers, filledBody = sentBody;
-    if (usesKeyPlaceholder('$url$headers$sentBody')) {
-      // the key as typed wins over the saved one, so a key can be tried before it is saved
-      final key = _key.text.trim().isNotEmpty ? _key.text.trim() : await state.keyOf(v);
-      if (key.isEmpty) {
-        setState(() => _result = const TestResult(false, false, 'The request uses {key} but no key is saved under Keys → My key. Save one first.', ''));
-        return;
-      }
-      url = fillKey(url, key, escape: true);
-      headers = fillKey(headers, key);
-      sentBody = fillKey(sentBody, key);
+    // the key as typed wins over the saved one, so a key can be tried before it is saved
+    final key = await _keyToScrub();
+    if (usesKeyPlaceholder('$typedUrl$typedHeaders$body') && key.isEmpty) {
+      setState(() => _result = const TestResult(false, false, 'The request uses {key} but no key is saved under Keys → My key. Save one first.', ''));
+      return;
     }
     // like the desktop: a request edited away from the suggested one is remembered as typed ({key} stays a placeholder);
     // going back to the suggested one by hand forgets it
     state.setSavedRequest(v, _isSuggested ? null : TestRequest(method, typedUrl.trim(), typedHeaders.trim(), body.trim()));
     setState(() => _sending = true);
-    final carriesKey = url != filledUrl || headers != filledHeaders || sentBody != filledBody;
-    var r = await sendTest(method, url, headers, sentBody, carriesKey: carriesKey);
-    if (carriesKey) {
-      // some APIs echo the request back: what is shown (and can be copied) says {key} again
-      final key = _key.text.trim().isNotEmpty ? _key.text.trim() : await state.keyOf(v);
-      String hide(String s) => key.length < 6 ? s : s.replaceAll(key, '{key}').replaceAll(Uri.encodeComponent(key), '{key}');
-      r = TestResult(r.ok, r.isJson, hide(r.summary), hide(r.body));
-    }
+    final r = await runRequest(method, typedUrl, typedHeaders, body, vars: vars, key: key);
     // the history keeps the request as typed, so neither the key nor a variable's value is written with it
-    // (a request that was refused before sending - a bad URL or header line - is not history)
-    if (!r.summary.startsWith('That is not') && !r.summary.startsWith('This header line')) await state.addHistory(v, TestHistoryEntry(at: DateTime.now(), method: method, url: typedUrl, headers: typedHeaders, body: body, ok: r.ok, summary: r.summary, response: r.body));
+    if (wasSent(r)) await state.addHistory(v, TestHistoryEntry(at: DateTime.now(), method: method, url: typedUrl, headers: typedHeaders, body: body, ok: r.ok, summary: r.summary, response: r.body));
     if (mounted) {
       setState(() {
         _result = r;
@@ -298,42 +276,19 @@ class _DetailPageState extends State<DetailPage> with SingleTickerProviderStateM
     }
   }
 
-  String _asText() => [
-        v.name,
-        v.entry.description,
-        'Category: ${v.entry.category}',
-        'Docs: ${v.url}',
-        'Auth: ${v.authLabel}  ·  ${v.keyHeadline}',
-        'Free access: ${v.accessLabel}',
-        if (v.hasDemoKey) 'Demo key: ${v.demoKey}',
-        if (v.hint?.keyUsage != null) 'How the key is sent: ${v.hint!.keyUsage}',
-        if (v.example != null) 'Example: ${v.example}',
-        if (v.hint?.signupUrl != null) 'Get a key: ${v.hint!.signupUrl}',
-      ].join('\n');
+  // the link at the end opens this page on a phone with API Free; elsewhere it is just a line of text
+  Future<void> _share() => shareText(context, '${apiMarkdown(v)}\n\nOpen in API Free: ${deepLinkFor(v.entry.key)}', v.name);
 
-  /// The Markdown copy, handed to Android's share sheet (a chat, a note, an email). It carries the provider's
-  /// published demo key where there is one and never the user's own key.
-  Future<void> _share() async {
-    try {
-      // the link at the end opens this page on a phone with API Free; elsewhere it is just a line of text
-      await SharePlus.instance.share(ShareParams(text: '${_asMarkdown()}\n\nOpen in API Free: ${deepLinkFor(v.entry.key)}', subject: v.name));
-    } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Nothing on this phone can take the share')));
-    }
+  /// The key as it would be filled in: typed in the box, else saved - so a key typed out in full can be scrubbed too.
+  Future<String> _keyToScrub() async => _key.text.trim().isNotEmpty ? _key.text.trim() : await state.keyOf(v);
+
+  /// The C# client is built from the history as typed; a key typed out in full instead of as {key} is put back first.
+  Future<void> _openClient() async {
+    final key = await _keyToScrub();
+    final history = [for (final h in state.historyOf(v)) h.scrubbed((s) => scrubKey(s, key))];
+    if (!mounted) return;
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => ClientPage(view: v, history: history)));
   }
-
-  String _asMarkdown() => [
-        '### [${v.name}](${v.url})',
-        '',
-        v.entry.description,
-        '',
-        '- **Category:** ${v.entry.category}',
-        '- **Auth:** ${v.authLabel} - ${v.keyHeadline}',
-        '- **Free access:** ${v.accessLabel}',
-        if (v.hasDemoKey) '- **Demo key:** `${v.demoKey}`',
-        if (v.example != null) '- **Example:** `${v.example}`',
-        if (v.hint?.signupUrl != null) '- **Get a key:** ${v.hint!.signupUrl}',
-      ].join('\n');
 
   @override
   Widget build(BuildContext context) {
@@ -442,9 +397,13 @@ class _DetailPageState extends State<DetailPage> with SingleTickerProviderStateM
       ),
     );
     if (kind == null || !mounted) return;
-    // variables are filled in, {key} is not: a copied command never carries the saved key
+    // variables are filled in, {key} is not: a copied command never carries the saved key - and a key typed out in
+    // full instead of {key} is put back to {key} too
     final vars = parseVariables(_vars.text);
-    final url = fillVariables(_url.text, vars, escape: true), headers = fillVariables(_headers.text, vars), body = fillVariables(_body.text, vars);
+    final key = await _keyToScrub();
+    String ready(String s) => scrubKey(fillVariables(s, vars), key);
+    final url = scrubKey(fillVariables(_url.text, vars, escape: true), key), headers = ready(_headers.text), body = ready(_body.text);
+    if (!mounted) return;
     switch (kind) {
       case 'js':
         copyText(context, toFetch(_method, url, headers, body), 'JavaScript fetch');
@@ -487,8 +446,8 @@ class _DetailPageState extends State<DetailPage> with SingleTickerProviderStateM
       ]),
       const FieldLabel('COPY THIS API AS'),
       Wrap(spacing: 8, runSpacing: 4, children: [
-        OutlinedButton(onPressed: () => copyText(context, _asText(), 'Details'), child: const Text('Details')),
-        OutlinedButton(onPressed: () => copyText(context, _asMarkdown(), 'Markdown'), child: const Text('Markdown')),
+        OutlinedButton(onPressed: () => copyText(context, apiText(v), 'Details'), child: const Text('Details')),
+        OutlinedButton(onPressed: () => copyText(context, apiMarkdown(v), 'Markdown'), child: const Text('Markdown')),
         OutlinedButton(onPressed: () => copyText(context, toCurl('GET', v.example ?? v.url, _defaultHeader, ''), 'cURL command'), child: const Text('cURL')),
         OutlinedButton(onPressed: () => copyText(context, toFetch('GET', v.example ?? v.url, _defaultHeader, ''), 'JavaScript fetch'), child: const Text('JavaScript')),
         OutlinedButton(onPressed: () => copyText(context, toPython('GET', v.example ?? v.url, _defaultHeader, ''), 'Python requests'), child: const Text('Python')),
@@ -710,7 +669,7 @@ class _DetailPageState extends State<DetailPage> with SingleTickerProviderStateM
         // once a request has worked: a small typed C# client made from what was tested
         if (usableRequests(state.historyOf(v)).isNotEmpty)
           OutlinedButton.icon(
-              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ClientPage(view: v))),
+              onPressed: _openClient,
               icon: const Icon(Icons.data_object, size: 18),
               label: const Text('C# client…')),
         if (!_isSuggested || state.savedRequestOf(v) != null)
@@ -874,50 +833,4 @@ class _Fact extends StatelessWidget {
         Text(label.toUpperCase(), style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, letterSpacing: 1, color: Theme.of(context).colorScheme.onSurfaceVariant)),
         Text(value, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
       ]);
-}
-
-/// Pick one of the user's collections, or name a new one. Pops the name.
-class CollectionDialog extends StatefulWidget {
-  final List<String> already;
-  const CollectionDialog({super.key, required this.already});
-  @override
-  State<CollectionDialog> createState() => _CollectionDialogState();
-}
-
-class _CollectionDialogState extends State<CollectionDialog> {
-  final _name = TextEditingController();
-
-  @override
-  void dispose() {
-    _name.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final others = [for (final c in state.user.collections.keys) if (!widget.already.contains(c)) c];
-    return AlertDialog(
-      title: const Text('Add to a collection'),
-      content: SingleChildScrollView(
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          if (others.isNotEmpty) ...[
-            Wrap(spacing: 6, runSpacing: 4, children: [for (final c in others) ActionChip(label: Text(c), onPressed: () => Navigator.of(context).pop(c))]),
-            const SizedBox(height: 14),
-          ],
-          TextField(
-            controller: _name,
-            autofocus: others.isEmpty,
-            maxLength: 40,
-            textCapitalization: TextCapitalization.sentences,
-            onSubmitted: (t) => Navigator.of(context).pop(t),
-            decoration: InputDecoration(labelText: others.isEmpty ? 'Name of the collection' : 'Or a new collection'),
-          ),
-        ]),
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
-        FilledButton(onPressed: () => Navigator.of(context).pop(_name.text), child: const Text('Add')),
-      ],
-    );
-  }
 }

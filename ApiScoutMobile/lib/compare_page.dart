@@ -1,12 +1,11 @@
 import 'dart:math';
 
 import 'package:flutter/material.dart';
-import 'package:share_plus/share_plus.dart';
-
 import 'compare.dart';
 import 'detail_page.dart';
 import 'knowledge.dart';
 import 'main.dart';
+import 'request_pipeline.dart';
 import 'tester.dart';
 import 'widgets.dart';
 
@@ -54,7 +53,7 @@ class _ComparePageState extends State<ComparePage> {
 
   Future<void> _measureOne(ApiView a) async {
     final key = a.entry.key;
-    final docs = await sendTest('GET', a.url, '', '');
+    final docs = await runRequest('GET', a.url, '', '');
     if (!mounted) return;
     setState(() => _docs[key] = docs.summary.split('\n').first);
     final example = a.example;
@@ -64,20 +63,14 @@ class _ComparePageState extends State<ComparePage> {
       setState(() => _example[key] = 'needs your key - send it from Try it');
       return;
     }
-    final call = await sendTest('GET', example, a.exampleHeader, '');
+    final call = await runRequest('GET', example, a.exampleHeader, '');
     if (!mounted) return;
     setState(() => _example[key] = call.summary.split('\n').first);
   }
 
   String get _markdown => compareMarkdown(widget.apis, _facts);
 
-  Future<void> _share() async {
-    try {
-      await SharePlus.instance.share(ShareParams(text: _markdown, subject: 'Compare: ${widget.apis.map((a) => a.name).join(' vs ')}'));
-    } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Nothing on this phone can take the share')));
-    }
-  }
+  Future<void> _share() => shareText(context, _markdown, 'Compare: ${widget.apis.map((a) => a.name).join(' vs ')}');
 
   Color? _liveColor(BuildContext context, String label, String value) {
     if (label != docsNowLabel && label != exampleNowLabel) return null;

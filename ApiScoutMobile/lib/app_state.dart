@@ -9,13 +9,16 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'background.dart';
 import 'changes.dart';
 import 'docs_scanner.dart';
+import 'docs_store.dart';
 import 'knowledge.dart';
 import 'models.dart';
 import 'notify.dart';
 import 'search.dart';
+import 'sealed_store.dart';
 import 'sources.dart';
 import 'user_data.dart';
 import 'vault.dart';
+import 'widgets.dart' show logosOn;
 
 const allCategory = 'All APIs';
 const favouritesCategory = '★ Favourites';
@@ -75,6 +78,10 @@ class AppState extends ChangeNotifier {
 
   AppState({KeyVault? vault}) : vault = vault ?? SecureKeyVault();
 
+  /// The request history and saved test requests, sealed on disk; the docs-scan results, plain JSON.
+  late final sealed = SealedStore(vaultOf: () => vault, vaultBroken: () => vaultProblem != null);
+  final docs = DocsStore();
+
   bool ready = false;
   bool busy = false;
   double progress = 0;
@@ -92,6 +99,12 @@ class AppState extends ChangeNotifier {
   String sort = sortChoices.first;
   ThemeModeSetting theme = ThemeModeSetting.system;
 
+  /// The theme on its own notifier: MaterialApp listens to this and to nothing else.
+  final themeMode = ValueNotifier<ThemeModeSetting>(ThemeModeSetting.system);
+
+  /// Provider logos from the icon service (host names leave the phone for them); off = coloured initials only.
+  bool showLogos = true;
+
   /// No catalogue on this phone yet: the app scans by itself instead of showing an empty list.
   bool firstLaunch = false;
 
@@ -103,7 +116,7 @@ class AppState extends ChangeNotifier {
     knowledge = Knowledge.parse(_knowledgeJson);
     _prefs = await SharedPreferences.getInstance();
     await _loadUser();
-    await _loadDocsScans();
+    await docs.load();
     try {
       keyed = await vault.names();
     } catch (ex) {
@@ -112,6 +125,9 @@ class AppState extends ChangeNotifier {
       vault = MemoryKeyVault();
     }
     theme = ThemeModeSetting.values[(_prefs.getInt('theme') ?? 0).clamp(0, 2)];
+    themeMode.value = theme;
+    showLogos = _prefs.getBool('show-logos') ?? true;
+    logosOn.value = showLogos;
     recentSearches = _prefs.getStringList('recent-searches') ?? [];
     dailyNotice = _prefs.getBool('daily-notice') ?? false;
     weeklyRescan = _prefs.getBool('weekly-rescan') ?? false;
@@ -123,16 +139,19 @@ class AppState extends ChangeNotifier {
       if (!firstLaunch) {
         var cat = Catalogue.fromJson(jsonDecode(await file.readAsString()) as Map<String, dynamic>);
         if (cat.rules != rulesHash(_knowledgeJson) && cat.entries.isNotEmpty) {
-          // an app update brought new rules: same entries, fresh categories, no scan
-          recategorise(cat.entries, knowledge);
-          cat = Catalogue(cat.scannedAt, cat.entries, rules: rulesHash(_knowledgeJson));
+          // an app update brought new rules: same entries, fresh categories, no scan - off the UI isolate
+          final fresh = await compute(recategoriseIsolate, {'knowledge': _knowledgeJson, 'entries': [for (final e in cat.entries) e.toJson()]});
+          cat = Catalogue(cat.scannedAt, [for (final e in fresh) ApiEntry.fromJson((e as Map).cast<String, dynamic>())], rules: rulesHash(_knowledgeJson));
           await _saveCatalogue(cat);
         }
         _use(cat);
         status = 'Loaded ${all.length} APIs from the last scan (${_when(cat.scannedAt)}).';
       }
-    } catch (_) {
-      status = 'The saved catalogue could not be read - scan again.';
+    } catch (ex) {
+      // a damaged catalogue is set aside, not overwritten in silence, and the app scans again by itself
+      await _setAside(await _catalogueFile(), 'catalogue', ex);
+      firstLaunch = true;
+      status = 'The saved catalogue could not be read, so the app is scanning again.';
     }
     if (all.isEmpty && status.isEmpty) status = 'Press Scan to find free APIs.';
     // no catalogue: the remembered category would be a headline over nothing, so the list falls back to All APIs
@@ -178,6 +197,14 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// A file this launch could not read, and what was done about it (a strip above the list until dismissed).
+  String? dataProblem;
+
+  void dismissDataProblem() {
+    dataProblem = null;
+    notifyListeners();
+  }
+
   Future<void> _loadUser() async {
     try {
       final file = await _userFile();
@@ -185,11 +212,26 @@ class AppState extends ChangeNotifier {
         user = UserData.fromJson(jsonDecode(await file.readAsString()) as Map<String, dynamic>);
         return;
       }
-    } catch (_) {
-      // unreadable: start clean rather than not start
+    } catch (ex) {
+      // unreadable: start clean rather than not start - but keep the file, and say so, instead of overwriting it
+      // with an empty one on the next star tap
+      await _setAside(await _userFile(), 'favourites, tags, notes and collections', ex);
     }
     // version 1.0 kept the favourites in the settings
     user = UserData()..favourites = {...?_prefs.getStringList('favourites')};
+  }
+
+  /// Renames a file the app could not read to `name.unreadable-time` so nothing overwrites it, and notes it.
+  Future<void> _setAside(File file, String what, Object error) async {
+    try {
+      if (!await file.exists()) return;
+      final stamp = DateTime.now().toIso8601String().replaceAll(':', '-').split('.').first;
+      final aside = '${file.path}.unreadable-$stamp';
+      await file.rename(aside);
+      dataProblem = 'The file with your $what could not be read ($error). It was kept as ${aside.split('/').last}; the app starts without it.';
+    } catch (_) {
+      dataProblem = 'The file with your $what could not be read ($error).';
+    }
   }
 
   Future<void> _pendingSave = Future.value();
@@ -211,7 +253,7 @@ class AppState extends ChangeNotifier {
 
   void _use(Catalogue cat) {
     scannedAt = cat.scannedAt;
-    all = [for (final e in cat.entries) ApiView(e, knowledge)..docsAccess = accessFromDocs(_docsScans[e.key])];
+    all = [for (final e in cat.entries) ApiView(e, knowledge)..docsAccess = accessFromDocs(docs.scanOf(e.key))];
     _byKey = {for (final v in all) v.entry.key: v};
     // a link or notification made before two listings were folded together still opens the API
     for (final v in all) {
@@ -234,11 +276,31 @@ class AppState extends ChangeNotifier {
   Map<String, ApiView> _byKey = {};
   ApiView? find(String key) => _byKey[key];
 
-  /// Favourites, tags, notes, collections, variables and keys saved under a key that a scan folded into another.
+  /// Favourites, tags, notes, collections, variables and keys saved under a key that a scan folded into another -
+  /// and back again when a later scan lists the folded key on its own and the other has gone (user.renames remembers
+  /// every move, so no star is stranded under a key that no row has).
   void _adoptAliases() {
-    final map = {for (final v in all) for (final a in v.entry.aliases) if (_byKey[a] == v) a: v.entry.key};
+    final forward = {for (final v in all) for (final a in v.entry.aliases) if (_byKey[a] == v) a: v.entry.key};
+    final backward = <String, String>{};
+    for (final e in user.renames.entries) {
+      final from = e.key, to = e.value;
+      final toRow = _byKey[to], fromRow = _byKey[from];
+      // the row the data moved to is gone, the one it came from is back as its own row: move it back
+      if (toRow == null && fromRow != null && fromRow.entry.key == from) backward[to] = from;
+    }
+    final map = {...backward, ...forward};
     if (map.isEmpty) return;
-    if (adoptAliases(user, map)) saveUser();
+    var changed = adoptAliases(user, map);
+    for (final e in forward.entries) {
+      if (user.renames[e.key] != e.value) {
+        user.renames[e.key] = e.value;
+        changed = true;
+      }
+    }
+    for (final e in backward.entries) {
+      changed = user.renames.remove(e.value) != null || changed;
+    }
+    if (changed) saveUser();
     final moves = [for (final e in map.entries) if (keyed.contains(e.key)) e];
     if (moves.isNotEmpty) _moveKeys(moves);
   }
@@ -657,16 +719,8 @@ class AppState extends ChangeNotifier {
     }
     if (requests.isNotEmpty) {
       // a request already saved on this phone stays (the desktop's rule)
-      await ensureHistory();
-      for (final e in requests.entries) {
-        if (_requests!.containsKey(e.key)) {
-          summary.keptLocal++;
-        } else {
-          _requests![e.key] = e.value;
-          summary.requests++;
-        }
-      }
-      if (summary.requests > 0) await _saveRequests();
+      summary.requests = await sealed.adoptRequests(requests);
+      summary.keptLocal += requests.length - summary.requests;
     }
     if (all.isNotEmpty) {
       final mentioned = {...file.data.favourites, ...file.data.tags.keys, ...file.data.notes.keys, for (final c in file.data.collections.values) ...c, ...keys.keys, ...requests.keys};
@@ -684,7 +738,7 @@ class AppState extends ChangeNotifier {
     return compute(writeBackupIsolate, {
       'data': jsonDecode(jsonEncode(user.toJson())),
       'keys': withKeys ? await vault.readAll() : <String, String>{},
-      'requests': withKeys ? {for (final e in _requests!.entries) e.key: e.value.toJson()} : <String, dynamic>{},
+      'requests': withKeys ? {for (final e in sealed.requests.entries) e.key: e.value.toJson()} : <String, dynamic>{},
       'passphrase': passphrase,
     });
   }
@@ -692,27 +746,25 @@ class AppState extends ChangeNotifier {
   int get userItemCount => user.favourites.length + user.tags.length + user.notes.length + user.collections.length + user.variables.length;
 
   /// Keys, request variables and saved test requests only leave the phone inside the encrypted part of an export.
-  int get secretItemCount => keyed.length + user.variables.length + (_requests?.length ?? 0);
+  int get secretItemCount => keyed.length + user.variables.length + sealed.requests.length;
 
-  // ---------------------------------------------------------------- saved test requests (sealed like the history)
-
-  Map<String, TestRequest>? _requests;
-
-  Future<File> _requestsFile() async => File('${(await getApplicationSupportDirectory()).path}/requests.bin');
+  // ---------------------------------------------------------------- saved test requests and history (sealed_store.dart)
 
   /// The request last tested for this API when it differed from the suggested one; null = the suggested one.
-  TestRequest? savedRequestOf(ApiView v) => _requests?[v.entry.key];
+  TestRequest? savedRequestOf(ApiView v) => sealed.savedRequestOf(v.entry.key);
 
   /// Remembers [r] for the API, or forgets the saved one with null. Nothing is written when nothing changed.
-  Future<void> setSavedRequest(ApiView v, TestRequest? r) async {
-    await ensureHistory();
-    final have = _requests![v.entry.key];
-    if (r == null ? have == null : have != null && have.sameAs(r)) return;
-    r == null ? _requests!.remove(v.entry.key) : _requests![v.entry.key] = r;
-    await _saveRequests();
-  }
+  Future<void> setSavedRequest(ApiView v, TestRequest? r) => sealed.setSavedRequest(v.entry.key, r);
 
-  Future<void> _saveRequests() => _writeSealed(_requestsFile, jsonEncode({for (final e in _requests!.entries) e.key: e.value.toJson()}));
+  /// Read on first use, not at start-up: most visits never open it.
+  Future<void> ensureHistory() => sealed.ensure();
+
+  /// Set when sealed files exist that could not be opened: nothing is written to them this session.
+  String? get historyProblem => sealed.problem;
+
+  List<TestHistoryEntry> historyOf(ApiView v) => sealed.historyOf(v.entry.key);
+  Future<void> addHistory(ApiView v, TestHistoryEntry entry) => sealed.addHistory(v.entry.key, entry);
+  Future<void> clearHistory(ApiView v) => sealed.clearHistory(v.entry.key);
 
   // ---------------------------------------------------------------- request variables
 
@@ -723,147 +775,35 @@ class AppState extends ChangeNotifier {
     saveUser();
   }
 
-  // ---------------------------------------------------------------- request history (sealed with a key from the keystore)
+  // ---------------------------------------------------------------- docs scans (docs_store.dart)
 
-  Map<String, List<TestHistoryEntry>>? _history;
-  Uint8List? _historyKey;
-
-  Future<File> _historyFile() async => File('${(await getApplicationSupportDirectory()).path}/history.bin');
-
-  /// Read on first use, not at start-up: most visits never open it. The saved test requests share the key and come with it.
-  /// One load at a time: a second caller waits for the first instead of seeing empty maps that a write could then persist.
-  Future<void> ensureHistory() => _historyLoading ??= _loadHistory();
-  Future<void>? _historyLoading;
-
-  /// Set when sealed files exist that could not be opened (no seal key, a vault that would not open, or a key that does not
-  /// fit): nothing is written to them this session, so a healthy next launch still finds them whole.
-  String? historyProblem;
-
-  Future<void> _loadHistory() async {
-    final history = <String, List<TestHistoryEntry>>{};
-    final requests = <String, TestRequest>{};
-    try {
-      final saved = vaultProblem == null ? await vault.readSecret('history-key') : null;
-      if (saved != null) _historyKey = base64Decode(saved);
-      final file = await _historyFile(), requestsFile = await _requestsFile();
-      final sealedExists = await file.exists() || await requestsFile.exists();
-      if (_historyKey == null) {
-        if (sealedExists) historyProblem = 'The saved test requests and history could not be unlocked this time. Nothing new is saved until they can be.';
-      } else {
-        var opened = true;
-        if (await file.exists()) {
-          final plain = openWithKey(_historyKey!, await file.readAsBytes());
-          if (plain != null) {
-            history.addAll(historyFromJson(jsonDecode(utf8.decode(plain))));
-          } else {
-            opened = false;
-          }
-        }
-        if (await requestsFile.exists()) {
-          final plain = openWithKey(_historyKey!, await requestsFile.readAsBytes());
-          if (plain != null) {
-            requests.addAll(testRequestsFromJson(jsonDecode(utf8.decode(plain))));
-          } else {
-            opened = false;
-          }
-        }
-        if (!opened) historyProblem = 'The saved test requests and history on this phone do not fit the key in its secure storage, so they are left as they are. Nothing new is saved to them.';
-      }
-    } catch (_) {
-      historyProblem ??= 'The saved test requests and history could not be read this time. Nothing new is saved until they can be.';
-    }
-    _history = history;
-    _requests = requests;
-  }
-
-  List<TestHistoryEntry> historyOf(ApiView v) => _history?[v.entry.key] ?? const [];
-
-  Future<void> addHistory(ApiView v, TestHistoryEntry entry) async {
-    await ensureHistory();
-    final list = _history!.putIfAbsent(v.entry.key, () => []);
-    list.insert(0, entry);
-    if (list.length > historyPerApi) list.removeRange(historyPerApi, list.length);
-    await _saveHistory();
-  }
-
-  Future<void> clearHistory(ApiView v) async {
-    await ensureHistory();
-    if (_history!.remove(v.entry.key) != null) await _saveHistory();
-  }
-
-  Future<void> _saveHistory() => _writeSealed(_historyFile, jsonEncode({for (final e in _history!.entries) e.key: [for (final h in e.value) h.toJson()]}));
-
-  /// Seals [json] with the keystore-held key (made on first use) and writes it whole, one write after another.
-  Future<void> _writeSealed(Future<File> Function() which, String json) => _pendingSave = _pendingSave.then((_) async {
-        // never mint a new seal key over files sealed with one this session could not read, nor into a vault that
-        // forgets at close: either would make the real files unreadable for good
-        if (historyProblem != null || (_historyKey == null && vaultProblem != null)) return;
-        try {
-          if (_historyKey == null) {
-            _historyKey = newSealKey();
-            await vault.writeSecret('history-key', base64Encode(_historyKey!));
-          }
-          final file = await which();
-          final temp = File('${file.path}.$pid.tmp');
-          await temp.writeAsBytes(sealWithKey(_historyKey!, Uint8List.fromList(utf8.encode(json))), flush: true);
-          await temp.rename(file.path);
-        } catch (_) {
-          // the history is a convenience: failing to save it must not get in the way of the test itself
-        }
-      });
-
-  // ---------------------------------------------------------------- docs scans (public information: kept as plain JSON)
-
-  Map<String, DocsScanResult> _docsScans = {};
-  final scanningDocs = <String>{};
-
-  Future<File> _docsFile() async => File('${(await getApplicationSupportDirectory()).path}/docscans.json');
-
-  Future<void> _loadDocsScans() async {
-    try {
-      final file = await _docsFile();
-      if (!await file.exists()) return;
-      final j = jsonDecode(await file.readAsString());
-      if (j is Map) _docsScans = {for (final e in j.entries) if (e.value is Map) e.key as String: DocsScanResult.fromJson((e.value as Map).cast<String, dynamic>())};
-    } catch (_) {
-      _docsScans = {};
-    }
-  }
-
-  DocsScanResult? docsScanOf(ApiView v) => _docsScans[v.entry.key];
-  bool isScanningDocs(ApiView v) => scanningDocs.contains(v.entry.key);
+  DocsScanResult? docsScanOf(ApiView v) => docs.scanOf(v.entry.key);
+  bool isScanningDocs(ApiView v) => docs.isScanning(v.entry.key);
+  Set<String> get scanningDocs => docs.scanning;
 
   Future<void> scanDocsFor(ApiView v) async {
-    if (!scanningDocs.add(v.entry.key)) return;
+    if (docs.isScanning(v.entry.key)) return;
+    final running = docs.scan(v.entry, exampleUrl: v.example); // marked as scanning before its first await
     notifyListeners();
     try {
-      final result = await scanDocs(v.entry, exampleUrl: v.example);
-      _docsScans[v.entry.key] = result;
-      v.docsAccess = accessFromDocs(result);
-      // only the latest few hundred are worth keeping on a phone
-      if (_docsScans.length > 300) {
-        final oldest = _docsScans.entries.toList()..sort((a, b) => a.value.scannedAt.compareTo(b.value.scannedAt));
-        for (final e in oldest.take(_docsScans.length - 300)) {
-          _docsScans.remove(e.key);
-        }
-      }
-      _pendingSave = _pendingSave.then((_) async {
-        try {
-          final file = await _docsFile();
-          final temp = File('${file.path}.$pid.tmp');
-          await temp.writeAsString(jsonEncode({for (final e in _docsScans.entries) e.key: e.value.toJson()}), flush: true);
-          await temp.rename(file.path);
-        } catch (_) {}
-      });
+      final result = await running;
+      if (result != null) v.docsAccess = accessFromDocs(result);
     } finally {
-      scanningDocs.remove(v.entry.key);
       applyFilter(); // the free-access label (and so the filters and counts) may have changed
     }
   }
 
   void setTheme(ThemeModeSetting value) {
     theme = value;
+    themeMode.value = value;
     _prefs.setInt('theme', value.index);
+    notifyListeners();
+  }
+
+  void setShowLogos(bool on) {
+    showLogos = on;
+    logosOn.value = on;
+    _prefs.setBool('show-logos', on);
     notifyListeners();
   }
 }

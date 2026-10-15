@@ -20,13 +20,24 @@ bool wordMatches(String text, List<String> tokens, String word) {
   return false;
 }
 
+// the three rows of the edit-distance table, kept between calls: the typo check runs thousands of times per keystroke
+// and must not allocate on every one (one isolate at a time uses them, so sharing is safe)
+var _row0 = List<int>.filled(64, 0), _row1 = List<int>.filled(64, 0), _row2 = List<int>.filled(64, 0);
+
 /// Edits (insert, delete, replace, swap two neighbours) that turn [a] into [b]; gives up at [max] + 1.
 int editDistance(String a, String b, int max) {
   final n = a.length, m = b.length;
   if ((n - m).abs() > max) return max + 1;
-  var prev2 = List<int>.filled(m + 1, 0);
-  var prev = List<int>.generate(m + 1, (j) => j);
-  var cur = List<int>.filled(m + 1, 0);
+  if (_row0.length < m + 1) {
+    _row0 = List<int>.filled(m + 1, 0);
+    _row1 = List<int>.filled(m + 1, 0);
+    _row2 = List<int>.filled(m + 1, 0);
+  }
+  var prev2 = _row0, prev = _row1, cur = _row2;
+  for (var j = 0; j <= m; j++) {
+    prev2[j] = 0;
+    prev[j] = j;
+  }
   for (var i = 1; i <= n; i++) {
     cur[0] = i;
     var rowMin = i;

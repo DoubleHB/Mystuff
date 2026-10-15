@@ -54,7 +54,7 @@ own published demo key where there is one, or how to get a key.
   skeleton rows while the first scan runs; the logo flies from the row into the detail header. The detail page is
   five tabs - Overview, Keys, Try it, Docs, Mine - so Try it is one tap away instead of a scroll past Keys and My key.
   "Try" on a found endpoint and "Scan docs" switch tabs; long "how to get a key" text is folded behind "Show the steps".
-  `ledgerTheme()` in `main.dart` holds every colour and shape; `widgets.dart` has `mono`, `tonalStyle`, `FoldedText`, `SkeletonRows`.
+  `ledgerTheme()` in `theme.dart` holds every colour and shape; `widgets.dart` has `mono`, `tonalStyle`, `FoldedText`, `SkeletonRows`.
 - 1.3.1: the filters live in a chip row under the search (category ▾ opens the drawer; Auth ▾ and Free ▾ are menus;
   HTTPS and CORS toggle; Clear appears while anything is set; the user's #tags follow a divider) - the filter sheet is
   gone. Swipe a row right to star it, left to file it in a collection (`SwipeActions`, a Dismissible that always
@@ -113,6 +113,12 @@ own published demo key where there is one, or how to get a key.
   - Play screenshots redone with the 1.5 look (`store/`).
 - **1.5.1 - renamed API Free.** The app, the listing and the desktop app are now called API Free (the ApiScout name
   was taken). Package id, files, data and keys are untouched, so 1.5.1 installs over 1.5.0.
+- **1.6.1 - the rest of the pre-release review.** `user.renames` (two-way alias moves), `scrubKey` on every copy and
+  generator path, unreadable files set aside (`_setAside`, `dataProblem`), `SealedStore` (100 APIs of history,
+  seal/open in isolates, one load at a time), responses read in chunks to 2 MB and formatted in an isolate, search
+  debounce, MaterialApp on `state.themeMode` only, `logosOn`, cold-start deep links via `onGenerateInitialRoutes`,
+  and the split: `theme.dart`, `home_widgets.dart`, `transfer.dart`, `sealed_store.dart`, `docs_store.dart`,
+  `request_pipeline.dart`, `api_text.dart`. Not built.
 - **1.6.0 - Compare and C# from the desktop.**
   - `json_to_csharp.dart` and `client_generator.dart` are ports of the desktop's `JsonToCSharp` and `ClientGenerator`.
     The two must write the same text: `dotnet run --project C:\Claude\ApiScout.Tests -- --codegen-fixture <dir>` writes
@@ -167,8 +173,13 @@ Keys policy is the desktop's: only demo keys the providers print in their own do
 - `lib/insight.dart`, `insight_page.dart` - More about this API
 - `lib/user_data.dart` - favourites/tags/notes/collections, the desktop export format and its encryption (pointycastle)
 - `lib/vault.dart` - My key storage (Android keystore)
-- `lib/app_state.dart` - catalogue, filters, favourites, theme (ChangeNotifier)
-- `lib/main.dart`, `detail_page.dart`, `widgets.dart`, `az_rail.dart`, `response_page.dart`, `changes_page.dart` - the screens
+- `lib/app_state.dart` - catalogue, filters, favourites, keys, import/export (ChangeNotifier; `state` in main.dart);
+  `sealed_store.dart` - request history + saved requests, sealed; `docs_store.dart` - docs-scan results
+- `lib/request_pipeline.dart` - what Try it, Compare's Measure now and the generators share: variables, {key} filled
+  only for the send, the key scrubbed from what comes back;  `api_text.dart` - an API as text / Markdown
+- `lib/main.dart` (app, routes, the list page), `home_widgets.dart` (pills, strips, drawer, API of the day, About),
+  `theme.dart` (`ledgerTheme`), `transfer.dart` (Import / Export), `detail_page.dart`, `widgets.dart`, `az_rail.dart`,
+  `response_page.dart`, `changes_page.dart`, `compare_page.dart`, `code_page.dart` - the screens
 - `lib/search.dart` (typo-tolerant search, recent searches), `json_tree.dart` (response tree), `changes.dart` (scan diff),
   `links.dart` (apiscout:// links), `notify.dart` (API of the day notification), `background.dart` (weekly rescan)
 - `test/apiscout_test.dart` - self-check (`--dart-define=LIVE=true` adds the real scan). `test/fixtures/desktop-export.json` is a real

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart' show CustomSemanticsAction;
 import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
 
 import 'knowledge.dart';
 
@@ -57,6 +58,10 @@ class StatusLine extends StatelessWidget {
 const _avatarColors = [Color(0xFF4F8CFF), Color(0xFF3DDCB4), Color(0xFFB48CFF), Color(0xFFF5B83D), Color(0xFFFF7A59), Color(0xFF2BB5D9), Color(0xFFE0609A), Color(0xFF6FBF4A)];
 
 /// The provider's site icon on a white tile, or a coloured initial while (or if) there is none.
+/// Provider logos come from a public icon service, which is told the API's host name. Off, every tile is a coloured
+/// initial and nothing leaves the phone for a logo. Set from the app's settings.
+final logosOn = ValueNotifier<bool>(true);
+
 /// With [hero] the tile flies between the list row and the detail header (one hero per key per page).
 class BrandTile extends StatelessWidget {
   final ApiView view;
@@ -82,7 +87,7 @@ class BrandTile extends StatelessWidget {
         child: Text(letter, style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: size * 0.45)),
       ),
     );
-    final tile = host.isEmpty
+    final tile = host.isEmpty || !logosOn.value
         ? initial
         : ClipRRect(
             borderRadius: BorderRadius.circular(size * 0.18),
@@ -109,6 +114,15 @@ class BrandTile extends StatelessWidget {
 /// Each line is scaled at its own size: Android scales large sizes less than small ones, so scaling the sum of
 /// the three (56) as one number came back unchanged and the lines touched the hairline at a large text size.
 double rowExtentFor(BuildContext context) => rowExtentAt(MediaQuery.textScalerOf(context));
+
+/// Hands [text] to Android's share sheet; a phone with nothing to share to is told so.
+Future<void> shareText(BuildContext context, String text, String subject) async {
+  try {
+    await SharePlus.instance.share(ShareParams(text: text, subject: subject));
+  } catch (_) {
+    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Nothing on this phone can take the share')));
+  }
+}
 
 /// 76 at the usual text size: the name (15, line height 1.2), the description (12.5) and the status words (11.5)
 /// at the fonts' own line height, the 4 between them, and room above and below.

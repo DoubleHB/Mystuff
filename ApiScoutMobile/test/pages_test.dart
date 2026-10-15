@@ -237,4 +237,39 @@ void main() {
     expect(file.readAsBytesSync(), isNot(before));
     expect(historyFromJson(jsonDecode(utf8.decode(openWithKey(sealKey, file.readAsBytesSync())!)))['catfact.ninja']!.length, 2);
   });
+
+  test('data moved to a folded row moves back when a later scan undoes the fold', () async {
+    final s = AppState(vault: MemoryKeyVault());
+    await s.load();
+    // scan 1: only docs.1inch.io is listed; the user stars it and saves a key
+    s.useCatalogue(Catalogue(DateTime(2026, 10, 15), [_entry('1inch', 'https://docs.1inch.io')]));
+    s.toggleFavourite(s.find('docs.1inch.io')!);
+    await s.setKey(s.find('docs.1inch.io')!, 'secret-key-1');
+    // scan 2 folds it into 1inch.io/api: the star and the key follow, and the move is remembered
+    s.useCatalogue(Catalogue(DateTime(2026, 10, 16), [_entry('1inch', 'https://1inch.io/api')..aliases.add('docs.1inch.io')]));
+    await Future<void>.delayed(const Duration(milliseconds: 50)); // the key move is asynchronous
+    expect(s.user.favourites, {'1inch.io/api'});
+    expect(s.user.renames, {'docs.1inch.io': '1inch.io/api'});
+    expect(s.keyed, {'1inch.io/api'});
+    expect(s.find('docs.1inch.io')!.entry.key, '1inch.io/api'); // a link to the old key still opens the API
+    // scan 3: 1inch.io/api has gone and docs.1inch.io is back on its own - the data comes back with it
+    s.useCatalogue(Catalogue(DateTime(2026, 10, 17), [_entry('1inch', 'https://docs.1inch.io')]));
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    expect(s.user.favourites, {'docs.1inch.io'});
+    expect(s.user.renames, isEmpty);
+    expect(s.keyed, {'docs.1inch.io'});
+    expect(await s.keyOf(s.find('docs.1inch.io')!), 'secret-key-1');
+  });
+
+  test('the history keeps the last 100 APIs tested and drops the one longest untouched', () async {
+    final s = AppState(vault: MemoryKeyVault());
+    await s.load();
+    ApiView api(int i) => ApiView(_entry('A$i', 'https://a$i.example'), k);
+    for (var i = 0; i < 101; i++) {
+      await s.addHistory(api(i), TestHistoryEntry(at: DateTime(2026, 1, 1).add(Duration(minutes: i)), method: 'GET', url: 'https://a$i.example', ok: true, summary: '200'));
+    }
+    expect(s.historyOf(api(0)), isEmpty); // the oldest went
+    expect(s.historyOf(api(1)).length, 1);
+    expect(s.historyOf(api(100)).length, 1);
+  });
 }

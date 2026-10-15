@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show compute;
 import 'package:http/http.dart' as http;
 
 class TestResult {
@@ -16,12 +18,33 @@ bool methodHasBody(String m) => m == 'POST' || m == 'PUT' || m == 'PATCH';
 
 const _maxChars = 120000;
 
+/// A reply is read up to this many bytes; the rest is dropped and the summary says so. Nothing in the app needs more
+/// than it can show, and a 50 MB dump must not freeze the phone or run it out of memory.
+const maxResponseBytes = 2 * 1024 * 1024;
+
+/// Pretty-printing a big reply is slow enough to drop frames, so from this size it runs in an isolate.
+const _formatInIsolateFrom = 150000;
+
+/// [formatBody] for an isolate: a plain list travels, a record might not on every engine.
+List<Object> formatBodyIsolate(String raw) {
+  final (text, isJson) = formatBody(raw);
+  return [text, isJson];
+}
+
 final _keyPlaceholderRx = RegExp(r'\{key\}', caseSensitive: false);
 
 /// {key} stands for the user's own saved key. It is filled in only at the moment of sending:
 /// the request as typed, and a copied cURL command, never carry the key itself.
 bool usesKeyPlaceholder(String text) => _keyPlaceholderRx.hasMatch(text);
 String fillKey(String text, String key, {bool escape = false}) => text.replaceAll(_keyPlaceholderRx, escape ? Uri.encodeComponent(key) : key);
+
+/// The saved key, plain or percent-encoded, put back as {key}: for anything that leaves the app (a copy, a share,
+/// generated code) and for what an API echoes back. A key typed out in full instead of as {key} is caught the same
+/// way. Keys under six characters are left alone - they would match ordinary words.
+String scrubKey(String text, String key) {
+  if (key.length < 6 || text.isEmpty) return text;
+  return text.replaceAll(key, '{key}').replaceAll(Uri.encodeComponent(key), '{key}');
+}
 
 /// Auth presets for Try it: one tap writes the usual header (or query parameter) with {key} standing for the saved key.
 const authPresets = ['Bearer', 'X-Api-Key', '?api_key=', 'RapidAPI'];
@@ -115,13 +138,33 @@ Future<TestResult> sendTest(String method, String url, String headerText, String
       req.headers.putIfAbsent('Content-Type', () => '${guessContentType(body)}; charset=utf-8');
       req.body = body;
     }
-    final streamed = await client.send(req).timeout(const Duration(seconds: 30));
-    final resp = await http.Response.fromStream(streamed).timeout(const Duration(seconds: 30));
+    final resp = await client.send(req).timeout(const Duration(seconds: 30));
+    // read the body in chunks, up to the cap: a huge reply is cut, not buffered whole
+    final bytes = BytesBuilder(copy: false);
+    var cut = false;
+    await for (final chunk in resp.stream.timeout(const Duration(seconds: 30))) {
+      if (bytes.length + chunk.length > maxResponseBytes) {
+        bytes.add(chunk.sublist(0, (maxResponseBytes - bytes.length).toInt()));
+        cut = true;
+        break;
+      }
+      bytes.add(chunk);
+    }
     watch.stop();
+    final bodyBytes = bytes.takeBytes();
 
-    final (text, isJson) = formatBody(utf8.decode(resp.bodyBytes, allowMalformed: true));
+    final raw = utf8.decode(bodyBytes, allowMalformed: true);
+    final String text;
+    final bool isJson;
+    if (raw.length >= _formatInIsolateFrom) {
+      final r = await compute(formatBodyIsolate, raw);
+      text = r[0] as String;
+      isJson = r[1] as bool;
+    } else {
+      (text, isJson) = formatBody(raw);
+    }
     final type = (resp.headers['content-type'] ?? 'unknown type').split(';').first;
-    var summary = '${resp.statusCode} ${resp.reasonPhrase ?? ''} · ${watch.elapsedMilliseconds} ms · $type · ${_size(resp.bodyBytes.length)}';
+    var summary = '${resp.statusCode} ${resp.reasonPhrase ?? ''} · ${watch.elapsedMilliseconds} ms · $type · ${_size(bodyBytes.length)}${cut ? ' (cut at ${_size(maxResponseBytes)})' : ''}';
     final code = resp.statusCode;
     if (code >= 300 && code < 400 && resp.headers['location'] != null) {
       summary += '\nThe API redirects to ${resp.headers['location']} - not followed, because your ${carriesKey ? 'key' : 'headers'} would go along. Test that URL directly if it is right.';
@@ -194,9 +237,7 @@ String toCurl(String method, String url, String headerText, String body) {
   final sb = StringBuffer('curl');
   if (method != 'GET') sb.write(' -X $method');
   sb.write(' ${q(url.trim())}');
-  final headers = parseHeaders(headerText, (_) {}) ?? {};
-  if (methodHasBody(method) && body.trim().isNotEmpty) headers.putIfAbsent('Content-Type', () => guessContentType(body));
-  headers.forEach((name, value) => sb.write(' \\\n  -H ${q('$name: $value')}'));
+  _copiedHeaders(method, headerText, body).forEach((name, value) => sb.write(' \\\n  -H ${q('$name: $value')}'));
   if (methodHasBody(method) && body.trim().isNotEmpty) sb.write(' \\\n  --data-raw ${q(body.trim())}');
   return sb.toString();
 }
